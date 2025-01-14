@@ -121,6 +121,6 @@ You can also deploy using docker and docker compose:
 ## ⛏️ Built Using <a name = "built_using"></a>
 
 - [Channel-based Parallelization](https://learn.microsoft.com/en-us/dotnet/core/extensions/channels) - Used Algorithm
-- [ASP.NET Core](https://vuejs.org/) -  Framework for building the REST API.
+- [ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/overview?view=aspnetcore-9.0) -  Framework for building the REST API.
 - [Linq2db](https://linq2db.github.io/) - LINQ to DB for interacting with relational databases (metadata).
 
