@@ -1,4 +1,5 @@
 using Conductor.Model;
+using Conductor.Shared.Config;
 using LinqToDB;
 using LinqToDB.Data;
 
@@ -6,7 +7,7 @@ namespace Conductor.Data;
 
 public class LdbContext : DataConnection
 {
-    public LdbContext() : base() { }
+    public LdbContext() : base(Settings.DbType) { }
 
     public ITable<Origin> Origins => this.GetTable<Origin>();
 
