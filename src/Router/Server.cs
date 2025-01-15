@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Conductor.Controller;
@@ -60,7 +61,7 @@ public sealed class Server : IAsyncDisposable
 
                 if (Settings.UseHttps)
                 {
-                    options.UseHttps(options => { });
+                    options.UseHttps(Settings.CertificatePath, Settings.CertificatePassword);
                 }
             });
             options.AddServerHeader = false;

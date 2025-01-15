@@ -121,6 +121,12 @@ public static class Settings
     [ConfigKey("SPLITTER_CHAR")]
     public static string SplitterChar { get; set; } = "";
 
+    [ConfigKey("CERTIFICATE_PASSWORD")]
+    public static string CertificatePassword { get; set; } = "";
+
+    [ConfigKey("CERTIFICATE_PATH")]
+    public static string CertificatePath { get; set; } = "";
+
     [ConfigKey("INDEX_FILEGROUP_NAME")]
     public static string IndexFileGroupName { get; set; } = "";
 
