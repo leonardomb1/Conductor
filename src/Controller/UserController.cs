@@ -1,4 +1,5 @@
 using System.Net;
+using System.Threading.Tasks;
 using Conductor.Model;
 using Conductor.Service;
 using Conductor.Shared;
@@ -13,7 +14,7 @@ public sealed class UserController(UserService service) : ControllerBase<User>(s
 {
     public async ValueTask<Results<Ok<Message<object>>, InternalServerError<Message<Error>>, BadRequest<Message>, UnauthorizedHttpResult>> Login(Stream body, string ip)
     {
-        var deserialize = Converter.TryDeserializeJson<User>(body);
+        var deserialize = await Converter.TryDeserializeJson<User>(body);
 
         if (!deserialize.IsSuccessful || deserialize.Value.Name == "" || deserialize.Value.Password == "")
         {
@@ -43,9 +44,9 @@ public sealed class UserController(UserService service) : ControllerBase<User>(s
         );
     }
 
-    public Results<Ok<Message<object>>, InternalServerError<Message<Error>>, BadRequest<Message>, UnauthorizedHttpResult> LoginWithLdap(Stream body, string ip)
+    public async Task<Results<Ok<Message<object>>, InternalServerError<Message<Error>>, BadRequest<Message>, UnauthorizedHttpResult>> LoginWithLdap(Stream body, string ip)
     {
-        var deserialize = Converter.TryDeserializeJson<User>(body);
+        var deserialize = await Converter.TryDeserializeJson<User>(body);
 
         if (!deserialize.IsSuccessful || deserialize.Value.Name == "" || deserialize.Value.Password == "")
         {

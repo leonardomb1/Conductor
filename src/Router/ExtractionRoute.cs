@@ -17,11 +17,11 @@ public static class ExtractionRoute
             .WithName("GetExtractionById");
 
         group.MapPost("/", async (ExtractionController controller, HttpRequest request) => await controller.Post(request.Body))
-            .Accepts<Origin>("application/json")
+            .Accepts<Extraction>("application/json")
             .WithName("PostExtraction");
 
         group.MapPut("/{id}", async (ExtractionController controller, HttpRequest request, string id) => await controller.Put(id, request.Body))
-            .Accepts<Origin>("application/json")
+            .Accepts<Extraction>("application/json")
             .WithName("PutExtraction");
 
         group.MapPost("/", async (ExtractionController controller, HttpRequest request) => await controller.ExecuteExtraction(request.Query))

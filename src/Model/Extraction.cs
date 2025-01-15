@@ -63,6 +63,6 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
 
     public static void PopulateMetadata(ParameterInfo parameter, EndpointBuilder builder)
     {
-        builder.Metadata.Add(new AcceptsMetadata(["application/json"], typeof(Destination)));
+        builder.Metadata.Add(new AcceptsMetadata(["application/json"], typeof(Extraction)));
     }
 }

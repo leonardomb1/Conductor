@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace Conductor.Shared.Config;
 
 public static class Settings
@@ -9,6 +12,13 @@ public static class Settings
     public static Lazy<HashSet<string>> HttpAllowedIpsSet => new(() => HttpAllowedIpsString?.Split(SplitterChar).ToHashSet() ?? []);
 
     public static Lazy<HashSet<string>> AllowedCorsSet => new(() => AllowedCorsString?.Split(SplitterChar).ToHashSet() ?? []);
+
+    public static Lazy<JsonSerializerOptions> JsonSOptions => new(() => new JsonSerializerOptions()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = true
+    });
 
     public static string ConnectionName => $"{Constants.ProgramName}.{DbType}";
 
@@ -41,6 +51,9 @@ public static class Settings
 
     [ConfigKey("PORT_NUMBER")]
     public static Int32 PortNumber { get; set; }
+
+    [ConfigKey("MAX_QUERY_PARAMS")]
+    public static Int32 MaxQueryParams { get; set; }
 
     [ConfigKey("LDAP_PORT")]
     public static Int32 LdapPort { get; set; }

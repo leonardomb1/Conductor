@@ -157,6 +157,7 @@ public sealed class Server : IAsyncDisposable
         UserRoute.Add(api);
         ScheduleRoute.Add(api);
         LoginRoute.Add(api);
+        ExtractionRoute.Add(api);
     }
 
     public void Run()

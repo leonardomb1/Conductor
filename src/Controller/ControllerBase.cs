@@ -35,7 +35,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
     public virtual async ValueTask<Results<Ok<Message<TModel>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
     {
 
-        if (filters?.Count > 10)
+        if (filters?.Count > Settings.MaxQueryParams)
         {
             return TypedResults.BadRequest(
                 new Message(Status400BadRequest, "Parameter limit has been hit.", true)
@@ -88,12 +88,12 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
 
     public virtual async ValueTask<Results<Created<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Post(Stream body)
     {
-        var deserialize = Converter.TryDeserializeJson<TModel>(body);
+        var deserialize = await Converter.TryDeserializeJson<TModel>(body);
 
         if (!deserialize.IsSuccessful)
         {
             return TypedResults.BadRequest(
-                new Message(Status400BadRequest, "This is an invalid JSON format for this operation.")
+                new Message(Status400BadRequest, $"This is an invalid JSON format for this operation. {deserialize.Error.ExceptionMessage} {deserialize.Error.StackTrace}")
             );
         }
 
@@ -121,7 +121,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
             );
         }
 
-        var deserialize = Converter.TryDeserializeJson<TModel>(body);
+        var deserialize = await Converter.TryDeserializeJson<TModel>(body);
 
         if (!deserialize.IsSuccessful)
         {

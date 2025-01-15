@@ -1,32 +1,25 @@
 using System.Data;
 using System.Text.Json;
+using Conductor.Shared.Config;
 using Conductor.Shared.Types;
 
 namespace Conductor.Shared;
 
 public static class Converter
 {
-    public static Result<T> TryDeserializeJson<T>(string data)
+    public static async Task<Result<T>> TryDeserializeJson<T>(Stream data)
     {
         try
         {
-            return JsonSerializer.Deserialize<T>(data)!;
+            var json = await JsonSerializer.DeserializeAsync<T>(
+                data,
+                Settings.JsonSOptions.Value
+            );
+            return json!;
         }
         catch (Exception ex)
         {
-            return new Error(ex.Message);
-        }
-    }
-
-    public static Result<T> TryDeserializeJson<T>(Stream data)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<T>(data)!;
-        }
-        catch (Exception ex)
-        {
-            return new Error(ex.Message);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
