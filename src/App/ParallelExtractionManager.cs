@@ -12,21 +12,21 @@ public static class ParallelExtractionManager
 {
     public static async Task<Result> ChannelParallelize(
         List<Extraction> extractions,
-        Func<List<Extraction>, Channel<(DataTable, Extraction)>, List<Error>, Task> produceData,
-        Func<Channel<(DataTable, Extraction)>, List<Error>, Task> consumeData
+        Func<List<Extraction>, Channel<(DataTable, Extraction)>, UInt16, Task> produceData,
+        Func<Channel<(DataTable, Extraction)>, UInt16, Task> consumeData
     )
     {
         Channel<(DataTable, Extraction)> channel = Channel.CreateBounded<(DataTable, Extraction)>(Settings.MaxDegreeParallel);
-        List<Error> errors = [];
+        UInt16 errCount = 0;
 
-        Task producer = Task.Run(async () => await produceData(extractions, channel, errors));
-        Task consumer = Task.Run(async () => await consumeData(channel, errors));
+        Task producer = Task.Run(async () => await produceData(extractions, channel, errCount));
+        Task consumer = Task.Run(async () => await consumeData(channel, errCount));
 
         await Task.WhenAll(producer, consumer);
 
-        if (errors.Count > 0)
+        if (errCount > 0)
         {
-            if (errors.Count == extractions.Count)
+            if (errCount == extractions.Count)
             {
                 return new Error("Extraction has failed.");
             }
@@ -43,7 +43,7 @@ public static class ParallelExtractionManager
     public static async Task ProduceDBData(
         List<Extraction> extractions,
         Channel<(DataTable, Extraction)> channel,
-        List<Error> errors
+        UInt16 errCount
     )
     {
         await Parallel.ForEachAsync(extractions, Settings.ParallelRule.Value, async (e, t) =>
@@ -58,7 +58,7 @@ public static class ParallelExtractionManager
                 var attempt = await fetcher.FetchDataTable(e, curr, t);
                 if (!attempt.IsSuccessful)
                 {
-                    errors.Add(attempt.Error);
+                    errCount++;
                     break;
                 }
 
@@ -73,7 +73,23 @@ public static class ParallelExtractionManager
         channel.Writer.Complete();
     }
 
-    public static async Task ConsumeDBData(Channel<(DataTable, Extraction)> channel, List<Error> errors)
+    public static async Task ProduceHTTPData(
+        List<Extraction> extractions,
+        Channel<(DataTable, Extraction)> channel,
+        UInt16 errCount
+    )
+    {
+        await Parallel.ForEachAsync(extractions, Settings.ParallelRule.Value, async (e, t) =>
+        {
+            // We need a HTTP extraction factory to output a method we can apply (strategy pattern)
+            // await channel.Writer.WriteAsync();
+            await Task.Run(() => 1);
+        });
+
+        channel.Writer.Complete();
+    }
+
+    public static async Task ConsumeDBData(Channel<(DataTable, Extraction)> channel, UInt16 errCount)
     {
         Result insertRes = new();
         Result createRes = new();
@@ -83,7 +99,7 @@ public static class ParallelExtractionManager
             byte attempt = 0;
             List<(DataTable, Extraction)> fetchedData = [];
 
-            for (Int64 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable, Extraction) item); i++)
+            for (UInt16 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable, Extraction) item); i++)
             {
                 fetchedData.Add(item);
             }
@@ -114,11 +130,7 @@ public static class ParallelExtractionManager
                 });
             } while ((!insertRes.IsSuccessful || !createRes.IsSuccessful) && attempt < Settings.ConsumerAttemptMax);
 
-            if (attempt > Settings.ConsumerAttemptMax)
-            {
-                List<Error> foundErrors = [insertRes.Error, createRes.Error];
-                errors.AddRange(foundErrors);
-            }
+            if (attempt > Settings.ConsumerAttemptMax) errCount++;
         }
     }
 }

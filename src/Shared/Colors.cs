@@ -1,35 +1,7 @@
 namespace Conductor.Shared;
 
-public sealed class Constants
+public static class Colors
 {
-    public const string ProgramVersion = "0.0.1";
-
-    public const string ProgramName = "Conductor";
-
-    public static string VersionHeader => $"{ProgramName} - Version: {ProgramVersion}";
-
-    public const string MessageInfo = "INFO";
-
-    public const string MessageWarning = "WARN";
-
-    public const string MessageRequest = "REQUEST";
-
-    public const string MessageError = "ERROR";
-
-    public static string MessageWithColor(string? message)
-    {
-        return message switch
-        {
-            MessageInfo => $"{BOLD}{BLUE}[{MessageInfo}]{NORMAL}{NOBOLD}",
-            MessageWarning => $"{BOLD}{YELLOW}[{MessageWarning}]{NORMAL}{NOBOLD}",
-            MessageRequest => $"{BOLD}{GREY}[{MessageRequest}]{NORMAL}{NOBOLD}",
-            MessageError => $"{BOLD}{RED}[{MessageError}]{NORMAL}{NOBOLD}",
-            _ => $"{BOLD}{BLUE}[{MessageInfo}]{NORMAL}{NOBOLD}"
-        };
-    }
-
-    public static readonly string[] UsedHttpMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"];
-
     public static readonly string NL = Environment.NewLine;
 
     public static readonly string NORMAL = Console.IsOutputRedirected ? "" : "\x1b[39m";

@@ -1,5 +1,4 @@
 using System.Net;
-using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Conductor.Controller;
@@ -11,6 +10,8 @@ using Conductor.Shared;
 using Conductor.Shared.Config;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
+using static Microsoft.AspNetCore.Http.HttpMethods;
+
 
 namespace Conductor.Router;
 
@@ -24,7 +25,7 @@ public sealed class Server : IAsyncDisposable
     {
         var builder = WebApplication.CreateBuilder();
 
-        builder.Environment.ApplicationName = Constants.ProgramName;
+        builder.Environment.ApplicationName = ProgramInfo.ProgramName;
 
         builder.WebHost.ConfigureKestrel(options =>
         {
@@ -41,7 +42,7 @@ public sealed class Server : IAsyncDisposable
                         {
                             Log.Out(
                                 $"Blocking IP Address {RemoteIpAddress} from connecting to the server.",
-                                Constants.MessageWarning,
+                                RecordType.Warning,
                                 callerMethod: "Kestrel"
                             );
                             ctx.Abort();
@@ -53,7 +54,7 @@ public sealed class Server : IAsyncDisposable
                     {
                         Log.Out(
                             $"Error while attempting to block Remote IP from connecting: {ex.Message}, Stack Trace: {ex.StackTrace}",
-                            Constants.MessageError,
+                            RecordType.Error,
                             callerMethod: "Kestrel"
                         );
                     }
@@ -72,7 +73,7 @@ public sealed class Server : IAsyncDisposable
             options.AddDefaultPolicy(policy =>
             {
                 policy.WithOrigins([.. Settings.AllowedCorsSet.Value]);
-                policy.WithMethods(Constants.UsedHttpMethods);
+                policy.WithMethods([Get, Post, Put, Delete]);
             });
         });
 
@@ -135,7 +136,7 @@ public sealed class Server : IAsyncDisposable
             return new LoggingRoutine(logger);
         });
 
-        Log.Out($"Starting {Constants.ProgramName} API Server...", callerMethod: "Server");
+        Log.Out($"Starting {ProgramInfo.ProgramName} API Server...", callerMethod: "Server");
         app = builder.Build();
 
         /// Add Middleware and configuration

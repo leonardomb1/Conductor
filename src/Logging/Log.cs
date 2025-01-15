@@ -3,8 +3,8 @@ using System.Runtime.CompilerServices;
 using Conductor.Shared.Config;
 using Conductor.Model;
 using Conductor.Service;
-using static Conductor.Shared.Constants;
-using SQLitePCL;
+using static Conductor.Shared.Colors;
+using static Conductor.Shared.RecordType;
 namespace Conductor.Logging;
 
 public static class Log
@@ -34,7 +34,7 @@ public static class Log
             {
                 HostName = hostname,
                 TimeStamp = executionTime,
-                EventType = logType ?? MessageInfo,
+                EventType = logType ?? Info,
                 CallerMethod = callerMethod ?? "",
                 Event = raw ?? message
             };
@@ -47,7 +47,7 @@ public static class Log
         }
     }
 
-    public static async Task DumpLogsToFile(RecordService service)
+    public static async Task DumpLogs(RecordService service)
     {
         if (logs.IsEmpty) return;
 
@@ -66,8 +66,20 @@ public static class Log
         }
         catch (Exception ex)
         {
-            Out($"Error during log dump: {ex.Message}", MessageError, dump: false);
+            Out($"Error during log dump: {ex.Message}", Error, dump: false);
         }
+    }
+
+    public static string MessageWithColor(string? message)
+    {
+        return message switch
+        {
+            Info => $"{BOLD}{BLUE}[{Info}]{NORMAL}{NOBOLD}",
+            Warning => $"{BOLD}{YELLOW}[{Warning}]{NORMAL}{NOBOLD}",
+            Request => $"{BOLD}{GREY}[{Request}]{NORMAL}{NOBOLD}",
+            Error => $"{BOLD}{RED}[{Error}]{NORMAL}{NOBOLD}",
+            _ => $"{BOLD}{BLUE}[{Info}]{NORMAL}{NOBOLD}"
+        };
     }
 
     private static void TrimLogs()

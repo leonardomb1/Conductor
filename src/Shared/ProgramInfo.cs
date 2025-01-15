@@ -1,12 +1,18 @@
 namespace Conductor.Shared;
 
-public static class Helper
+public static class ProgramInfo
 {
+    public const string ProgramVersion = "0.0.1";
+
+    public const string ProgramName = "Conductor";
+
+    public static string VersionHeader => $"{ProgramName} - Version: {ProgramVersion}";
+
     public static void ShowHelp()
     {
         ShowSignature();
         Console.WriteLine(
-            $"Usage: {ProgramInfo.VersionHeader} \n" +
+            $"Usage: {VersionHeader} \n" +
             "   [Options]: \n" +
             "   -h --help      Show this help message\n" +
             "   -v --version   Show version information\n" +
@@ -17,7 +23,7 @@ public static class Helper
 
     public static void ShowVersion()
     {
-        Console.WriteLine(ProgramInfo.VersionHeader);
+        Console.WriteLine(VersionHeader);
     }
 
     private static void ShowSignature()

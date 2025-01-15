@@ -12,16 +12,16 @@ public class LoggingRoutine(RecordService recordService) : BackgroundService
         {
             try
             {
-                await Log.DumpLogsToFile(recordService);
-                await Task.Delay(TimeSpan.FromSeconds(Settings.LogDumpTime), stoppingToken);
+                await Log.DumpLogs(recordService);
+                await Task.Delay(TimeSpan.FromSeconds(Settings.LogDumpTimeSec), stoppingToken);
             }
             catch (OperationCanceledException)
             {
-                Log.Out($"Stopping...", Constants.MessageInfo, dump: false, callerMethod: "Server");
+                Log.Out($"Stopping...", RecordType.Info, dump: false, callerMethod: "Server");
             }
             catch (Exception ex)
             {
-                Log.Out($"Error while executing logging routine: {ex.InnerException}", Constants.MessageError, dump: true, callerMethod: "LoggingRoutine");
+                Log.Out($"Error while executing logging routine: {ex.InnerException}", RecordType.Error, dump: true, callerMethod: "LoggingRoutine");
             }
         }
     }

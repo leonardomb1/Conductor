@@ -36,7 +36,7 @@ public abstract class DBExchange
         try
         {
             List<DataTable> dataTables = [];
-            string[] suffixes = extraction.FileStructure.Split("|");
+            string[] suffixes = extraction.FileStructure?.Split("|") ?? [];
 
             await Parallel.ForEachAsync(suffixes, token, async (s, t) =>
             {

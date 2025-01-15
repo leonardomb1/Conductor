@@ -21,7 +21,11 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
                 err: true
         );
 
-        Log.Out($"An error occurred while processing a request: {err?.ExceptionMessage}.\nTrace: {err?.StackTrace}", callerMethod: method);
+        Log.Out(
+            $"An error occurred while processing a request: {err?.ExceptionMessage}.\nTrace: {err?.StackTrace}",
+            callerMethod: method,
+            logType: RecordType.Error
+        );
 
         if (!Settings.DevelopmentMode)
         {
@@ -32,13 +36,13 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         return errMsg;
     }
 
-    public virtual async ValueTask<Results<Ok<Message<TModel>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
+    public virtual async Task<Results<Ok<Message<TModel>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
     {
 
         if (filters?.Count > Settings.MaxQueryParams)
         {
             return TypedResults.BadRequest(
-                new Message(Status400BadRequest, "Parameter limit has been hit.", true)
+                new Message(Status400BadRequest, "Query limit has been hit.", true)
             );
         }
 
@@ -56,7 +60,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         );
     }
 
-    public virtual async ValueTask<Results<Ok<Message>, Ok<Message<TModel>>, InternalServerError<Message<Error>>, BadRequest<Message>>> GetById(string stringId)
+    public virtual async Task<Results<Ok<Message>, Ok<Message<TModel>>, InternalServerError<Message<Error>>, BadRequest<Message>>> GetById(string stringId)
     {
         if (!UInt32.TryParse(stringId, out UInt32 id))
         {
@@ -86,7 +90,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         );
     }
 
-    public virtual async ValueTask<Results<Created<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Post(Stream body)
+    public virtual async Task<Results<Created<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Post(Stream body)
     {
         var deserialize = await Converter.TryDeserializeJson<TModel>(body);
 
@@ -112,7 +116,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         );
     }
 
-    public virtual async ValueTask<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Put(string stringId, Stream body)
+    public virtual async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Put(string stringId, Stream body)
     {
         if (!UInt32.TryParse(stringId, out UInt32 id))
         {
@@ -144,7 +148,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         );
     }
 
-    public virtual async ValueTask<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Delete(string stringId)
+    public virtual async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Delete(string stringId)
     {
         if (!UInt32.TryParse(stringId, out UInt32 id))
         {

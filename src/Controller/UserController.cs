@@ -12,7 +12,7 @@ namespace Conductor.Controller;
 
 public sealed class UserController(UserService service) : ControllerBase<User>(service)
 {
-    public async ValueTask<Results<Ok<Message<object>>, InternalServerError<Message<Error>>, BadRequest<Message>, UnauthorizedHttpResult>> Login(Stream body, string ip)
+    public async Task<Results<Ok<Message<object>>, InternalServerError<Message<Error>>, BadRequest<Message>, UnauthorizedHttpResult>> Login(Stream body, string ip)
     {
         var deserialize = await Converter.TryDeserializeJson<User>(body);
 

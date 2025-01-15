@@ -9,7 +9,7 @@ namespace Conductor.Controller;
 
 public sealed class ScheduleController(ScheduleService service) : ControllerBase<Schedule>(service)
 {
-    public override async ValueTask<Results<Ok<Message<Schedule>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
+    public override async Task<Results<Ok<Message<Schedule>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "value") &&

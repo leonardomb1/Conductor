@@ -8,7 +8,7 @@ namespace Conductor.Controller;
 
 public sealed class RecordController(RecordService service) : ControllerBase<Record>(service)
 {
-    public override async ValueTask<Results<Ok<Message<Record>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
+    public override async Task<Results<Ok<Message<Record>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "relative" || f.Key == "take") &&
@@ -35,7 +35,7 @@ public sealed class RecordController(RecordService service) : ControllerBase<Rec
         );
     }
 
-    public async ValueTask<Results<Ok<Message>, InternalServerError<Message<Error>>>> GetCount()
+    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>>> GetCount()
     {
         var result = await service.Count();
 
@@ -51,7 +51,7 @@ public sealed class RecordController(RecordService service) : ControllerBase<Rec
         );
     }
 
-    public async ValueTask<Results<Ok<Message>, InternalServerError<Message<Error>>>> Clear()
+    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>>> Clear()
     {
         var result = await service.Clear();
 

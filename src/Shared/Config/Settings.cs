@@ -20,31 +20,31 @@ public static class Settings
         WriteIndented = true
     });
 
-    public static string ConnectionName => $"{Constants.ProgramName}.{DbType}";
+    public static string ConnectionName => $"{ProgramInfo.ProgramName}.{DbType}";
 
     [ConfigKey("LOG_DUMP_TIME_SEC")]
-    public static Int32 LogDumpTime { get; set; }
+    public static UInt32 LogDumpTimeSec { get; set; }
 
     [ConfigKey("MAX_DEGREE_PARALLEL")]
-    public static Int32 MaxDegreeParallel { get; set; }
+    public static byte MaxDegreeParallel { get; set; }
 
     [ConfigKey("MAX_CONCURRENT_CONNECTIONS")]
-    public static Int32 MaxConcurrentConnections { get; set; }
+    public static UInt16 MaxConcurrentConnections { get; set; }
 
     [ConfigKey("MAX_CONSUMER_FETCH")]
-    public static Int32 ConsumerFetchMax { get; set; }
+    public static UInt16 ConsumerFetchMax { get; set; }
 
     [ConfigKey("MAX_PRODUCER_LINECOUNT")]
-    public static UInt32 ProducerLineMax { get; set; }
+    public static UInt64 ProducerLineMax { get; set; }
 
     [ConfigKey("SESSION_TIME_SEC")]
-    public static Int32 SessionTime { get; set; }
+    public static UInt32 SessionTime { get; set; }
 
     [ConfigKey("BULK_TIMEOUT_SEC")]
     public static Int32 BulkCopyTimeout { get; set; }
 
     [ConfigKey("MAX_CONSUMER_ATTEMPT")]
-    public static Int32 ConsumerAttemptMax { get; set; }
+    public static byte ConsumerAttemptMax { get; set; }
 
     [ConfigKey("ENABLE_LOG_DUMP")]
     public static bool Logging { get; set; }
@@ -53,7 +53,7 @@ public static class Settings
     public static Int32 PortNumber { get; set; }
 
     [ConfigKey("MAX_QUERY_PARAMS")]
-    public static Int32 MaxQueryParams { get; set; }
+    public static byte MaxQueryParams { get; set; }
 
     [ConfigKey("LDAP_PORT")]
     public static Int32 LdapPort { get; set; }
@@ -130,9 +130,15 @@ public static class Settings
     [ConfigKey("INDEX_FILEGROUP_NAME")]
     public static string IndexFileGroupName { get; set; } = "";
 
+    [ConfigKey("ENCRYPT_INDICATOR_BEGIN")]
+    public static string EncryptIndicatorBegin { get; set; } = "";
+
+    [ConfigKey("ENCRYPT_INDICATOR_END")]
+    public static string EncryptIndicatorEnd { get; set; } = "";
+
     [ConfigKey("DEVELOPMENT_MODE")]
     public static bool DevelopmentMode { get; set; }
 
     [ConfigKey("MAX_LOG_QUEUE_SIZE")]
-    public static Int32 MaxLogQueueSize { get; set; }
+    public static UInt32 MaxLogQueueSize { get; set; }
 }

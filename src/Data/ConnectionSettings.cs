@@ -4,7 +4,6 @@ using LinqToDB.Configuration;
 
 namespace Conductor.Data;
 
-
 public class ProviderSettings : IConnectionStringSettings
 {
     public string ConnectionString { get; set; } = "";

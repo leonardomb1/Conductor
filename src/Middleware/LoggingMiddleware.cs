@@ -23,7 +23,7 @@ public class LoggingMiddleware(RequestDelegate req)
 
         Log.Out(
             $"{ctx.Request.Protocol} {ctx.Request.Method} - Received request for resource {ctx.Request.Path}, from {client}.",
-            Constants.MessageRequest,
+            RecordType.Request,
             callerMethod: "Server"
         );
 
@@ -33,17 +33,17 @@ public class LoggingMiddleware(RequestDelegate req)
 
         string statusCode = ctx.Response.StatusCode switch
         {
-            >= 200 and < 300 => $"{Constants.BOLD}{Constants.GREEN}{ctx.Response.StatusCode}{Constants.NORMAL}{Constants.NOBOLD}",
-            >= 400 and < 500 => $"{Constants.BOLD}{Constants.YELLOW}{ctx.Response.StatusCode}{Constants.NORMAL}{Constants.NOBOLD}",
-            >= 500 and < 600 => $"{Constants.BOLD}{Constants.RED}{ctx.Response.StatusCode}{Constants.NORMAL}{Constants.NOBOLD}",
-            _ => $"{Constants.BOLD}{Constants.GREY}{ctx.Response.StatusCode}{Constants.NORMAL}{Constants.NOBOLD}"
+            >= 200 and < 300 => $"{Colors.BOLD}{Colors.GREEN}{ctx.Response.StatusCode}{Colors.NORMAL}{Colors.NOBOLD}",
+            >= 400 and < 500 => $"{Colors.BOLD}{Colors.YELLOW}{ctx.Response.StatusCode}{Colors.NORMAL}{Colors.NOBOLD}",
+            >= 500 and < 600 => $"{Colors.BOLD}{Colors.RED}{ctx.Response.StatusCode}{Colors.NORMAL}{Colors.NOBOLD}",
+            _ => $"{Colors.BOLD}{Colors.GREY}{ctx.Response.StatusCode}{Colors.NORMAL}{Colors.NOBOLD}"
         };
 
         string raw = $"{ctx.Response.StatusCode} - Request for {ctx.Request.Path} by {client} was processed in {stopwatch.ElapsedMilliseconds} ms.";
 
         Log.Out(
             $"{statusCode} - Request for {ctx.Request.Path} by {client} was processed in {stopwatch.ElapsedMilliseconds} ms.",
-            statusCode.StartsWith('5') ? Constants.MessageError : Constants.MessageInfo,
+            statusCode.StartsWith('5') ? RecordType.Error : RecordType.Info,
             callerMethod: "Server",
             raw: raw
         );

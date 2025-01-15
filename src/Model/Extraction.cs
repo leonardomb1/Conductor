@@ -27,7 +27,7 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public string? FilterColumn { get; set; }
 
     [Column, Nullable]
-    public Int32 FilterTime { get; set; }
+    public Int32? FilterTime { get; set; }
 
     [Column, NotNull, JsonRequired]
     public UInt32 ScheduleId { get; set; }
@@ -45,7 +45,31 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public string Type { get; set; } = "";
 
     [Column, Nullable]
-    public string FileStructure { get; set; } = "";
+    public string? FileStructure { get; set; }
+
+    [Column, Nullable]
+    public string? HttpMethod { get; set; }
+
+    [Column, Nullable]
+    public string? HeaderStructure { get; set; }
+
+    [Column, Nullable]
+    public string? EndpointFullName { get; set; }
+
+    [Column, Nullable]
+    public string? BodyStructure { get; set; }
+
+    [Column, Nullable]
+    public string? OffsetAttr { get; set; }
+
+    [Column, Nullable]
+    public string? OffsetLimitAttr { get; set; }
+
+    [Column, Nullable]
+    public string? PageAttr { get; set; }
+
+    [Column, Nullable]
+    public string? TotalPageAttr { get; set; }
 
     [Association(ThisKey = nameof(ScheduleId), OtherKey = nameof(Schedule.Id)), Nullable]
     [ForeignKey(nameof(ScheduleId))]
