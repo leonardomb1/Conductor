@@ -139,6 +139,9 @@ public static class Settings
     [ConfigKey("DEVELOPMENT_MODE")]
     public static bool DevelopmentMode { get; set; }
 
+    [ConfigKey("VERIFY_CONNECTION_ORIGIN")]
+    public static bool VerifyConnectionOrigin { get; set; }
+
     [ConfigKey("MAX_LOG_QUEUE_SIZE")]
     public static UInt32 MaxLogQueueSize { get; set; }
 }

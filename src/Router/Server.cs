@@ -33,33 +33,35 @@ public sealed class Server : IAsyncDisposable
             options.Limits.MaxConcurrentConnections = Settings.MaxConcurrentConnections;
             options.Listen(IPAddress.Any, Settings.PortNumber, options =>
             {
-                options.Use(next => async ctx =>
+                if (Settings.VerifyConnectionOrigin)
                 {
-                    try
+                    options.Use(next => async ctx =>
                     {
-                        var RemoteIpAddress = (ctx.RemoteEndPoint as IPEndPoint)?.Address;
-                        if (RemoteIpAddress == null || !Settings.TcpAllowedIpsSet.Value.Contains(RemoteIpAddress.ToString()))
+                        try
+                        {
+                            var RemoteIpAddress = (ctx.RemoteEndPoint as IPEndPoint)?.Address;
+                            if (RemoteIpAddress == null || !Settings.TcpAllowedIpsSet.Value.Contains(RemoteIpAddress.ToString()))
+                            {
+                                Log.Out(
+                                    $"Blocking IP Address {RemoteIpAddress} from connecting to the server.",
+                                    RecordType.Warning,
+                                    callerMethod: "Kestrel"
+                                );
+                                ctx.Abort();
+                                return;
+                            }
+                            await next(ctx);
+                        }
+                        catch (Exception ex)
                         {
                             Log.Out(
-                                $"Blocking IP Address {RemoteIpAddress} from connecting to the server.",
-                                RecordType.Warning,
+                                $"Error while attempting to block Remote IP from connecting: {ex.Message}, Stack Trace: {ex.StackTrace}",
+                                RecordType.Error,
                                 callerMethod: "Kestrel"
                             );
-                            ctx.Abort();
-                            return;
                         }
-                        await next(ctx);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Out(
-                            $"Error while attempting to block Remote IP from connecting: {ex.Message}, Stack Trace: {ex.StackTrace}",
-                            RecordType.Error,
-                            callerMethod: "Kestrel"
-                        );
-                    }
-                });
-
+                    });
+                }
                 if (Settings.UseHttps)
                 {
                     options.UseHttps(Settings.CertificatePath, Settings.CertificatePassword);
@@ -68,14 +70,17 @@ public sealed class Server : IAsyncDisposable
             options.AddServerHeader = false;
         });
 
-        builder.Services.AddCors(options =>
+        if (Settings.VerifyConnectionOrigin)
         {
-            options.AddDefaultPolicy(policy =>
+            builder.Services.AddCors(options =>
             {
-                policy.WithOrigins([.. Settings.AllowedCorsSet.Value]);
-                policy.WithMethods([Get, Post, Put, Delete]);
+                options.AddDefaultPolicy(policy =>
+                {
+                    policy.WithOrigins([.. Settings.AllowedCorsSet.Value]);
+                    policy.WithMethods([Get, Post, Put, Delete]);
+                });
             });
-        });
+        }
 
         builder.Services.Configure<JsonOptions>(options =>
         {
@@ -141,7 +146,7 @@ public sealed class Server : IAsyncDisposable
 
         /// Add Middleware and configuration
         app.UseMiddleware<LoggingMiddleware>();
-        app.UseMiddleware<WhiteListMiddleware>();
+        if (Settings.VerifyConnectionOrigin) app.UseMiddleware<WhiteListMiddleware>();
         if (Settings.RequireAuthentication) app.UseMiddleware<AuthenticationMiddleware>();
         if (Settings.DevelopmentMode)
         {
