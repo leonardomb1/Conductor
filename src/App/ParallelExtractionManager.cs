@@ -54,26 +54,29 @@ public static class ParallelExtractionManager
 
             var fetcher = DBExchangeFactory.Create(e.Origin!.DbType);
 
-            var metadataClient = DBExchangeFactory.Create(e.Destination!.DbType);
-            var tableExists = await metadataClient.Exists(e);
-            if (!tableExists.IsSuccessful)
+            if (!e.SingleExecution)
             {
-                errCount++;
-            }
-
-            if (tableExists.Value)
-            {
-                var rc = await metadataClient.CountTableRows(e);
-                if (!rc.IsSuccessful)
+                var metadataClient = DBExchangeFactory.Create(e.Destination!.DbType);
+                var tableExists = await metadataClient.Exists(e);
+                if (!tableExists.IsSuccessful)
                 {
                     errCount++;
                 }
 
-                destRc = rc.Value;
-
-                if (e.BeforeExecutionDeletes)
+                if (tableExists.Value)
                 {
-                    await metadataClient.ClearTable(e);
+                    var rc = await metadataClient.CountTableRows(e);
+                    if (!rc.IsSuccessful)
+                    {
+                        errCount++;
+                    }
+
+                    destRc = rc.Value;
+
+                    if (e.BeforeExecutionDeletes)
+                    {
+                        await metadataClient.ClearTable(e);
+                    }
                 }
             }
 

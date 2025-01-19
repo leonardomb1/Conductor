@@ -47,6 +47,9 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     [Column, NotNull, JsonRequired]
     public bool BeforeExecutionDeletes { get; set; }
 
+    [Column, NotNull, JsonRequired]
+    public bool SingleExecution { get; set; }
+
     [Column, Nullable]
     public string? FileStructure { get; set; }
 
