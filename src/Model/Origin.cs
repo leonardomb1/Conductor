@@ -23,7 +23,7 @@ public sealed class Origin : IDbModel, IEndpointParameterMetadataProvider
     [Column, NotNull, JsonRequired, JsonPropertyName("originDbType")]
     public string DbType { get; set; } = "";
 
-    [Column, NotNull, JsonRequired]
+    [Column, NotNull, JsonRequired, JsonPropertyName("originConStr")]
     public string ConnectionString { get; set; } = "";
 
     public Origin() { }

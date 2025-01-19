@@ -13,23 +13,37 @@ public class PostgreSQLExchange : DBExchange
     protected override string? QueryPagination(UInt64 current) =>
         $"OFFSET {current} LIMIT {Settings.ProducerLineMax}";
 
-    protected override string? QueryNonLocking() => "FOR SHARE";
+    protected override string? QueryNonLocking() => "";
+
+    protected override string GeneratePartitionCondition(Extraction extraction)
+    {
+        if (!extraction.FilterTime.HasValue)
+        {
+            throw new Exception("Filter time cannot be null in this context.");
+        }
+
+        var lookupTime = DateTime.Now.AddSeconds((double)-extraction.FilterTime!);
+        return $"WHERE \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss.fff}'::TIMESTAMP";
+    }
 
     protected override StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file)
     {
         string indexGroup = (file == null || file == "") ? $"{index}" : $"{index}, {tableName}_EMPRESA";
-        return stringBuilder.Append($" PRIMARY KEY ({indexGroup})");
+        return stringBuilder.Append($" PRIMARY KEY (\"{indexGroup}\")");
     }
 
     protected override StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName) =>
-        stringBuilder.AppendLine($" DT_UPDATE_{tableName} TIMESTAMPTZ NOT NULL DEFAULT NOW(),");
+        stringBuilder.AppendLine($" \"DT_UPDATE_{tableName}\" TIMESTAMPTZ NOT NULL DEFAULT NOW(),");
 
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($"");
 
     protected override async Task<bool> LookupTable(string tableName, DbConnection connection)
     {
-        using var select = new NpgsqlCommand("SELECT to_regclass(@table)::text", (NpgsqlConnection)connection);
+        using var select = new NpgsqlCommand(
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @table",
+            (NpgsqlConnection)connection
+        );
         select.Parameters.AddWithValue("@table", tableName);
 
         var res = await select.ExecuteScalarAsync();
@@ -46,7 +60,7 @@ public class PostgreSQLExchange : DBExchange
 
         if (res == DBNull.Value || res == null)
         {
-            using var createSchema = new NpgsqlCommand($"CREATE SCHEMA {system}", (NpgsqlConnection)connection);
+            using var createSchema = new NpgsqlCommand($"CREATE SCHEMA IF NOT EXISTS \"{system}\"", (NpgsqlConnection)connection);
             await createSchema.ExecuteNonQueryAsync();
         }
     }
@@ -68,7 +82,7 @@ public class PostgreSQLExchange : DBExchange
             _ when type == typeof(Int64) => "BIGINT",
             _ when type == typeof(Int32) => "INTEGER",
             _ when type == typeof(Int16) => "SMALLINT",
-            _ when type == typeof(string) => length > 0 ? $"VARCHAR({length})" : "TEXT",
+            _ when type == typeof(string) => length > 0 ? (length > 10485760 ? "TEXT" : $"VARCHAR({length})") : "TEXT",
             _ when type == typeof(bool) => "BOOLEAN",
             _ when type == typeof(DateTime) => "TIMESTAMPTZ",
             _ when type == typeof(double) => "DOUBLE PRECISION",
@@ -92,10 +106,14 @@ public class PostgreSQLExchange : DBExchange
     {
         try
         {
-            using var connection = new NpgsqlConnection(extraction.Destination!.DbString);
+            using var connection = new NpgsqlConnection(extraction.Destination!.ConnectionString);
             await connection.OpenAsync();
 
-            using var writer = connection.BeginBinaryImport($"COPY {extraction.Origin!.Name}.{extraction.Name} FROM STDIN (FORMAT BINARY)");
+            string columns = string.Join(", ", data.Columns.Cast<DataColumn>().Select(c => $"\"{c.ColumnName}\""));
+
+            using var writer = connection.BeginBinaryImport(
+                $"COPY \"{extraction.Origin!.Name}\".\"{extraction.Name}\" ({columns}) FROM STDIN (FORMAT BINARY)"
+            );
 
             foreach (DataRow row in data.Rows)
             {

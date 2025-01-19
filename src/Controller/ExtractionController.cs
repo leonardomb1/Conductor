@@ -11,7 +11,7 @@ namespace Conductor.Controller;
 
 public sealed class ExtractionController(ExtractionService service) : ControllerBase<Extraction>(service)
 {
-    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>, JsonHttpResult<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters)
+    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters)
     {
         var fetch = await service.Search(filters);
 
@@ -26,7 +26,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
             .ForEach(x =>
             {
                 x.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
-                x.Destination!.DbString = Encryption.SymmetricDecryptAES256(x.Destination!.DbString, Settings.EncryptionKey);
+                x.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
             });
 
         var result = await ParallelExtractionManager.ChannelParallelize(
@@ -37,19 +37,6 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         if (!result.IsSuccessful)
         {
-            if (result.Error.IsPartialSuccess)
-            {
-                return TypedResults.Json(
-                    new Message<Error>(
-                        Status207MultiStatus,
-                        "The request has finished, but some errors have occurred.",
-                        [result.Error],
-                        true
-                    ),
-                    statusCode: Status207MultiStatus
-                );
-            }
-
             return TypedResults.InternalServerError(
                 ErrorMessage("Extraction failed", result.Error)
             );

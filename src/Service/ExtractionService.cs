@@ -21,12 +21,15 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
             {
                 foreach (var filter in filters)
                 {
-                    select = filter.Key.ToLower() switch
+                    string key = filter.Key.ToString();
+                    string value = filter.Value.ToString();
+
+                    select = key switch
                     {
-                        "name" => select.Where(e => e.Name == filter.Value),
-                        "schedule" => select.Where(e => e.Schedule!.Name == filter.Value),
-                        "origin" => select.Where(e => e.Origin!.Name == filter.Value),
-                        "destination" => select.Where(e => e.Destination!.Name == filter.Value),
+                        "name" => select.Where(e => e.Name == value),
+                        "schedule" => select.Where(e => e.Schedule!.Name == value),
+                        "origin" => select.Where(e => e.Origin!.Name == value),
+                        "destination" => select.Where(e => e.Destination!.Name == value),
                         _ => select
                     };
                 }

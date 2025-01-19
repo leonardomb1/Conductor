@@ -42,7 +42,10 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public string IndexName { get; set; } = "";
 
     [Column, NotNull, JsonRequired]
-    public string Type { get; set; } = "";
+    public bool IsIncremental { get; set; }
+
+    [Column, NotNull, JsonRequired]
+    public bool BeforeExecutionDeletes { get; set; }
 
     [Column, Nullable]
     public string? FileStructure { get; set; }

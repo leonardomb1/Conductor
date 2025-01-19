@@ -1,11 +1,11 @@
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
 using System.Text;
 using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
+using Microsoft.Data.SqlClient;
 
 namespace Conductor.App.Database;
 
@@ -15,6 +15,17 @@ public class MSSQLExchange : DBExchange
         $"OFFSET {current} ROWS FETCH NEXT {Settings.ProducerLineMax} ROWS ONLY";
 
     protected override string? QueryNonLocking() => "WITH(NOLOCK)";
+
+    protected override string GeneratePartitionCondition(Extraction extraction)
+    {
+        if (!extraction.FilterTime.HasValue)
+        {
+            throw new Exception("Filter time cannot be null in this context.");
+        }
+
+        var lookupTime = DateTime.Now.AddSeconds((double)-extraction.FilterTime!);
+        return $"WHERE \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss.fff}' AS DATETIME2)";
+    }
 
     protected override StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file)
     {
@@ -93,7 +104,7 @@ public class MSSQLExchange : DBExchange
     {
         try
         {
-            using SqlConnection connection = new(extraction.Destination!.DbString);
+            using SqlConnection connection = new(extraction.Destination!.ConnectionString);
 
             await connection.OpenAsync();
 

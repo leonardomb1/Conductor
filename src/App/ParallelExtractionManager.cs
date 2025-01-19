@@ -50,12 +50,37 @@ public static class ParallelExtractionManager
         {
             bool hasData = true;
             UInt64 curr = 0;
+            UInt64 destRc = 0;
 
             var fetcher = DBExchangeFactory.Create(e.Origin!.DbType);
 
+            var metadataClient = DBExchangeFactory.Create(e.Destination!.DbType);
+            var tableExists = await metadataClient.Exists(e);
+            if (!tableExists.IsSuccessful)
+            {
+                errCount++;
+            }
+
+            if (tableExists.Value)
+            {
+                var rc = await metadataClient.CountTableRows(e);
+                if (!rc.IsSuccessful)
+                {
+                    errCount++;
+                }
+
+                destRc = rc.Value;
+
+                if (e.BeforeExecutionDeletes)
+                {
+                    await metadataClient.ClearTable(e);
+                }
+            }
+
             do
             {
-                var attempt = await fetcher.FetchDataTable(e, curr, t);
+
+                var attempt = await fetcher.FetchDataTable(e, destRc, curr, t);
                 if (!attempt.IsSuccessful)
                 {
                     errCount++;

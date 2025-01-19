@@ -20,15 +20,18 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
             {
                 foreach (var filter in filters)
                 {
-                    select = filter.Key.ToLower() switch
+                    string key = filter.Key.ToString();
+                    string value = filter.Value.ToString();
+
+                    select = key switch
                     {
-                        "relative" when Int32.TryParse(filter.Value, out var time) => select.Where(
+                        "relative" when Int32.TryParse(value, out var time) => select.Where(
                                 e => e.TimeStamp >= DateTime.Now.AddSeconds(-time)
                             ),
-                        "hostname" => select.Where(e => e.HostName == filter.Value),
-                        "type" => select.Where(e => e.EventType == filter.Value),
-                        "event" => select.Where(e => e.Event.Contains(filter.Value.ToString() ?? "")),
-                        "take" when Int32.TryParse(filter.Value, out Int32 count) => select.Take(count),
+                        "hostname" => select.Where(e => e.HostName == value),
+                        "type" => select.Where(e => e.EventType == value),
+                        "event" => select.Where(e => e.Event.Contains(value)),
+                        "take" when Int32.TryParse(value, out Int32 count) => select.Take(count),
                         _ => select
                     };
                 }

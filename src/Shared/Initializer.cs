@@ -3,6 +3,7 @@ using Conductor.Data;
 using Conductor.Router;
 using Conductor.Shared.Config;
 using LinqToDB.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace Conductor.Shared;
 
