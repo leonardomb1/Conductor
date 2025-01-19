@@ -17,8 +17,8 @@ public class PostgreSQLExchange : DBExchange
 
     protected override StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file)
     {
-        string indexGroup = file == null ? $"{index}" : $"{index}, {tableName}_EMPRESA";
-        return stringBuilder.Append($" PRIMARY KEY ({indexGroup}),");
+        string indexGroup = (file == null || file == "") ? $"{index}" : $"{index}, {tableName}_EMPRESA";
+        return stringBuilder.Append($" PRIMARY KEY ({indexGroup})");
     }
 
     protected override StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName) =>
@@ -29,7 +29,7 @@ public class PostgreSQLExchange : DBExchange
 
     protected override async Task<bool> LookupTable(string tableName, DbConnection connection)
     {
-        using var select = new NpgsqlCommand("SELECT to_regclass(@table)", (NpgsqlConnection)connection);
+        using var select = new NpgsqlCommand("SELECT to_regclass(@table)::text", (NpgsqlConnection)connection);
         select.Parameters.AddWithValue("@table", tableName);
 
         var res = await select.ExecuteScalarAsync();

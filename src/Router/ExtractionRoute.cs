@@ -24,7 +24,7 @@ public static class ExtractionRoute
             .Accepts<Extraction>("application/json")
             .WithName("PutExtraction");
 
-        group.MapPost("/", async (ExtractionController controller, HttpRequest request) => await controller.ExecuteExtraction(request.Query))
+        group.MapPost("/execute", async (ExtractionController controller, HttpRequest request) => await controller.ExecuteExtraction(request.Query))
             .WithName("ExecuteExtraction");
 
         group.MapDelete("/{id}", async (ExtractionController controller, string id) => await controller.Delete(id))

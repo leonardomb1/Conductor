@@ -18,7 +18,7 @@ public class LoggingMiddleware(RequestDelegate req)
         }
         else
         {
-            client = ctx.Connection.RemoteIpAddress?.MapToIPv4().ToString() ?? "127.0.0.1";
+            client = ctx.Connection.RemoteIpAddress?.MapToIPv4().ToString() ?? "";
         }
 
         Log.Out(

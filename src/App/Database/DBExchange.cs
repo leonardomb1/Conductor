@@ -43,7 +43,7 @@ public abstract class DBExchange
                 using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
 
                 string file = suffixes.Length == 0 ? extraction.Name : extraction.Name + s;
-                string columns = suffixes.Length == 0 ? "*" : $"'{s[..2]}' AS {extraction.Name}_{Settings.IndexFileGroupName}, *";
+                string columns = suffixes.Length != 0 ? "*" : $"'{s[..2]}' AS {extraction.Name}_{Settings.IndexFileGroupName}, *";
 
                 using DbCommand command = CreateDbCommand(
                     $@"

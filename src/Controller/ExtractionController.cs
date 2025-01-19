@@ -15,6 +15,13 @@ public sealed class ExtractionController(ExtractionService service) : Controller
     {
         var fetch = await service.Search(filters);
 
+        if (!fetch.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(ErrorMessage(
+                fetch.Error.ExceptionMessage)
+            );
+        }
+
         fetch.Value
             .ForEach(x =>
             {
