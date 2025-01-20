@@ -19,16 +19,17 @@
     <Optimize>true</Optimize>
     <PublishSingleFile>true</PublishSingleFile>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <SelfContained>true</SelfContained>
+    <SelfContained>true</SelfContained>  <!-- Ensure all dependencies are bundled -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
+    <UseServerGC>true</UseServerGC>
+    <ExcludeFilesFromPublish>**\*.md;**\*.json</ExcludeFilesFromPublish>
+    <TrimUnusedDependencies>true</TrimUnusedDependencies>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="linq2db" Version="5.4.1" />
-    <PackageReference Include="linq2db.EntityFrameworkCore" Version="9.0.0" />
     <PackageReference Include="linq2db.Postgresql" Version="5.4.1" />
     <PackageReference Include="linq2db.SQLite" Version="5.4.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0" />
