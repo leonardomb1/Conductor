@@ -48,6 +48,10 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public bool SingleExecution { get; set; }
 
     [Column, Nullable]
+    [AllowedValues("Columnar", "Relational")]
+    public string? TableStructure { get; set; }
+
+    [Column, Nullable]
     public string? FilterColumn { get; set; }
 
     [Column, Nullable]

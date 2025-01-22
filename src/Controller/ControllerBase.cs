@@ -97,7 +97,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         if (!deserialize.IsSuccessful)
         {
             return TypedResults.BadRequest(
-                new Message(Status400BadRequest, $"This is an invalid JSON format for this operation. {deserialize.Error.ExceptionMessage} {deserialize.Error.StackTrace}")
+                new Message(Status400BadRequest, $"This is an invalid JSON format for this operation: {deserialize.Error.ExceptionMessage}")
             );
         }
 

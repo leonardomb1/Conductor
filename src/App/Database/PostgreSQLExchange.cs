@@ -91,6 +91,8 @@ public class PostgreSQLExchange : DBExchange
 
     protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
     {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+
         try
         {
             using var connection = new NpgsqlConnection(extraction.Destination!.ConnectionString);
@@ -99,7 +101,7 @@ public class PostgreSQLExchange : DBExchange
             string columns = string.Join(", ", data.Columns.Cast<DataColumn>().Select(c => $"\"{c.ColumnName}\""));
 
             using var writer = connection.BeginBinaryImport(
-                $"COPY \"{extraction.Origin!.Name}\".\"{extraction.Name}\" ({columns}) FROM STDIN (FORMAT BINARY)"
+                $"COPY \"{schemaName}\".\"{extraction.Name}\" ({columns}) FROM STDIN (FORMAT BINARY)"
             );
 
             foreach (DataRow row in data.Rows)

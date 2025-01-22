@@ -90,6 +90,8 @@ public class MySQLExchange : DBExchange
 
     protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
     {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+
         try
         {
             using MySqlConnection connection = new(extraction.Destination!.ConnectionString);
@@ -99,7 +101,7 @@ public class MySQLExchange : DBExchange
 
             MySqlBulkLoader bulk = new(connection)
             {
-                TableName = $"{extraction.Origin!.Name}.{extraction.Name}",
+                TableName = $"{schemaName}.{extraction.Name}",
                 FieldTerminator = ",",
                 LineTerminator = "\n",
                 NumberOfLinesToSkip = 0,

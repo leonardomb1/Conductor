@@ -92,6 +92,8 @@ public class MSSQLExchange : DBExchange
 
     protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
     {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+
         try
         {
             using SqlConnection connection = new(extraction.Destination!.ConnectionString);
@@ -101,7 +103,7 @@ public class MSSQLExchange : DBExchange
             using var bulk = new SqlBulkCopy(connection)
             {
                 BulkCopyTimeout = Settings.BulkCopyTimeout,
-                DestinationTableName = $"{extraction.Origin!.Name}.{extraction.Name}"
+                DestinationTableName = $"{schemaName}.{extraction.Name}"
             };
 
             Log.Out($"Writing imported row data: {data.Rows.Count} lines - in {bulk.DestinationTableName}");
