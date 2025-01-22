@@ -3,7 +3,7 @@ services:
     image: 'postgres:latest'
     hostname: conductor-db
     ports:
-      - 15432:5432
+      - ${DB_FORWARED_PORT_NUMBER}:5432
     env_file:
       - .env
     environment:
@@ -21,11 +21,11 @@ services:
       retries: 5
 
   api:
-    image: conductor:0.0.1
+    image: conductor:0.0.1-${DOCKER_ENVIRONMENT}
     hostname: conductor-api
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/${DOCKER_ENVIRONMENT}/Dockerfile
     env_file:
       - .env
     environment:
@@ -73,13 +73,19 @@ services:
       - INDEX_FILEGROUP_NAME=${INDEX_FILEGROUP_NAME}
       - ENCRYPT_INDICATOR_BEGIN=${ENCRYPT_INDICATOR_BEGIN}
       - ENCRYPT_INDICATOR_END=${ENCRYPT_INDICATOR_END}
+      - VIRTUAL_TABLE_ID_MAX_LENGHT=${VIRTUAL_TABLE_ID_MAX_LENGHT}
     depends_on:
       database:
         condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "curl -f http://conductor-api:${PORT_NUMBER}/api/health || exit 1"]
+        interval: 200s
+        timeout: 5s
+        retries: 5
     networks:
       - conductor-network
     ports:
-      - '22000:${PORT_NUMBER}'
+      - "${API_FORWARDED_PORT_NUMBER}:${PORT_NUMBER}"
 
 networks:
   conductor-network:
