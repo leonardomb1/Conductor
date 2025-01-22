@@ -11,7 +11,7 @@ namespace Conductor.Shared;
 
 public static class Initializer
 {
-    private static void InitializeFromFile(string? envFilePath)
+    public static void InitializeFromFile(string? envFilePath)
     {
         try
         {
@@ -59,7 +59,7 @@ public static class Initializer
     }
 
 
-    private static void InitializeFromEnvVar()
+    public static void InitializeFromEnvVar()
     {
         try
         {
