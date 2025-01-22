@@ -1,4 +1,5 @@
 using Conductor.App;
+using Conductor.App.Database;
 using Conductor.Model;
 using Conductor.Service;
 using Conductor.Shared;
@@ -11,15 +12,22 @@ namespace Conductor.Controller;
 
 public sealed class ExtractionController(ExtractionService service) : ControllerBase<Extraction>(service)
 {
-    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>, JsonHttpResult<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters)
+    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters)
     {
         var fetch = await service.Search(filters);
+
+        if (!fetch.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(ErrorMessage(
+                fetch.Error.ExceptionMessage)
+            );
+        }
 
         fetch.Value
             .ForEach(x =>
             {
                 x.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
-                x.Destination!.DbString = Encryption.SymmetricDecryptAES256(x.Destination!.DbString, Settings.EncryptionKey);
+                x.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
             });
 
         var result = await ParallelExtractionManager.ChannelParallelize(
@@ -30,19 +38,6 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         if (!result.IsSuccessful)
         {
-            if (result.Error.IsPartialSuccess)
-            {
-                return TypedResults.Json(
-                    new Message<Error>(
-                        Status207MultiStatus,
-                        "The request has finished, but some errors have occurred.",
-                        [result.Error],
-                        true
-                    ),
-                    statusCode: Status207MultiStatus
-                );
-            }
-
             return TypedResults.InternalServerError(
                 ErrorMessage("Extraction failed", result.Error)
             );
@@ -50,6 +45,57 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         return TypedResults.Ok(
             new Message(Status200OK, "Extraction Successful.")
+        );
+    }
+
+    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>, BadRequest<Message>>> DropPhysicalTable(string stringId)
+    {
+        if (!UInt32.TryParse(stringId, out UInt32 id))
+        {
+            return TypedResults.BadRequest(
+                new Message(Status400BadRequest, "This is an invalid parameter type.", true)
+            );
+        }
+
+        var fetch = await service.Search(id);
+
+        if (!fetch.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(ErrorMessage(
+                fetch.Error.ExceptionMessage)
+            );
+        }
+
+        if (fetch.Value == null)
+        {
+            return TypedResults.Ok(
+                new Message(Status200OK, "No such table.")
+            );
+        }
+
+        fetch.Value.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(
+            fetch.Value.Origin!.ConnectionString,
+            Settings.EncryptionKey
+        );
+
+        fetch.Value.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(
+            fetch.Value.Destination!.ConnectionString,
+            Settings.EncryptionKey
+        );
+
+        var engine = DBExchangeFactory.Create(fetch.Value.Destination.DbType);
+
+        var result = await engine.DropTable(fetch.Value);
+
+        if (!result.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(
+                ErrorMessage("Drop table has failed.", result.Error)
+            );
+        }
+
+        return TypedResults.Ok(
+            new Message(Status200OK, "Table has been dropped.")
         );
     }
 }

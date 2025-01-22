@@ -11,7 +11,9 @@ public static class Helper
             "   -h --help      Show this help message\n" +
             "   -v --version   Show version information\n" +
             "   -e --environment  Use environment variables for configuration\n" +
-            "   -f --file  Use .env file for configuration\n"
+            "   -f --file  Use .env file for configuration\n" +
+            "   -m --migration  Runs a migration in the configured .env database\n" +
+            "   -x --migration-init  Runs a migration before running the server, uses the environment variables for configuration\n"
             );
     }
 

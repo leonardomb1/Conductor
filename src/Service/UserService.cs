@@ -24,9 +24,12 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
             {
                 foreach (var filter in filters)
                 {
-                    select = filter.Key.ToLower() switch
+                    string key = filter.Key.ToString();
+                    string value = filter.Value.ToString();
+
+                    select = key switch
                     {
-                        "name" => select.Where(e => e.Name == filter.Value),
+                        "name" => select.Where(e => e.Name == value),
                         _ => select
                     };
                 }

@@ -20,9 +20,12 @@ public class DestinationService(LdbContext context) : ServiceBase(context), ISer
             {
                 foreach (var filter in filters)
                 {
-                    select = filter.Key.ToLower() switch
+                    string key = filter.Key.ToString();
+                    string value = filter.Value.ToString();
+
+                    select = key switch
                     {
-                        "name" => select.Where(e => e.Name == filter.Value),
+                        "name" => select.Where(e => e.Name == value),
                         _ => select
                     };
                 }
@@ -56,8 +59,7 @@ public class DestinationService(LdbContext context) : ServiceBase(context), ISer
     {
         try
         {
-            destination.DbString = Encryption.SymmetricEncryptAES256(destination.DbString, Settings.EncryptionKey);
-
+            destination.ConnectionString = Encryption.SymmetricEncryptAES256(destination.ConnectionString, Settings.EncryptionKey);
             var insert = await Repository.InsertAsync(destination);
             return Result.Ok();
         }
@@ -71,7 +73,7 @@ public class DestinationService(LdbContext context) : ServiceBase(context), ISer
     {
         try
         {
-            destination.DbString = Encryption.SymmetricEncryptAES256(destination.DbString, Settings.EncryptionKey);
+            destination.ConnectionString = Encryption.SymmetricEncryptAES256(destination.ConnectionString, Settings.EncryptionKey);
             destination.Id = id;
 
             await Repository.UpdateAsync(destination);

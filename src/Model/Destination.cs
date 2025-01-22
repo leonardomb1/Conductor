@@ -23,8 +23,8 @@ public sealed class Destination : IDbModel, IEndpointParameterMetadataProvider
     [Column, NotNull, JsonRequired, JsonPropertyName("destinationDbType")]
     public string DbType { get; set; } = "";
 
-    [Column, NotNull, JsonRequired]
-    public string DbString { get; set; } = "";
+    [Column, NotNull, JsonRequired, JsonPropertyName("destinationConStr")]
+    public string ConnectionString { get; set; } = "";
 
     public Destination() { }
 

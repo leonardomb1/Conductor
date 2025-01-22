@@ -13,19 +13,25 @@ services:
     networks:
       - conductor-network
     volumes:
-      - ${PWD}/postgresql/:/var/lib/postgresql/data/
+      - ${PWD}/db/:/var/lib/postgresql/data/
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 3s
+      timeout: 5s
+      retries: 5
+
   api:
     image: conductor:0.0.1
     hostname: conductor-api
     build:
       context: .
-      dockerfile: Dockerfile 
+      dockerfile: Dockerfile
     env_file:
       - .env
     environment:
+      - CONNECTION_STRING=Server=conductor-db;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - PORT_NUMBER=${PORT_NUMBER}
       - DB_TYPE=${DB_TYPE}
-      - CONNECTION_STRING=Server=conductor-db;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - SPLITTER_CHAR=${SPLITTER_CHAR}
       - ENABLE_LOG_DUMP=${ENABLE_LOG_DUMP}
       - LOG_DUMP_TIME_SEC=${LOG_DUMP_TIME_SEC}
@@ -57,13 +63,24 @@ services:
       - RESPONSE_CACHING_LIMIT_MB=${RESPONSE_CACHING_LIMIT_MB}
       - MAX_LOG_QUEUE_SIZE=${MAX_LOG_QUEUE_SIZE}
       - REQUIRE_AUTHENTICATION=${REQUIRE_AUTHENTICATION}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - VERIFY_CONNECTION_ORIGIN=${VERIFY_CONNECTION_ORIGIN}
+      - MAX_QUERY_PARAMS=${MAX_QUERY_PARAMS}
+      - CERTIFICATE_PASSWORD=${CERTIFICATE_PASSWORD}
+      - CERTIFICATE_PATH=${CERTIFICATE_PATH}
+      - INDEX_FILEGROUP_NAME=${INDEX_FILEGROUP_NAME}
+      - ENCRYPT_INDICATOR_BEGIN=${ENCRYPT_INDICATOR_BEGIN}
+      - ENCRYPT_INDICATOR_END=${ENCRYPT_INDICATOR_END}
     depends_on:
-      - database
+      database:
+        condition: service_healthy
     networks:
       - conductor-network
     ports:
-      - "22000:${PORT_NUMBER}"
-  
+      - '22000:${PORT_NUMBER}'
+
 networks:
   conductor-network:
     driver: bridge

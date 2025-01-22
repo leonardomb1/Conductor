@@ -16,6 +16,17 @@ public class MySQLExchange : DBExchange
 
     protected override string? QueryNonLocking() => "LOCK IN SHARE MODE";
 
+    protected override string GeneratePartitionCondition(Extraction extraction)
+    {
+        if (!extraction.FilterTime.HasValue)
+        {
+            throw new Exception("Filter time cannot be null in this context.");
+        }
+
+        var lookupTime = DateTime.Now.AddSeconds((double)-extraction.FilterTime!);
+        return $"WHERE \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss.fff}'";
+    }
+
     protected override StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file)
     {
         string indexGroup = file == null ? $"{index} ASC" : $"{index} ASC, {tableName}_{Settings.IndexFileGroupName} ASC";
@@ -27,14 +38,6 @@ public class MySQLExchange : DBExchange
 
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($"");
-
-    protected override async Task<bool> LookupTable(string tableName, DbConnection connection)
-    {
-        using MySqlCommand select = new($"SHOW TABLES LIKE '{tableName}'", (MySqlConnection)connection);
-        var res = await select.ExecuteScalarAsync();
-
-        return res != null;
-    }
 
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
@@ -89,7 +92,7 @@ public class MySQLExchange : DBExchange
     {
         try
         {
-            using MySqlConnection connection = new(extraction.Destination!.DbString);
+            using MySqlConnection connection = new(extraction.Destination!.ConnectionString);
             await connection.OpenAsync();
 
             using MySqlTransaction transaction = await connection.BeginTransactionAsync();

@@ -1,11 +1,11 @@
 using System.Data;
 using System.Data.Common;
-using System.Data.SqlClient;
 using System.Text;
 using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
+using Microsoft.Data.SqlClient;
 
 namespace Conductor.App.Database;
 
@@ -15,6 +15,17 @@ public class MSSQLExchange : DBExchange
         $"OFFSET {current} ROWS FETCH NEXT {Settings.ProducerLineMax} ROWS ONLY";
 
     protected override string? QueryNonLocking() => "WITH(NOLOCK)";
+
+    protected override string GeneratePartitionCondition(Extraction extraction)
+    {
+        if (!extraction.FilterTime.HasValue)
+        {
+            throw new Exception("Filter time cannot be null in this context.");
+        }
+
+        var lookupTime = DateTime.Now.AddSeconds((double)-extraction.FilterTime!);
+        return $"WHERE \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss.fff}' AS DATETIME2)";
+    }
 
     protected override StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file)
     {
@@ -27,16 +38,6 @@ public class MSSQLExchange : DBExchange
 
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($" INDEX IX_{tableName}_CCI CLUSTERED COLUMNSTORE");
-
-    protected override async Task<bool> LookupTable(string tableName, DbConnection connection)
-    {
-        using SqlCommand select = new("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @table", (SqlConnection)connection);
-        select.Parameters.AddWithValue("@table", tableName);
-
-        var res = await select.ExecuteScalarAsync();
-
-        return res == DBNull.Value || res == null;
-    }
 
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
@@ -93,7 +94,7 @@ public class MSSQLExchange : DBExchange
     {
         try
         {
-            using SqlConnection connection = new(extraction.Destination!.DbString);
+            using SqlConnection connection = new(extraction.Destination!.ConnectionString);
 
             await connection.OpenAsync();
 
@@ -103,7 +104,7 @@ public class MSSQLExchange : DBExchange
                 DestinationTableName = $"{extraction.Origin!.Name}.{extraction.Name}"
             };
 
-            Log.Out($"Writing row data {data.Rows.Count} - in {bulk.DestinationTableName}");
+            Log.Out($"Writing imported row data: {data.Rows.Count} lines - in {bulk.DestinationTableName}");
 
             await bulk.WriteToServerAsync(data);
 

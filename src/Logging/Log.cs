@@ -13,7 +13,7 @@ public static class Log
 
     private static readonly string hostname = Environment.MachineName;
 
-    private static string LogPrefix(DateTime time) => $"{GREEN}[{time:yyyy-MM-dd HH:mm:ss:fff}]{NORMAL}::";
+    private static string LogPrefix(DateTime time) => $"{GREEN}[{time:yyyy-MM-dd HH:mm:ss.fff}]{NORMAL}::";
 
     public static void Out(
         string message,
