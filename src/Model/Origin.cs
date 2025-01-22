@@ -20,6 +20,9 @@ public sealed class Origin : IDbModel, IEndpointParameterMetadataProvider
     [Column, NotNull, JsonRequired, JsonPropertyName("originName")]
     public string Name { get; set; } = "";
 
+    [Column, Nullable, JsonPropertyName("originAlias")]
+    public string? Alias { get; set; }
+
     [Column, NotNull, JsonRequired, JsonPropertyName("originDbType")]
     public string DbType { get; set; } = "";
 
