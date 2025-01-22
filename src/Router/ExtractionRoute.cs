@@ -30,6 +30,9 @@ public static class ExtractionRoute
         group.MapDelete("/{id}", async (ExtractionController controller, string id) => await controller.Delete(id))
             .WithName("DeleteExtraction");
 
+        group.MapDelete("/physical/{id}", async (ExtractionController controller, string id) => await controller.DropPhysicalTable(id))
+            .WithName("DropPhysicalTable");
+
         return group;
     }
 }

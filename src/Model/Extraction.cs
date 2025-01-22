@@ -23,12 +23,6 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     [Column, NotNull, JsonRequired, JsonPropertyName("extractionName")]
     public string Name { get; set; } = "";
 
-    [Column, Nullable]
-    public string? FilterColumn { get; set; }
-
-    [Column, Nullable]
-    public Int32? FilterTime { get; set; }
-
     [Column, NotNull, JsonRequired]
     public UInt32 ScheduleId { get; set; }
 
@@ -45,13 +39,25 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public bool IsIncremental { get; set; }
 
     [Column, NotNull, JsonRequired]
+    public bool IsVirtual { get; set; }
+
+    [Column, NotNull, JsonRequired]
     public bool BeforeExecutionDeletes { get; set; }
 
     [Column, NotNull, JsonRequired]
     public bool SingleExecution { get; set; }
 
     [Column, Nullable]
-    public string? FileStructure { get; set; }
+    public string? FilterColumn { get; set; }
+
+    [Column, Nullable]
+    public Int32? FilterTime { get; set; }
+
+    [Column, Nullable]
+    public string? Alias { get; set; }
+
+    [Column, Nullable]
+    public string? Dependencies { get; set; }
 
     [Column, Nullable]
     public string? HttpMethod { get; set; }

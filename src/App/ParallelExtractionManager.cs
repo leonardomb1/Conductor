@@ -82,8 +82,9 @@ public static class ParallelExtractionManager
 
             do
             {
+                bool moreThanZero = destRc > 0;
 
-                var attempt = await fetcher.FetchDataTable(e, destRc, curr, t);
+                var attempt = await fetcher.FetchDataTable(e, moreThanZero, curr, t);
                 if (!attempt.IsSuccessful)
                 {
                     errCount++;

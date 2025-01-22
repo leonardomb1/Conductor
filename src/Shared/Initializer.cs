@@ -1,5 +1,7 @@
 using System.Reflection;
+using System.Threading.Tasks;
 using Conductor.Data;
+using Conductor.Logging;
 using Conductor.Router;
 using Conductor.Shared.Config;
 using LinqToDB.Data;
@@ -9,7 +11,7 @@ namespace Conductor.Shared;
 
 public static class Initializer
 {
-    public static void InitializeFromDotEnv(string envFilePath)
+    private static void InitializeFromFile(string? envFilePath)
     {
         try
         {
@@ -48,7 +50,6 @@ public static class Initializer
                     throw new Exception($"Environment variable '{attribute?.Key}' is missing or not set.");
                 }
             }
-            Startup();
         }
         catch (Exception ex)
         {
@@ -57,7 +58,8 @@ public static class Initializer
         }
     }
 
-    public static void InitializeFromEnvVar()
+
+    private static void InitializeFromEnvVar()
     {
         try
         {
@@ -91,7 +93,6 @@ public static class Initializer
                     }
                 }
             }
-            Startup();
         }
         catch (Exception ex)
         {
@@ -100,7 +101,7 @@ public static class Initializer
         }
     }
 
-    private static void Startup()
+    private static void ServerStartup()
     {
         try
         {
@@ -111,10 +112,6 @@ public static class Initializer
 
             // Linq2db config
             DataConnection.DefaultSettings = new ConnectionSettings();
-
-            // EF Core initialization
-            using var db = new EfContext();
-            db.Database.EnsureCreated();
         }
         catch (Exception ex)
         {
@@ -124,5 +121,50 @@ public static class Initializer
 
         Server server = new();
         server.Run();
+    }
+
+    private static async Task Migration(Action<string> say)
+    {
+        using var db = new EfContext();
+        if (db.Database.GetPendingMigrations().Any())
+        {
+            await db.Database.MigrateAsync();
+            say($"Database migration complete : {db.Database.GetAppliedMigrations().Last()}");
+        }
+    }
+
+    public static void StartWithDotEnv(string? envFilePath)
+    {
+        if (envFilePath == null)
+        {
+            Console.WriteLine("No .env file path was provided.");
+            Environment.Exit(1);
+        }
+        InitializeFromFile(envFilePath);
+        ServerStartup();
+    }
+
+    public static void StartWithEnvVar()
+    {
+        InitializeFromEnvVar();
+        ServerStartup();
+    }
+
+    public static void Migrate(string? envFilePath)
+    {
+        if (envFilePath == null)
+        {
+            Console.WriteLine("No .env file path was provided.");
+            Environment.Exit(1);
+        }
+        InitializeFromFile(envFilePath);
+        Migration(Console.WriteLine).Wait();
+    }
+
+    public static void MigrateAndInitialize()
+    {
+        InitializeFromEnvVar();
+        Migration((s) => Log.Out(s)).Wait();
+        ServerStartup();
     }
 }

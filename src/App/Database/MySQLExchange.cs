@@ -39,14 +39,6 @@ public class MySQLExchange : DBExchange
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($"");
 
-    protected override async Task<bool> LookupTable(string tableName, DbConnection connection)
-    {
-        using MySqlCommand select = new($"SHOW TABLES LIKE '{tableName}'", (MySqlConnection)connection);
-        var res = await select.ExecuteScalarAsync();
-
-        return res != null;
-    }
-
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
         using MySqlCommand select = new($"SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{system}'", (MySqlConnection)connection);

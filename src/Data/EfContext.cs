@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Conductor.Data;
 
-public class EfContext : DbContext
+public class EfContext(string? dbType = null) : DbContext
 {
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Destination> Destinations { get; set; } = null!;
@@ -16,11 +16,15 @@ public class EfContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        _ = Settings.DbType switch
+        string db = dbType ?? Settings.DbType;
+        if (!optionsBuilder.IsConfigured)
         {
-            ProviderName.SQLite => optionsBuilder.UseSqlite(Settings.ConnectionString),
-            ProviderName.PostgreSQL => optionsBuilder.UseNpgsql(Settings.ConnectionString),
-            _ => throw new InvalidOperationException("Unsupported database type")
-        };
+            _ = db switch
+            {
+                ProviderName.SQLite => optionsBuilder.UseSqlite(Settings.ConnectionString),
+                ProviderName.PostgreSQL => optionsBuilder.UseNpgsql(Settings.ConnectionString),
+                _ => throw new InvalidOperationException("Unsupported database type")
+            };
+        }
     }
 }

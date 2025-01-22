@@ -38,19 +38,6 @@ public class PostgreSQLExchange : DBExchange
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($"");
 
-    protected override async Task<bool> LookupTable(string tableName, DbConnection connection)
-    {
-        using var select = new NpgsqlCommand(
-            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @table",
-            (NpgsqlConnection)connection
-        );
-        select.Parameters.AddWithValue("@table", tableName);
-
-        var res = await select.ExecuteScalarAsync();
-
-        return res != DBNull.Value && res != null;
-    }
-
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
         using var select = new NpgsqlCommand("SELECT schema_name FROM information_schema.schemata WHERE schema_name = @schema", (NpgsqlConnection)connection);

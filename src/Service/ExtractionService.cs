@@ -1,5 +1,6 @@
 using Conductor.Data;
 using Conductor.Model;
+using Conductor.Shared.Config;
 using Conductor.Shared.Types;
 using LinqToDB;
 
@@ -23,10 +24,12 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
                 {
                     string key = filter.Key.ToString();
                     string value = filter.Value.ToString();
+                    string[] arrayVal = filter.Value.ToString().Split(Settings.SplitterChar);
 
                     select = key switch
                     {
                         "name" => select.Where(e => e.Name == value),
+                        "contains" => select.Where(e => arrayVal.Any(s => e.Name.Contains(s))),
                         "schedule" => select.Where(e => e.Schedule!.Name == value),
                         "origin" => select.Where(e => e.Origin!.Name == value),
                         "destination" => select.Where(e => e.Destination!.Name == value),
@@ -34,6 +37,25 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
                     };
                 }
             }
+
+            return await select.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            return ErrorHandler(ex);
+        }
+    }
+
+    public async Task<Result<List<Extraction>>> Search(string[]? filters)
+    {
+        try
+        {
+            var select = from e in Repository.Extractions
+                         .LoadWith(e => e.Schedule)
+                         .LoadWith(e => e.Origin)
+                         .LoadWith(e => e.Destination)
+                         where filters == null || filters.Contains(e.Name)
+                         select e;
 
             return await select.ToListAsync();
         }

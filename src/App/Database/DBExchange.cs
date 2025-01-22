@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Text;
+using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
@@ -29,8 +30,6 @@ public abstract class DBExchange
 
     protected abstract Task EnsureSchemaCreation(string system, DbConnection connection);
 
-    protected abstract Task<bool> LookupTable(string tableName, DbConnection connection);
-
     protected abstract Task<Result> BulkInsert(DataTable data, Extraction extraction);
 
     protected abstract string GeneratePartitionCondition(Extraction extraction);
@@ -41,7 +40,34 @@ public abstract class DBExchange
         await connection.OpenAsync();
 
         using DbCommand command = CreateDbCommand(
-            $"SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES {QueryNonLocking()} WHERE TABLE_NAME = '{extraction.Name}'",
+            @$"
+                SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES {QueryNonLocking()} 
+                WHERE TABLE_NAME = '{extraction.Name}' AND TABLE_SCHEMA = '{extraction.Origin!.Name}'",
+            connection
+        );
+
+        try
+        {
+            Log.Out($"Creating schema {extraction.Origin.Name}...");
+            var res = await command.ExecuteScalarAsync();
+            return res != null;
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+        finally
+        {
+            await connection.CloseAsync();
+        }
+    }
+
+    public virtual async Task<Result<bool>> Exists(Extraction extraction, DbConnection connection)
+    {
+        using DbCommand command = CreateDbCommand(
+            @$"
+                SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES {QueryNonLocking()} 
+                WHERE TABLE_NAME = '{extraction.Name}' AND TABLE_SCHEMA = '{extraction.Origin!.Name}'",
             connection
         );
 
@@ -53,10 +79,6 @@ public abstract class DBExchange
         catch (Exception ex)
         {
             return new Error(ex.Message, ex.StackTrace);
-        }
-        finally
-        {
-            await connection.CloseAsync();
         }
     }
 
@@ -103,7 +125,7 @@ public abstract class DBExchange
             }
 
             cmdText =
-                $"DELETE FROM \"{extraction.Origin?.Name}\".\"{extraction.Name}\"" +
+                $"DELETE FROM \"{extraction.Origin?.Name}\".\"{extraction.Name}\" " +
                 GeneratePartitionCondition(extraction);
         }
 
@@ -111,6 +133,7 @@ public abstract class DBExchange
 
         try
         {
+            Log.Out($"Clearing table {extraction.Origin?.Name}.{extraction.Name}...");
             await command.ExecuteNonQueryAsync();
             return Result.Ok();
         }
@@ -124,53 +147,130 @@ public abstract class DBExchange
         }
     }
 
+    public virtual async Task<Result> DropTable(Extraction extraction)
+    {
+        using DbConnection connection = CreateConnection(extraction.Destination!.ConnectionString);
+        await connection.OpenAsync();
+
+        using DbCommand command = CreateDbCommand(
+            $"DROP TABLE \"{extraction.Origin?.Name}\".\"{extraction.Name}\"",
+            connection
+        );
+
+        try
+        {
+            Log.Out($"Droping table {extraction.Origin?.Name}.{extraction.Name}...");
+            await command.ExecuteNonQueryAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+        finally
+        {
+            await connection.CloseAsync();
+        }
+    }
+
+    public virtual async Task<Result<DataTable>> SingleFetch(
+        Extraction extraction,
+        UInt64 current,
+        string partitioning,
+        CancellationToken token = default
+    )
+    {
+        using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
+
+        string name = extraction.Alias ?? extraction.Name;
+
+        using DbCommand command = CreateDbCommand(
+            $@"
+                SELECT
+                    *
+                FROM {name} {QueryNonLocking() ?? ""}
+                {partitioning}
+                ORDER BY {extraction.IndexName} ASC
+                {QueryPagination(current) ?? ""}
+            ",
+            connection
+        );
+
+        try
+        {
+            await connection.OpenAsync(token);
+
+            using var fetched = new DataTable();
+            var select = await command.ExecuteReaderAsync(token);
+            fetched.Load(select);
+
+            return fetched;
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+        finally
+        {
+            await connection.CloseAsync();
+        }
+    }
 
     public virtual async Task<Result<DataTable>> FetchDataTable(
         Extraction extraction,
-        UInt64 destinationTotal,
+        bool moreThanZero,
         UInt64 current,
         CancellationToken token
     )
     {
-        ConcurrentBag<DataTable> dataTables = [];
-        string[] suffixes = extraction.FileStructure?.Split(Settings.SplitterChar) ?? [];
-
         string partitioning = "";
-        if (destinationTotal > 0)
+        if (moreThanZero)
         {
             partitioning = extraction.IsIncremental ? GeneratePartitionCondition(extraction) : "";
         }
 
+        if (extraction.IsVirtual)
+        {
+            string[] dependencies = extraction.Dependencies!.Split(Settings.SplitterChar);
+
+            using var repository = new Data.LdbContext();
+            using var service = new Service.ExtractionService(repository);
+
+            var dependenciesList = await service.Search(dependencies);
+            if (!dependenciesList.IsSuccessful) return dependenciesList.Error;
+
+            dependenciesList.Value
+            .ForEach(x =>
+            {
+                x.Origin!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
+                x.Destination!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
+            });
+
+            return await ParallelFetch(dependenciesList.Value, current, partitioning, token);
+        }
+        else
+        {
+            return await SingleFetch(extraction, current, partitioning, token);
+        }
+    }
+
+    public virtual async Task<Result<DataTable>> ParallelFetch(
+        List<Extraction> extractions,
+        UInt64 current,
+        string partitioning,
+        CancellationToken token
+    )
+    {
+        ConcurrentBag<DataTable> dataTables = [];
+
         try
         {
-            await Parallel.ForEachAsync(suffixes.IsNullOrEmpty() ? [""] : suffixes, token, async (s, t) =>
+            await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
-                using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
+                var fetch = await SingleFetch(e, current, partitioning, t);
+                if (!fetch.IsSuccessful) return;
 
-                string file = s.IsNullOrEmpty() ? extraction.Name : extraction.Name + s;
-                string columns = s.IsNullOrEmpty() ? "*" : $"'{s}' AS \"{extraction.Name}_{Settings.IndexFileGroupName}\", *";
-
-                using DbCommand command = CreateDbCommand(
-                    $@"
-                        SELECT
-                            {columns}
-                        FROM {file} {QueryNonLocking() ?? ""}
-                        {partitioning}
-                        ORDER BY {extraction.IndexName} ASC
-                        {QueryPagination(current) ?? ""}
-                    ",
-                    connection
-                );
-
-                await connection.OpenAsync(t);
-
-                using var fetched = new DataTable();
-                var select = await command.ExecuteReaderAsync(t);
-                fetched.Load(select);
-
-                dataTables.Add(fetched);
-
-                await connection.CloseAsync();
+                dataTables.Add(fetch.Value);
             });
 
             DataTable data = dataTables.FirstOrDefault()?.Clone() ?? new DataTable();
@@ -206,7 +306,10 @@ public abstract class DBExchange
         using var connection = CreateConnection(extraction.Destination!.ConnectionString);
         await connection.OpenAsync();
 
-        if (await LookupTable(extraction.Name, connection))
+        var verify = await Exists(extraction, connection);
+        if (!verify.IsSuccessful) return verify.Error;
+
+        if (verify.Value)
         {
             await connection.CloseAsync();
             return Result.Ok();
@@ -224,7 +327,7 @@ public abstract class DBExchange
         }
 
         queryBuilder = AddChangeColumn(queryBuilder, extraction.Name);
-        queryBuilder = AddPrimaryKey(queryBuilder, extraction.IndexName, extraction.Name, extraction.FileStructure);
+        queryBuilder = AddPrimaryKey(queryBuilder, extraction.IndexName, extraction.Name, extraction.Dependencies);
         queryBuilder = AddColumnarStructure(queryBuilder, extraction.Name);
         queryBuilder.AppendLine(");");
 
@@ -233,6 +336,7 @@ public abstract class DBExchange
 
             await EnsureSchemaCreation(extraction.Origin.Name, connection);
 
+            Log.Out($"Creating table {extraction.Origin?.Name}.{extraction.Name}...");
             using var command = CreateDbCommand(queryBuilder.ToString(), connection);
             await command.ExecuteNonQueryAsync();
 

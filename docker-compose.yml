@@ -13,7 +13,12 @@ services:
     networks:
       - conductor-network
     volumes:
-      - ${PWD}/postgresql/:/var/lib/postgresql/data/
+      - ${PWD}/db/:/var/lib/postgresql/data/
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 3s
+      timeout: 5s
+      retries: 5
 
   api:
     image: conductor:0.0.1
@@ -24,9 +29,9 @@ services:
     env_file:
       - .env
     environment:
+      - CONNECTION_STRING=Server=conductor-db;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - PORT_NUMBER=${PORT_NUMBER}
       - DB_TYPE=${DB_TYPE}
-      - CONNECTION_STRING=Server=conductor-db;Port=5432;Database=${POSTGRES_DB};User Id=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};
       - SPLITTER_CHAR=${SPLITTER_CHAR}
       - ENABLE_LOG_DUMP=${ENABLE_LOG_DUMP}
       - LOG_DUMP_TIME_SEC=${LOG_DUMP_TIME_SEC}
@@ -45,7 +50,7 @@ services:
       - LDAP_GROUPS=${LDAP_GROUPS}
       - LDAP_SSL=${LDAP_SSL}
       - LDAP_VERIFY_CERTIFICATE=${LDAP_VERIFY_CERTIFICATE}
-      - NODES=conductor-db
+      - NODES=${NODES}
       - USE_HTTPS=${USE_HTTPS}
       - TCP_ALLOWED_IPS=${TCP_ALLOWED_IPS}
       - HTTP_ALLOWED_IPS=${HTTP_ALLOWED_IPS}
@@ -58,6 +63,9 @@ services:
       - RESPONSE_CACHING_LIMIT_MB=${RESPONSE_CACHING_LIMIT_MB}
       - MAX_LOG_QUEUE_SIZE=${MAX_LOG_QUEUE_SIZE}
       - REQUIRE_AUTHENTICATION=${REQUIRE_AUTHENTICATION}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - VERIFY_CONNECTION_ORIGIN=${VERIFY_CONNECTION_ORIGIN}
       - MAX_QUERY_PARAMS=${MAX_QUERY_PARAMS}
       - CERTIFICATE_PASSWORD=${CERTIFICATE_PASSWORD}
@@ -66,7 +74,8 @@ services:
       - ENCRYPT_INDICATOR_BEGIN=${ENCRYPT_INDICATOR_BEGIN}
       - ENCRYPT_INDICATOR_END=${ENCRYPT_INDICATOR_END}
     depends_on:
-      - database
+      database:
+        condition: service_healthy
     networks:
       - conductor-network
     ports:

@@ -39,16 +39,6 @@ public class MSSQLExchange : DBExchange
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($" INDEX IX_{tableName}_CCI CLUSTERED COLUMNSTORE");
 
-    protected override async Task<bool> LookupTable(string tableName, DbConnection connection)
-    {
-        using SqlCommand select = new("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @table", (SqlConnection)connection);
-        select.Parameters.AddWithValue("@table", tableName);
-
-        var res = await select.ExecuteScalarAsync();
-
-        return res == DBNull.Value || res == null;
-    }
-
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
         using SqlCommand select = new("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = @schema", (SqlConnection)connection);
@@ -114,7 +104,7 @@ public class MSSQLExchange : DBExchange
                 DestinationTableName = $"{extraction.Origin!.Name}.{extraction.Name}"
             };
 
-            Log.Out($"Writing row data {data.Rows.Count} - in {bulk.DestinationTableName}");
+            Log.Out($"Writing imported row data: {data.Rows.Count} lines - in {bulk.DestinationTableName}");
 
             await bulk.WriteToServerAsync(data);
 
