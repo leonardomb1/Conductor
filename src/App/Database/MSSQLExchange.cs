@@ -27,10 +27,10 @@ public class MSSQLExchange : DBExchange
         return $"WHERE \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss.fff}' AS DATETIME2)";
     }
 
-    protected override StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file)
+    protected override StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file)
     {
         string indexGroup = file == null ? $"{index} ASC" : $"{index} ASC, {tableName}_{Settings.IndexFileGroupName} ASC";
-        return stringBuilder.Append($" CONSTRAINT IX_{tableName}_SK PRIMARY KEY NONCLUSTERED ({indexGroup}),");
+        return stringBuilder.Append($" CONSTRAINT IX_{tableName}_SK UNIQUE NONCLUSTERED ({indexGroup}),");
     }
 
     protected override StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName) =>
@@ -38,6 +38,9 @@ public class MSSQLExchange : DBExchange
 
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($" INDEX IX_{tableName}_CCI CLUSTERED COLUMNSTORE");
+
+    protected override StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName) =>
+        stringBuilder.AppendLine($" ID_DW_{tableName} INT IDENTITY(1,1),");
 
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
@@ -48,6 +51,7 @@ public class MSSQLExchange : DBExchange
 
         if (res == DBNull.Value || res == null)
         {
+            Log.Out($"Creating schema {system}...");
             using SqlCommand createSchema = new($"CREATE SCHEMA {system}", (SqlConnection)connection);
             await createSchema.ExecuteNonQueryAsync();
         }
@@ -93,6 +97,7 @@ public class MSSQLExchange : DBExchange
     protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
 
         try
         {
@@ -103,7 +108,7 @@ public class MSSQLExchange : DBExchange
             using var bulk = new SqlBulkCopy(connection)
             {
                 BulkCopyTimeout = Settings.BulkCopyTimeout,
-                DestinationTableName = $"{schemaName}.{extraction.Name}"
+                DestinationTableName = $"{schemaName}.{tableName}"
             };
 
             Log.Out($"Writing imported row data: {data.Rows.Count} lines - in {bulk.DestinationTableName}");

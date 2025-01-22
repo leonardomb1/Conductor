@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Text;
+using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
@@ -26,14 +27,17 @@ public class PostgreSQLExchange : DBExchange
         return $"WHERE \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss.fff}'::TIMESTAMP";
     }
 
-    protected override StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file)
+    protected override StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file)
     {
         string indexGroup = (file == null || file == "") ? $"{index}" : $"{index}, {tableName}_EMPRESA";
-        return stringBuilder.Append($" PRIMARY KEY (\"{indexGroup}\")");
+        return stringBuilder.Append($" UNIQUE (\"{indexGroup}\")");
     }
 
     protected override StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.AppendLine($" \"DT_UPDATE_{tableName}\" TIMESTAMPTZ NOT NULL DEFAULT NOW(),");
+
+    protected override StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName) =>
+        stringBuilder.AppendLine($" ID_DW_{tableName} INT GENERATED ALWAYS AS IDENTITY,");
 
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($"");
@@ -47,6 +51,7 @@ public class PostgreSQLExchange : DBExchange
 
         if (res == DBNull.Value || res == null)
         {
+            Log.Out($"Creating schema {system}...");
             using var createSchema = new NpgsqlCommand($"CREATE SCHEMA IF NOT EXISTS \"{system}\"", (NpgsqlConnection)connection);
             await createSchema.ExecuteNonQueryAsync();
         }
@@ -92,6 +97,7 @@ public class PostgreSQLExchange : DBExchange
     protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
 
         try
         {
@@ -101,7 +107,7 @@ public class PostgreSQLExchange : DBExchange
             string columns = string.Join(", ", data.Columns.Cast<DataColumn>().Select(c => $"\"{c.ColumnName}\""));
 
             using var writer = connection.BeginBinaryImport(
-                $"COPY \"{schemaName}\".\"{extraction.Name}\" ({columns}) FROM STDIN (FORMAT BINARY)"
+                $"COPY \"{schemaName}\".\"{tableName}\" ({columns}) FROM STDIN (FORMAT BINARY)"
             );
 
             foreach (DataRow row in data.Rows)

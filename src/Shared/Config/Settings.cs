@@ -136,6 +136,9 @@ public static class Settings
     [ConfigKey("ENCRYPT_INDICATOR_END")]
     public static string EncryptIndicatorEnd { get; set; } = "";
 
+    [ConfigKey("VIRTUAL_TABLE_ID_MAX_LENGHT")]
+    public static UInt16 VirtualTableIdMaxLenght { get; set; }
+
     [ConfigKey("DEVELOPMENT_MODE")]
     public static bool DevelopmentMode { get; set; }
 
