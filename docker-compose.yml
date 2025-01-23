@@ -78,7 +78,7 @@ services:
       database:
         condition: service_healthy
     healthcheck:
-        test: ["CMD-SHELL", "curl -f http://conductor-api:${PORT_NUMBER}/api/health || exit 1"]
+        test: ["CMD-SHELL", "curl -f http://conductor-api:${PORT_NUMBER}/api/health -H 'Authorization:${API_KEY}' || exit 1"]
         interval: 200s
         timeout: 5s
         retries: 5
