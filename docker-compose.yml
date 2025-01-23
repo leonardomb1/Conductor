@@ -52,8 +52,7 @@ services:
       - LDAP_VERIFY_CERTIFICATE=${LDAP_VERIFY_CERTIFICATE}
       - NODES=${NODES}
       - USE_HTTPS=${USE_HTTPS}
-      - TCP_ALLOWED_IPS=${TCP_ALLOWED_IPS}
-      - HTTP_ALLOWED_IPS=${HTTP_ALLOWED_IPS}
+      - ALLOWED_IP_ADDRESSES=${ALLOWED_IP_ADDRESSES}
       - ALLOWED_CORS=${ALLOWED_CORS}
       - BULK_TIMEOUT_SEC=${BULK_TIMEOUT_SEC}
       - DEVELOPMENT_MODE=${DEVELOPMENT_MODE}
@@ -66,7 +65,9 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - VERIFY_CONNECTION_ORIGIN=${VERIFY_CONNECTION_ORIGIN}
+      - VERIFY_TCP=${VERIFY_TCP}
+      - VERIFY_HTTP=${VERIFY_HTTP}
+      - VERIFY_CORS=${VERIFY_CORS}
       - MAX_QUERY_PARAMS=${MAX_QUERY_PARAMS}
       - CERTIFICATE_PASSWORD=${CERTIFICATE_PASSWORD}
       - CERTIFICATE_PATH=${CERTIFICATE_PATH}
@@ -78,7 +79,7 @@ services:
       database:
         condition: service_healthy
     healthcheck:
-        test: ["CMD-SHELL", "curl -f http://conductor-api:${PORT_NUMBER}/api/health -H 'Authorization:${API_KEY}' || exit 1"]
+        test: ["CMD-SHELL", "curl -f http://conductor-api:${PORT_NUMBER}/api/health -H 'Key:${API_KEY}' || exit 1"]
         interval: 200s
         timeout: 5s
         retries: 5

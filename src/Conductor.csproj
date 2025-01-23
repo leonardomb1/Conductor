@@ -24,7 +24,6 @@
     <PublishSingleFile>true</PublishSingleFile>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <SelfContained>true</SelfContained>
-    <UseAppHost>true</UseAppHost>
     <InvariantGlobalization>true</InvariantGlobalization>
     <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
@@ -35,6 +34,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="IPAddressRange" Version="6.1.0" />
     <PackageReference Include="linq2db" Version="5.4.1" />
     <PackageReference Include="linq2db.Postgresql" Version="5.4.1" />
     <PackageReference Include="linq2db.SQLite" Version="5.4.1" />
@@ -50,5 +50,6 @@
     <PackageReference Include="Novell.Directory.Ldap.NETStandard" Version="3.6.0" />
     <PackageReference Include="npgsql" Version="9.0.2" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.1" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
 </Project>

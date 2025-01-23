@@ -1,3 +1,4 @@
+using System.Net;
 using Conductor.Logging;
 using Conductor.Shared.Config;
 using static System.Net.HttpStatusCode;
@@ -10,17 +11,18 @@ public sealed class WhiteListMiddleware(RequestDelegate req)
 
     public async Task InvokeAsync(HttpContext ctx)
     {
-        string client;
-        if (!ctx.Request.Headers.TryGetValue("X-Forwarded-For", out var forwarded))
+        IPAddress client = ctx.Connection.RemoteIpAddress!;
+
+        if (ctx.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedString) &&
+           !string.IsNullOrEmpty(forwardedString))
         {
-            client = ctx.Connection.RemoteIpAddress?.ToString() ?? "";
-        }
-        else
-        {
-            client = forwarded.ToString();
+            if (IPAddress.TryParse(forwardedString, out var forwardedIp))
+            {
+                client = forwardedIp;
+            }
         }
 
-        if (!Settings.HttpAllowedIpsSet.Value.Contains(client!.ToString()))
+        if (!Settings.AllowedIpsRange.Value.Contains(client))
         {
             Log.Out($"Blocking Request for {ctx.Request.Path} by {client}.", callerMethod: "Server");
             ctx.Response.StatusCode = (Int32)Forbidden;

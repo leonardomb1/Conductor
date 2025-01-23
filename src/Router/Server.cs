@@ -12,7 +12,6 @@ using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
 using static Microsoft.AspNetCore.Http.HttpMethods;
 
-
 namespace Conductor.Router;
 
 public sealed class Server : IAsyncDisposable
@@ -33,35 +32,25 @@ public sealed class Server : IAsyncDisposable
             options.Limits.MaxConcurrentConnections = Settings.MaxConcurrentConnections;
             options.Listen(IPAddress.Any, Settings.PortNumber, options =>
             {
-                if (Settings.VerifyConnectionOrigin)
+                if (Settings.VerifyTCP)
                 {
                     options.Use(next => async ctx =>
                     {
-                        try
-                        {
-                            var RemoteIpAddress = (ctx.RemoteEndPoint as IPEndPoint)?.Address;
-                            if (RemoteIpAddress == null || !Settings.TcpAllowedIpsSet.Value.Contains(RemoteIpAddress.ToString()))
-                            {
-                                Log.Out(
-                                    $"Blocking IP Address {RemoteIpAddress} from connecting to the server.",
-                                    RecordType.Warning,
-                                    callerMethod: "Kestrel"
-                                );
-                                ctx.Abort();
-                                return;
-                            }
-                            await next(ctx);
-                        }
-                        catch (Exception ex)
+                        IPAddress RemoteIpAddress = (ctx.RemoteEndPoint as IPEndPoint)!.Address;
+                        if (!Settings.AllowedIpsRange.Value.Contains(RemoteIpAddress))
                         {
                             Log.Out(
-                                $"Error while attempting to block Remote IP from connecting: {ex.Message}, Stack Trace: {ex.StackTrace}",
-                                RecordType.Error,
+                                $"Blocking IP Address {RemoteIpAddress} from connecting to the server.",
+                                RecordType.Warning,
                                 callerMethod: "Kestrel"
                             );
+                            ctx.Abort();
+                            return;
                         }
+                        await next(ctx);
                     });
                 }
+
                 if (Settings.UseHttps)
                 {
                     options.UseHttps(Settings.CertificatePath, Settings.CertificatePassword);
@@ -70,7 +59,7 @@ public sealed class Server : IAsyncDisposable
             options.AddServerHeader = false;
         });
 
-        if (Settings.VerifyConnectionOrigin)
+        if (Settings.VerifyCors)
         {
             builder.Services.AddCors(options =>
             {
@@ -111,6 +100,15 @@ public sealed class Server : IAsyncDisposable
         {
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddOpenApi();
+            builder.Services.AddSwaggerGen(options =>
+            {
+                options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+                {
+                    Title = $"{ProgramInfo.ProgramName} API",
+                    Version = $"{ProgramInfo.ProgramVersion}",
+                    Description = $"API Documentation for the {ProgramInfo.ProgramName} Project"
+                });
+            });
         }
 
         /// Scoped Services
@@ -146,12 +144,19 @@ public sealed class Server : IAsyncDisposable
 
         /// Add Middleware and configuration
         app.UseMiddleware<LoggingMiddleware>();
-        if (Settings.VerifyConnectionOrigin) app.UseMiddleware<WhiteListMiddleware>();
+        if (Settings.VerifyHttp) app.UseMiddleware<WhiteListMiddleware>();
         if (Settings.RequireAuthentication) app.UseMiddleware<AuthenticationMiddleware>();
         if (Settings.DevelopmentMode)
         {
             app.MapOpenApi()
                 .CacheOutput();
+            app.UseSwaggerUI(options =>
+            {
+                options.SwaggerEndpoint("/openapi/v1.json", "Conductor API v1");
+                options.EnableFilter();
+                options.RoutePrefix = string.Empty;
+                options.DocumentTitle = $"{ProgramInfo.ProgramName} API Docs";
+            });
         }
         app.UseResponseCompression();
 

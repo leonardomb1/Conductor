@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NetTools;
 
 namespace Conductor.Shared.Config;
 
@@ -7,11 +8,9 @@ public static class Settings
 {
     public static Lazy<ParallelOptions> ParallelRule => new(() => new() { MaxDegreeOfParallelism = MaxDegreeParallel });
 
-    public static Lazy<HashSet<string>> TcpAllowedIpsSet => new(() => TcpAllowedIpsString?.Split(SplitterChar).ToHashSet() ?? []);
+    public static Lazy<IPAddressRange> AllowedIpsRange => new(() => IPAddressRange.Parse(AllowedIps));
 
-    public static Lazy<HashSet<string>> HttpAllowedIpsSet => new(() => HttpAllowedIpsString?.Split(SplitterChar).ToHashSet() ?? []);
-
-    public static Lazy<HashSet<string>> AllowedCorsSet => new(() => AllowedCorsString?.Split(SplitterChar).ToHashSet() ?? []);
+    public static Lazy<HashSet<string>> AllowedCorsSet => new(() => AllowedCors?.Split(SplitterChar).ToHashSet() ?? []);
 
     public static Lazy<JsonSerializerOptions> JsonSOptions => new(() => new JsonSerializerOptions()
     {
@@ -94,11 +93,11 @@ public static class Settings
     [ConfigKey("NODES")]
     public static string Nodes { get; set; } = "";
 
-    [ConfigKey("TCP_ALLOWED_IPS")]
-    public static string TcpAllowedIpsString { get; set; } = "";
+    [ConfigKey("ALLOWED_IP_ADDRESSES")]
+    public static string AllowedIps { get; set; } = "";
 
-    [ConfigKey("HTTP_ALLOWED_IPS")]
-    public static string HttpAllowedIpsString { get; set; } = "";
+    [ConfigKey("ALLOWED_CORS")]
+    public static string AllowedCors { get; set; } = "";
 
     [ConfigKey("LDAP_GROUPDN")]
     public static string LdapGroupDN { get; set; } = "";
@@ -114,9 +113,6 @@ public static class Settings
 
     [ConfigKey("RESPONSE_CACHING_LIMIT_MB")]
     public static Int32 ResponseCachingLimit { get; set; }
-
-    [ConfigKey("ALLOWED_CORS")]
-    public static string AllowedCorsString { get; set; } = "";
 
     [ConfigKey("SPLITTER_CHAR")]
     public static string SplitterChar { get; set; } = "";
@@ -142,8 +138,14 @@ public static class Settings
     [ConfigKey("DEVELOPMENT_MODE")]
     public static bool DevelopmentMode { get; set; }
 
-    [ConfigKey("VERIFY_CONNECTION_ORIGIN")]
-    public static bool VerifyConnectionOrigin { get; set; }
+    [ConfigKey("VERIFY_TCP")]
+    public static bool VerifyTCP { get; set; }
+
+    [ConfigKey("VERIFY_HTTP")]
+    public static bool VerifyHttp { get; set; }
+
+    [ConfigKey("VERIFY_CORS")]
+    public static bool VerifyCors { get; set; }
 
     [ConfigKey("MAX_LOG_QUEUE_SIZE")]
     public static UInt32 MaxLogQueueSize { get; set; }
