@@ -1,5 +1,8 @@
+using System.Collections.ObjectModel;
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Conductor.Logging;
 using NetTools;
 
 namespace Conductor.Shared.Config;
@@ -8,9 +11,37 @@ public static class Settings
 {
     public static Lazy<ParallelOptions> ParallelRule => new(() => new() { MaxDegreeOfParallelism = MaxDegreeParallel });
 
-    public static Lazy<IPAddressRange> AllowedIpsRange => new(() => IPAddressRange.Parse(AllowedIps));
+    public static Lazy<IPAddressRange[]> AllowedIpsRange => new(() =>
+    {
+        IPAddressRange[] arrayOfRanges = [];
+        foreach (var range in AllowedIps.Split(SplitterChar))
+        {
+            if (!IPAddressRange.TryParse(range, out var pRange))
+            {
+                Log.Out($"Invalid IP address range configured: {range}");
+                continue;
+            }
+            _ = arrayOfRanges.Append(pRange!);
+        }
+        return arrayOfRanges;
+    });
 
     public static Lazy<HashSet<string>> AllowedCorsSet => new(() => AllowedCors?.Split(SplitterChar).ToHashSet() ?? []);
+
+    public static Lazy<HashSet<IPAddress>> ExceptionIpsSet => new(() =>
+    {
+        HashSet<IPAddress> set = [];
+        foreach (var ip in ExceptionIps.Split(SplitterChar))
+        {
+            if (!IPAddress.TryParse(ip, out var address))
+            {
+                Log.Out($"Invalid IP address configured: {ip}");
+                continue;
+            }
+            _ = set.Add(address!);
+        }
+        return set;
+    });
 
     public static Lazy<JsonSerializerOptions> JsonSOptions => new(() => new JsonSerializerOptions()
     {
@@ -95,6 +126,9 @@ public static class Settings
 
     [ConfigKey("ALLOWED_IP_ADDRESSES")]
     public static string AllowedIps { get; set; } = "";
+
+    [ConfigKey("EXCEPTION_IP_ADDRESSES")]
+    public static string ExceptionIps { get; set; } = "";
 
     [ConfigKey("ALLOWED_CORS")]
     public static string AllowedCors { get; set; } = "";

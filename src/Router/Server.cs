@@ -37,16 +37,9 @@ public sealed class Server : IAsyncDisposable
                     options.Use(next => async ctx =>
                     {
                         IPAddress RemoteIpAddress = (ctx.RemoteEndPoint as IPEndPoint)!.Address;
-                        if (!Settings.AllowedIpsRange.Value.Contains(RemoteIpAddress))
-                        {
-                            Log.Out(
-                                $"Blocking IP Address {RemoteIpAddress} from connecting to the server.",
-                                RecordType.Warning,
-                                callerMethod: "Kestrel"
-                            );
-                            ctx.Abort();
-                            return;
-                        }
+
+                        Helper.VerifyIpAddress(RemoteIpAddress, ctx);
+
                         await next(ctx);
                     });
                 }
@@ -154,7 +147,7 @@ public sealed class Server : IAsyncDisposable
             {
                 options.SwaggerEndpoint("/openapi/v1.json", "Conductor API v1");
                 options.EnableFilter();
-                options.RoutePrefix = string.Empty;
+                options.RoutePrefix = "api/swagger";
                 options.DocumentTitle = $"{ProgramInfo.ProgramName} API Docs";
             });
         }

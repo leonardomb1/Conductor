@@ -1,7 +1,5 @@
 using System.Net;
-using Conductor.Logging;
-using Conductor.Shared.Config;
-using static System.Net.HttpStatusCode;
+using Conductor.Shared;
 
 namespace Conductor.Middleware;
 
@@ -22,13 +20,7 @@ public sealed class WhiteListMiddleware(RequestDelegate req)
             }
         }
 
-        if (!Settings.AllowedIpsRange.Value.Contains(client))
-        {
-            Log.Out($"Blocking Request for {ctx.Request.Path} by {client}.", callerMethod: "Server");
-            ctx.Response.StatusCode = (Int32)Forbidden;
-            await ctx.Response.WriteAsync("Access denied.");
-            return;
-        }
+        Helper.VerifyIpAddress(client, ctx);
 
         await next(ctx);
     }

@@ -16,19 +16,31 @@ namespace Conductor.Middleware
                 return;
             }
 
-            if (ctx.Request.Headers.TryGetValue("Key", out var key))
-            {
-                if (key == Settings.ApiKey)
-                {
-                    await next(ctx);
-                    return;
-                }
-            }
-
             if (!ctx.Request.Headers.TryGetValue("Authorization", out var authorization))
             {
                 ctx.Response.StatusCode = (Int32)Unauthorized;
-                await ctx.Response.WriteAsync("");
+                await ctx.Response.WriteAsync("Access denied.");
+                return;
+            }
+
+            string[] keyValue = authorization.ToString().Split(" ");
+            if (keyValue.Length != 2)
+            {
+                ctx.Response.StatusCode = (Int32)Unauthorized;
+                await ctx.Response.WriteAsync("Access denied.");
+                return;
+            }
+
+            if (keyValue[0] == "Key" && keyValue[1] == Settings.ApiKey)
+            {
+                await next(ctx);
+                return;
+            }
+
+            if (keyValue[0] != "Bearer")
+            {
+                ctx.Response.StatusCode = (Int32)Unauthorized;
+                await ctx.Response.WriteAsync("Access denied.");
                 return;
             }
 
@@ -42,7 +54,7 @@ namespace Conductor.Middleware
                 client = forwarded.ToString();
             }
 
-            if (!Encryption.ValidateJwt(client, authorization!, Settings.EncryptionKey).IsSuccessful)
+            if (!Encryption.ValidateJwt(client, keyValue[1], Settings.EncryptionKey).IsSuccessful)
             {
                 ctx.Response.StatusCode = (Int32)Unauthorized;
                 await ctx.Response.WriteAsync("");

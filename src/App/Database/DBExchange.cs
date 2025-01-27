@@ -203,6 +203,7 @@ public abstract class DBExchange
         Extraction extraction,
         UInt64 current,
         bool shouldPartition,
+        string? virtualizedTable = null,
         CancellationToken token = default
     )
     {
@@ -215,9 +216,9 @@ public abstract class DBExchange
         }
 
         string columns;
-        if (extraction.IsVirtual)
+        if (extraction.VirtualId != null && virtualizedTable != null)
         {
-            columns = $"'{extraction.VirtualId}' AS \"{VirtualColumn(extraction.Alias ?? extraction.Name)}\", *";
+            columns = $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable)}\", *";
         }
         else
         {
@@ -277,11 +278,11 @@ public abstract class DBExchange
                 x.Destination!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
             });
 
-            return await ParallelFetch(dependenciesList.Value, current, shouldPartition, token);
+            return await ParallelFetch(dependenciesList.Value, current, shouldPartition, extraction.Name, token);
         }
         else
         {
-            return await SingleFetch(extraction, current, shouldPartition, token);
+            return await SingleFetch(extraction, current, shouldPartition, extraction.Name, token);
         }
     }
 
@@ -289,6 +290,7 @@ public abstract class DBExchange
         List<Extraction> extractions,
         UInt64 current,
         bool shouldPartition,
+        string virtualizedTable,
         CancellationToken token
     )
     {
@@ -299,7 +301,7 @@ public abstract class DBExchange
         {
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
-                var fetch = await SingleFetch(e, current, shouldPartition, t);
+                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, t);
                 if (!fetch.IsSuccessful)
                 {
                     errCount++;
