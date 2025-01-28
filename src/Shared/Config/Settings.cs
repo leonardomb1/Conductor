@@ -13,35 +13,23 @@ public static class Settings
 
     public static Lazy<IPAddressRange[]> AllowedIpsRange => new(() =>
     {
-        IPAddressRange[] arrayOfRanges = [];
-        foreach (var range in AllowedIps.Split(SplitterChar))
+        string[] ranges = AllowedIps.Split(SplitterChar);
+        IPAddressRange[] arrayOfRanges = new IPAddressRange[ranges.Length];
+
+        for (byte i = 0; i < ranges.Length; i++)
         {
-            if (!IPAddressRange.TryParse(range, out var pRange))
+            if (!IPAddressRange.TryParse(ranges[i], out var pRange))
             {
-                Log.Out($"Invalid IP address range configured: {range}");
+                Log.Out($"Invalid IP address range configured: {ranges[i]}");
                 continue;
             }
-            _ = arrayOfRanges.Append(pRange!);
+            arrayOfRanges[i] = pRange;
         }
+
         return arrayOfRanges;
     });
 
     public static Lazy<HashSet<string>> AllowedCorsSet => new(() => AllowedCors?.Split(SplitterChar).ToHashSet() ?? []);
-
-    public static Lazy<HashSet<IPAddress>> ExceptionIpsSet => new(() =>
-    {
-        HashSet<IPAddress> set = [];
-        foreach (var ip in ExceptionIps.Split(SplitterChar))
-        {
-            if (!IPAddress.TryParse(ip, out var address))
-            {
-                Log.Out($"Invalid IP address configured: {ip}");
-                continue;
-            }
-            _ = set.Add(address!);
-        }
-        return set;
-    });
 
     public static Lazy<JsonSerializerOptions> JsonSOptions => new(() => new JsonSerializerOptions()
     {
@@ -126,9 +114,6 @@ public static class Settings
 
     [ConfigKey("ALLOWED_IP_ADDRESSES")]
     public static string AllowedIps { get; set; } = "";
-
-    [ConfigKey("EXCEPTION_IP_ADDRESSES")]
-    public static string ExceptionIps { get; set; } = "";
 
     [ConfigKey("ALLOWED_CORS")]
     public static string AllowedCors { get; set; } = "";

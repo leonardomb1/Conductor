@@ -17,8 +17,9 @@ public static class Helper
             "   -v --version   Show version information\n" +
             "   -e --environment  Use environment variables for configuration\n" +
             "   -f --file  Use .env file for configuration\n" +
-            "   -m --migration  Runs a migration in the configured .env database\n" +
-            "   -x --migration-init  Runs a migration before running the server, uses the environment variables for configuration\n"
+            "   -m --migrate Runs a migration in the configured .env database\n" +
+            "   -eM --migrate-init-env  Runs a migration before running the server, uses the environment variables for configuration\n" +
+            "   -fM --migrate-init-file  Runs a migration before running the server, uses the .env file for configuration\n"
             );
     }
 
@@ -36,10 +37,8 @@ public static class Helper
 
     public static void VerifyIpAddress(IPAddress address, HttpContext ctx)
     {
-        if (Settings.ExceptionIpsSet.Value.Contains(address)) return;
-
         byte validations = 0;
-        for (byte i = 0; i <= Settings.AllowedIpsRange.Value.Length; i++)
+        for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)
         {
             if (!Settings.AllowedIpsRange.Value[i].Contains(address)) validations++;
         }
@@ -58,10 +57,8 @@ public static class Helper
 
     public static void VerifyIpAddress(IPAddress address, ConnectionContext ctx)
     {
-        if (Settings.ExceptionIpsSet.Value.Contains(address)) return;
-
         byte validations = 0;
-        for (byte i = 0; i <= Settings.AllowedIpsRange.Value.Length; i++)
+        for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)
         {
             if (!Settings.AllowedIpsRange.Value[i].Contains(address)) validations++;
         }

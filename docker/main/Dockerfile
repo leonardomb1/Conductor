@@ -13,4 +13,4 @@ RUN apk add --no-cache icu-libs tzdata curl && \
     echo "America/Sao_Paulo" > /etc/timezone && \
     chmod +x /app/Conductor
 
-ENTRYPOINT ["/app/Conductor", "-x"]
+ENTRYPOINT ["/app/Conductor", "-eM"]

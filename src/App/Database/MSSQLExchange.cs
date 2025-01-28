@@ -20,7 +20,7 @@ public class MSSQLExchange : DBExchange
     {
         if (!extraction.FilterTime.HasValue)
         {
-            throw new Exception("Filter time cannot be null in this context.");
+            return "";
         }
 
         var lookupTime = DateTime.Now.AddSeconds((double)-extraction.FilterTime!);

@@ -6,6 +6,7 @@ using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Conductor.App.Database;
@@ -149,7 +150,7 @@ public abstract class DBExchange
 
             cmdText =
                 $"DELETE FROM \"{schemaName}\".\"{tableName}\" " +
-                GeneratePartitionCondition(extraction);
+                $"{GeneratePartitionCondition(extraction)}";
         }
 
         using DbCommand command = CreateDbCommand(cmdText, connection);
@@ -209,6 +210,8 @@ public abstract class DBExchange
     {
         using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
 
+        string orderMode = shouldPartition ? "DESC" : "ASC";
+
         string partitioning = "";
         if (shouldPartition)
         {
@@ -229,7 +232,7 @@ public abstract class DBExchange
             @$"SELECT {columns} FROM {extraction.Name}
                 {QueryNonLocking()}
                 {partitioning}
-            ORDER BY {extraction.IndexName} ASC
+            ORDER BY {extraction.IndexName} {orderMode}
             {QueryPagination(current)}",
             connection
         );
@@ -241,6 +244,8 @@ public abstract class DBExchange
             using var fetched = new DataTable();
             var select = await command.ExecuteReaderAsync(token);
             fetched.Load(select);
+
+            fetched.TableName = extraction.Alias ?? extraction.Name;
 
             return fetched;
         }
@@ -295,6 +300,8 @@ public abstract class DBExchange
     )
     {
         ConcurrentBag<DataTable> dataTables = [];
+        DataTable data = new();
+        bool gotTemplate = false;
         byte errCount = 0;
 
         try
@@ -308,18 +315,28 @@ public abstract class DBExchange
                     return;
                 }
 
+                bool isTemplate = e.IsVirtualTemplate ?? false;
+
+                if (isTemplate)
+                {
+                    data = fetch.Value.Clone();
+                    gotTemplate = true;
+                }
+
                 dataTables.Add(fetch.Value);
             });
 
             if (errCount == extractions.Count) return new Error("Failed to fetch data from all tables.");
+            if (!gotTemplate) data = dataTables.First().Clone();
 
-            DataTable data = dataTables.FirstOrDefault()?.Clone() ?? new DataTable();
-
-            foreach (var table in dataTables)
+            foreach (DataTable table in dataTables)
             {
+                table.Constraints.Clear();
                 data.Merge(table, false, MissingSchemaAction.Ignore);
                 table.Dispose();
             }
+
+            data.TableName = virtualizedTable;
 
             return data;
         }
@@ -361,11 +378,6 @@ public abstract class DBExchange
         var queryBuilder = new StringBuilder();
 
         queryBuilder.AppendLine($"CREATE TABLE \"{schemaName}\".\"{tableName}\" (");
-
-        if (extraction.IsVirtual)
-        {
-            queryBuilder.AppendLine($"  {VirtualColumn(tableName)} {GetSqlType(typeof(string), Settings.VirtualTableIdMaxLenght)},");
-        }
 
         foreach (DataColumn column in table.Columns)
         {
