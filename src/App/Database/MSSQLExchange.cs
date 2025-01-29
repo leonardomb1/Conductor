@@ -16,20 +16,34 @@ public class MSSQLExchange : DBExchange
 
     protected override string? QueryNonLocking() => "WITH(NOLOCK)";
 
-    protected override string GeneratePartitionCondition(Extraction extraction)
+    protected override string GeneratePartitionCondition(Extraction extraction, double timeZoneOffSet, string? virtualColumn = null)
     {
-        if (!extraction.FilterTime.HasValue)
+        StringBuilder builder = new();
+
+        builder.Append("WHERE 1 = 1 ");
+
+        if (extraction.FilterTime.HasValue)
         {
-            return "";
+            var lookupTime = DateTime.UtcNow.AddSeconds((double)-extraction.FilterTime!).AddHours(timeZoneOffSet);
+            builder.Append($"AND \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2) ");
         }
 
-        var lookupTime = DateTime.Now.AddSeconds((double)-extraction.FilterTime!);
-        return $"WHERE \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss.fff}' AS DATETIME2)";
+        if (extraction.VirtualId != null && virtualColumn != null)
+        {
+            builder.Append($"AND \"{virtualColumn}\" = '{extraction.VirtualId}' ");
+        }
+
+        return builder.ToString();
     }
 
-    protected override StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file)
+    protected override StringBuilder AddSurrogateKey(
+            StringBuilder stringBuilder,
+            string index,
+            string tableName,
+            string? virtualIdGroup
+        )
     {
-        string indexGroup = file == null ? $"{index} ASC" : $"{index} ASC, {tableName}_{Settings.IndexFileGroupName} ASC";
+        string indexGroup = virtualIdGroup == null ? $"{index} ASC" : $"{index} ASC, {tableName}_{virtualIdGroup} ASC";
         return stringBuilder.Append($" CONSTRAINT IX_{tableName}_SK UNIQUE NONCLUSTERED ({indexGroup}),");
     }
 
@@ -57,7 +71,7 @@ public class MSSQLExchange : DBExchange
         }
     }
 
-    protected override DbConnection CreateConnection(string conStr)
+    public override DbConnection CreateConnection(string conStr)
     {
         return new SqlConnection(conStr);
     }
@@ -94,7 +108,7 @@ public class MSSQLExchange : DBExchange
         };
     }
 
-    protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
+    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
@@ -107,15 +121,40 @@ public class MSSQLExchange : DBExchange
 
             using var bulk = new SqlBulkCopy(connection)
             {
-                BulkCopyTimeout = Settings.BulkCopyTimeout,
+                BulkCopyTimeout = Settings.QueryTimeout,
                 DestinationTableName = $"{schemaName}.{tableName}"
             };
 
-            Log.Out($"Writing imported row data: {data.Rows.Count} lines - in {bulk.DestinationTableName}");
+            Log.Out($"Writing imported row data with {data.Rows.Count} lines on table: {bulk.DestinationTableName}");
 
             await bulk.WriteToServerAsync(data);
 
             await connection.CloseAsync();
+
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
+    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction, DbConnection connection)
+    {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
+        try
+        {
+            using var bulk = new SqlBulkCopy((SqlConnection)connection)
+            {
+                BulkCopyTimeout = Settings.QueryTimeout,
+                DestinationTableName = $"{schemaName}.{tableName}"
+            };
+
+            Log.Out($"Writing imported row data with {data.Rows.Count} lines on table: {bulk.DestinationTableName}");
+
+            await bulk.WriteToServerAsync(data);
 
             return Result.Ok();
         }

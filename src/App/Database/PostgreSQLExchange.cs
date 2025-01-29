@@ -16,20 +16,37 @@ public class PostgreSQLExchange : DBExchange
 
     protected override string? QueryNonLocking() => "";
 
-    protected override string GeneratePartitionCondition(Extraction extraction)
+    protected override string GeneratePartitionCondition(Extraction extraction, double timeZoneOffSet, string? virtualColumn = null)
     {
+        StringBuilder builder = new();
+
         if (!extraction.FilterTime.HasValue)
         {
             throw new Exception("Filter time cannot be null in this context.");
         }
 
-        var lookupTime = DateTime.Now.AddSeconds((double)-extraction.FilterTime!);
-        return $"WHERE \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss.fff}'::TIMESTAMP";
+        if (extraction.FilterTime.HasValue)
+        {
+            var lookupTime = DateTime.UtcNow.AddSeconds((double)-extraction.FilterTime!).AddHours(timeZoneOffSet);
+            builder.Append($"AND \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss}'::TIMESTAMP ");
+        }
+
+        if (extraction.VirtualId != null && virtualColumn != null)
+        {
+            builder.Append($"OR \"{virtualColumn}\" = '{extraction.VirtualId}' ");
+        }
+
+        return builder.ToString();
     }
 
-    protected override StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file)
+    protected override StringBuilder AddSurrogateKey(
+            StringBuilder stringBuilder,
+            string index,
+            string tableName,
+            string? virtualIdGroup
+        )
     {
-        string indexGroup = (file == null || file == "") ? $"{index}" : $"{index}, {tableName}_EMPRESA";
+        string indexGroup = (virtualIdGroup == null || virtualIdGroup == "") ? $"{index}" : $"{index}, {tableName}_{virtualIdGroup}";
         return stringBuilder.Append($" UNIQUE (\"{indexGroup}\")");
     }
 
@@ -57,7 +74,7 @@ public class PostgreSQLExchange : DBExchange
         }
     }
 
-    protected override DbConnection CreateConnection(string conStr)
+    public override DbConnection CreateConnection(string conStr)
     {
         return new NpgsqlConnection(conStr);
     }
@@ -94,7 +111,7 @@ public class PostgreSQLExchange : DBExchange
         };
     }
 
-    protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
+    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
@@ -122,6 +139,39 @@ public class PostgreSQLExchange : DBExchange
             await writer.CompleteAsync();
             await connection.CloseAsync();
 
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
+    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction, DbConnection connection)
+    {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
+        try
+        {
+            string columns = string.Join(", ", data.Columns.Cast<DataColumn>().Select(c => $"\"{c.ColumnName}\""));
+
+            using var npgsqlConnection = (NpgsqlConnection)connection;
+
+            using var writer = npgsqlConnection.BeginBinaryImport(
+                $"COPY \"{schemaName}\".\"{tableName}\" ({columns}) FROM STDIN (FORMAT BINARY)"
+            );
+
+            foreach (DataRow row in data.Rows)
+            {
+                writer.StartRow();
+                foreach (var item in row.ItemArray)
+                {
+                    writer.Write(item);
+                }
+            }
+
+            await writer.CompleteAsync();
             return Result.Ok();
         }
         catch (Exception ex)

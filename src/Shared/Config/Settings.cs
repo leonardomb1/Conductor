@@ -1,8 +1,7 @@
-using System.Collections.ObjectModel;
-using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Conductor.Logging;
+using Microsoft.IdentityModel.Tokens;
 using NetTools;
 
 namespace Conductor.Shared.Config;
@@ -13,6 +12,8 @@ public static class Settings
 
     public static Lazy<IPAddressRange[]> AllowedIpsRange => new(() =>
     {
+        if (AllowedIps.IsNullOrEmpty()) return [];
+
         string[] ranges = AllowedIps.Split(SplitterChar);
         IPAddressRange[] arrayOfRanges = new IPAddressRange[ranges.Length];
 
@@ -58,8 +59,8 @@ public static class Settings
     [ConfigKey("SESSION_TIME_SEC")]
     public static UInt32 SessionTime { get; set; }
 
-    [ConfigKey("BULK_TIMEOUT_SEC")]
-    public static Int32 BulkCopyTimeout { get; set; }
+    [ConfigKey("QUERY_TIMEOUT_SEC")]
+    public static Int32 QueryTimeout { get; set; }
 
     [ConfigKey("MAX_CONSUMER_ATTEMPT")]
     public static byte ConsumerAttemptMax { get; set; }
@@ -141,9 +142,6 @@ public static class Settings
 
     [ConfigKey("CERTIFICATE_PATH")]
     public static string CertificatePath { get; set; } = "";
-
-    [ConfigKey("INDEX_FILEGROUP_NAME")]
-    public static string IndexFileGroupName { get; set; } = "";
 
     [ConfigKey("ENCRYPT_INDICATOR_BEGIN")]
     public static string EncryptIndicatorBegin { get; set; } = "";
