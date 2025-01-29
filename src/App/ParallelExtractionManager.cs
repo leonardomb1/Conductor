@@ -145,9 +145,13 @@ public static class ParallelExtractionManager
 
                         using DbConnection con = inserter.CreateConnection(e.Extraction.Destination.ConnectionString);
 
+                        await con.OpenAsync(t);
+
                         clear = await inserter.ClearTable(e.Extraction, e.MergedTable, con);
                         createRes = await inserter.CreateTable(e.MergedTable, e.Extraction, con);
                         insertRes = await inserter.WriteDataTable(e.MergedTable, e.Extraction, con);
+
+                        await con.CloseAsync();
                     }
                     finally
                     {
