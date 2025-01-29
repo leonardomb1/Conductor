@@ -39,9 +39,14 @@ public class PostgreSQLExchange : DBExchange
         return builder.ToString();
     }
 
-    protected override StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file)
+    protected override StringBuilder AddSurrogateKey(
+            StringBuilder stringBuilder,
+            string index,
+            string tableName,
+            string? virtualIdGroup
+        )
     {
-        string indexGroup = (file == null || file == "") ? $"{index}" : $"{index}, {tableName}_EMPRESA";
+        string indexGroup = (virtualIdGroup == null || virtualIdGroup == "") ? $"{index}" : $"{index}, {tableName}_{virtualIdGroup}";
         return stringBuilder.Append($" UNIQUE (\"{indexGroup}\")");
     }
 

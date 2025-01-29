@@ -143,9 +143,6 @@ public static class Settings
     [ConfigKey("CERTIFICATE_PATH")]
     public static string CertificatePath { get; set; } = "";
 
-    [ConfigKey("INDEX_FILEGROUP_NAME")]
-    public static string IndexFileGroupName { get; set; } = "";
-
     [ConfigKey("ENCRYPT_INDICATOR_BEGIN")]
     public static string EncryptIndicatorBegin { get; set; } = "";
 

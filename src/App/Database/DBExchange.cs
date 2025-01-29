@@ -6,7 +6,6 @@ using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
-using Microsoft.IdentityModel.Tokens;
 
 namespace Conductor.App.Database;
 
@@ -22,7 +21,7 @@ public abstract class DBExchange
 
     protected abstract string GetSqlType(Type dataType, Int32? lenght);
 
-    protected abstract StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file = null);
+    protected abstract StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? virtualIdGroup = null);
 
     protected abstract StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName);
 
@@ -43,9 +42,9 @@ public abstract class DBExchange
         return stringBuilder.Append($" CONSTRAINT IX_{tableName}_PK PRIMARY KEY (ID_DW_{tableName}),");
     }
 
-    protected virtual string VirtualColumn(string tableName)
+    protected virtual string VirtualColumn(string tableName, string fileGroup)
     {
-        return $"{tableName}_{Settings.IndexFileGroupName}";
+        return $"{tableName}_{fileGroup}";
     }
 
     private async Task<Result<List<Extraction>>> GetDependencies(Extraction extraction)
@@ -151,13 +150,15 @@ public abstract class DBExchange
 
     public virtual async Task<Result> ClearTable(Extraction extraction, DataTable data)
     {
-        if (extraction.BeforeExecutionDeletes) return Result.Ok();
+        if (extraction.BeforeExecutionDeletes || extraction.SingleExecution) return Result.Ok();
 
         using DbConnection connection = CreateConnection(extraction.Destination!.ConnectionString);
         await connection.OpenAsync();
 
         string tableName = extraction.Alias ?? extraction.Name;
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string virtualIdGroup = extraction.VirtualIdGroup ?? "file";
+
         StringBuilder builder = new();
 
         if (extraction.IsIncremental)
@@ -165,13 +166,9 @@ public abstract class DBExchange
             builder.Append($"DELETE FROM \"{schemaName}\".\"{tableName}\" WHERE 1 = 1 ");
             foreach (DataRow row in data.Rows)
             {
-                if (extraction.IsVirtual) builder.Append($"AND \"{VirtualColumn(tableName)}\" = '{row[VirtualColumn(tableName)]}' ");
+                if (extraction.IsVirtual) builder.Append($"AND \"{VirtualColumn(tableName, virtualIdGroup)}\" = '{row[VirtualColumn(tableName, virtualIdGroup)]}' ");
                 builder.Append($"AND \"{extraction.IndexName}\" = {row[extraction.IndexName]} ");
             }
-        }
-        else
-        {
-            builder.Append($"TRUNCATE TABLE {schemaName}.{tableName}");
         }
 
         try
@@ -179,6 +176,7 @@ public abstract class DBExchange
             Log.Out($"Clearing table {schemaName}.{tableName}...");
             using DbCommand command = CreateDbCommand(builder.ToString(), connection);
             await command.ExecuteNonQueryAsync();
+            return Result.Ok();
         }
         catch (Exception ex)
         {
@@ -187,6 +185,39 @@ public abstract class DBExchange
         finally
         {
             await connection.CloseAsync();
+        }
+    }
+
+    public virtual async Task<Result> ClearTable(Extraction extraction, DataTable data, DbConnection connection)
+    {
+        if (extraction.BeforeExecutionDeletes || extraction.SingleExecution) return Result.Ok();
+
+        string tableName = extraction.Alias ?? extraction.Name;
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string virtualIdGroup = extraction.VirtualIdGroup ?? "file";
+
+        StringBuilder builder = new();
+
+        if (extraction.IsIncremental)
+        {
+            builder.Append($"DELETE FROM \"{schemaName}\".\"{tableName}\" WHERE 1 = 1 ");
+            foreach (DataRow row in data.Rows)
+            {
+                if (extraction.IsVirtual) builder.Append($"AND \"{VirtualColumn(tableName, virtualIdGroup)}\" = '{row[VirtualColumn(tableName, virtualIdGroup)]}' ");
+                builder.Append($"AND \"{extraction.IndexName}\" = {row[extraction.IndexName]} ");
+            }
+        }
+
+        try
+        {
+            Log.Out($"Clearing table {schemaName}.{tableName}...");
+            using DbCommand command = CreateDbCommand(builder.ToString(), connection);
+            await command.ExecuteNonQueryAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -219,11 +250,41 @@ public abstract class DBExchange
         }
     }
 
+    public virtual async Task<Result> TruncateTable(Extraction extraction)
+    {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
+        using DbConnection connection = CreateConnection(extraction.Destination!.ConnectionString);
+        await connection.OpenAsync();
+
+        using DbCommand command = CreateDbCommand(
+            $"TRUNCATE TABLE \"{schemaName}\".\"{tableName}\"",
+            connection
+        );
+
+        try
+        {
+            Log.Out($"Droping table {schemaName}.{tableName}...");
+            await command.ExecuteNonQueryAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+        finally
+        {
+            await connection.CloseAsync();
+        }
+    }
+
     public virtual async Task<Result<DataTable>> SingleFetch(
         Extraction extraction,
         UInt64 current,
         bool shouldPartition,
         string? virtualizedTable = null,
+        string? virtualizedIdGroup = null,
         CancellationToken token = default
     )
     {
@@ -240,7 +301,7 @@ public abstract class DBExchange
         string columns;
         if (extraction.VirtualId != null && virtualizedTable != null)
         {
-            columns = $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable)}\", *";
+            columns = $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\", *";
         }
         else
         {
@@ -290,11 +351,11 @@ public abstract class DBExchange
             var deps = await GetDependencies(extraction);
             if (!deps.IsSuccessful) return deps.Error;
 
-            return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, token);
+            return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup!, token);
         }
         else
         {
-            return await SingleFetch(extraction, current, shouldPartition, extraction.Name, token);
+            return await SingleFetch(extraction, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup, token);
         }
     }
 
@@ -303,6 +364,7 @@ public abstract class DBExchange
         UInt64 current,
         bool shouldPartition,
         string virtualizedTable,
+        string virtualIdGroup,
         CancellationToken token
     )
     {
@@ -315,7 +377,7 @@ public abstract class DBExchange
         {
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
-                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, t);
+                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, virtualIdGroup, t);
                 if (!fetch.IsSuccessful)
                 {
                     errCount++;
@@ -387,7 +449,7 @@ public abstract class DBExchange
         queryBuilder = AddChangeColumn(queryBuilder, tableName);
         queryBuilder = AddIdentityColumn(queryBuilder, tableName);
         queryBuilder = AddPrimaryKey(queryBuilder, tableName);
-        queryBuilder = AddSurrogateKey(queryBuilder, extraction.IndexName, tableName, extraction.Dependencies);
+        queryBuilder = AddSurrogateKey(queryBuilder, extraction.IndexName, tableName, extraction.VirtualIdGroup);
         if (extraction.TableStructure == "Columnar") queryBuilder = AddColumnarStructure(queryBuilder, tableName);
         queryBuilder.AppendLine(");");
 
@@ -438,7 +500,7 @@ public abstract class DBExchange
         queryBuilder = AddChangeColumn(queryBuilder, tableName);
         queryBuilder = AddIdentityColumn(queryBuilder, tableName);
         queryBuilder = AddPrimaryKey(queryBuilder, tableName);
-        queryBuilder = AddSurrogateKey(queryBuilder, extraction.IndexName, tableName, extraction.Dependencies);
+        queryBuilder = AddSurrogateKey(queryBuilder, extraction.IndexName, tableName, extraction.VirtualIdGroup);
         if (extraction.TableStructure == "Columnar") queryBuilder = AddColumnarStructure(queryBuilder, tableName);
         queryBuilder.AppendLine(");");
 

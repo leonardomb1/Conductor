@@ -67,6 +67,8 @@ public static class ParallelExtractionManager
                     if (!rc.IsSuccessful) errCount++;
 
                     destRc = rc.Value;
+
+                    if (e.BeforeExecutionDeletes) await metadata.TruncateTable(e);
                 }
             }
 

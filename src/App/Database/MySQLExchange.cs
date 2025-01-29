@@ -38,9 +38,14 @@ public class MySQLExchange : DBExchange
         return builder.ToString();
     }
 
-    protected override StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file)
+    protected override StringBuilder AddSurrogateKey(
+            StringBuilder stringBuilder,
+            string index,
+            string tableName,
+            string? virtualIdGroup
+        )
     {
-        string indexGroup = file == null ? $"{index} ASC" : $"{index} ASC, {tableName}_{Settings.IndexFileGroupName} ASC";
+        string indexGroup = virtualIdGroup == null ? $"{index} ASC" : $"{index} ASC, {tableName}_{virtualIdGroup} ASC";
         return stringBuilder.Append($" UNIQUE ({indexGroup}),");
     }
 

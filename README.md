@@ -66,50 +66,67 @@ Deployment using executable (needs .env):
 ``` bash
   Conductor -h
 
-  [Options]:
-   -h --help      Show this help message
-   -v --version   Show version information
-   -e --environment  Use environment variables for configuration
-   -f --file  Use .env file for configuration
+  [Options]
+    -h --help      Show this help message
+    -v --version   Show version information
+    -e --environment  Use environment variables for configuration
+    -f --file  Use .env file for configuration
+    -M --migrate Runs a migration in the configured .env database
+    -eM --migrate-init-env  Runs a migration before running the server, uses the environment variables for configuration
+    -fM --migrate-init-file  Runs a migration before running the server, uses the .env file for configuration
 ```
 
 the following is a template for .env:
 
 ``` bash
-  PORT_NUMBER=10000
+  PORT_NUMBER=10000 
+  API_FORWARDED_PORT_NUMBER=20000
+  DB_FORWARED_PORT_NUMBER=32000
+  CONNECTION_STRING="Data Source=app.db;Mode=ReadWriteCreate;"
   DB_TYPE="SQLite"
-  CONNECTION_STRING="DataSource=app.db;Mode=ReadWriteCreate;Cache=Shared;"
-  SPLITTER_CHAR="|" # Here you can specify which is the splliter character to use for config
+  SPLITTER_CHAR="|" (or any other char)
   ENABLE_LOG_DUMP=true
-  LOG_DUMP_TIME_SEC=10
-  ENCRYPT_KEY="ABC123"
-  SESSION_TIME_SEC=1800
-  API_KEY="ABC123"
-  MAX_DEGREE_PARALLEL=5
+  LOG_DUMP_TIME_SEC=15
+  ENCRYPT_KEY=some_key
+  SESSION_TIME_SEC=1600
+  API_KEY=some_key2
+  MAX_DEGREE_PARALLEL=20
   MAX_CONSUMER_FETCH=20
-  MAX_CONSUMER_ATTEMPT=5
-  MAX_PRODUCER_LINECOUNT=10000
-  LDAP_DOMAIN="SomeDomain"
-  LDAP_SERVER="1.1.1.1"
-  LDAP_PORT=636 # This is the standard LDAPS Port, change to the one you use
-  LDAP_BASEDN="OU={SOME_GROUP},OU={SOME_OBJECT},DC={SOME_DOMAIN}"
-  LDAP_GROUPDN="OU={SOME_GROUP},OU={SOME_GROUP},OU={SOME_GROUP},DC={SOME_DOMAIN}"
-  LDAP_GROUPS="SOME_GROUP1|SOME_GROUP2"
+  MAX_CONSUMER_ATTEMPT=10
+  MAX_PRODUCER_LINECOUNT=20000
+  LDAP_DOMAIN=some_domain
+  LDAP_SERVER=some_server
+  LDAP_PORT=636(usually for LDAPS)
+  LDAP_BASEDN=seom_basedn
+  LDAP_GROUPDN=some_groupdn
+  LDAP_GROUPS=groups_to_which_to_filter
   LDAP_SSL=true
   LDAP_VERIFY_CERTIFICATE=false
-  NODES="{SOME_HOSTNAME}"
-  USE_HTTPS=true
-  TCP_ALLOWED_IPS="127.0.0.1"
-  HTTP_ALLOWED_IPS="127.0.0.1"
-  ALLOWED_CORS="127.0.0.1"
-  BULK_TIMEOUT_SEC=1000
-  DEVELOPMENT_MODE=true
-  DEBUG_DETAILED_ERROR=true
-  CONNECTION_TIMEOUT_MIN=300
+  NODES="conductor-db" (reserved for now)
+  USE_HTTPS=false
+  ALLOWED_IP_ADDRESSES="127.0.0.1/32|some_other_ip" (pass any other ipaddress range, using the bit mask)
+  ALLOWED_CORS="some_cors"
+  QUERY_TIMEOUT_SEC=1000
+  DEVELOPMENT_MODE=false
+  DEBUG_DETAILED_ERROR=false
+  CONNECTION_TIMEOUT_MIN=1000
   MAX_CONCURRENT_CONNECTIONS=100
   RESPONSE_CACHING_LIMIT_MB=20
   MAX_LOG_QUEUE_SIZE=10000
-  REQUIRE_AUTHENTICATION=false
+  REQUIRE_AUTHENTICATION=true
+  POSTGRES_DB="ConductorDb"
+  POSTGRES_USER="conductor"
+  POSTGRES_PASSWORD="some_password"
+  VERIFY_TCP=false
+  VERIFY_HTTP=true
+  VERIFY_CORS=false
+  MAX_QUERY_PARAMS=10
+  CERTIFICATE_PASSWORD="not_used"
+  CERTIFICATE_PATH="not_used"
+  ENCRYPT_INDICATOR_BEGIN="$$>" (used for separation in encrypted inline header values for http extraction)
+  ENCRYPT_INDICATOR_END="<$$" 
+  VIRTUAL_TABLE_ID_MAX_LENGHT=5
+  DOCKER_ENVIRONMENT="dev" (or main)
 ```
 
 You can also deploy using docker and docker compose:

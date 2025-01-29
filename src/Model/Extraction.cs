@@ -45,6 +45,9 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public string? VirtualId { get; set; }
 
     [Column, Nullable]
+    public string? VirtualIdGroup { get; set; }
+
+    [Column, Nullable]
     public bool? IsVirtualTemplate { get; set; }
 
     [Column, NotNull, JsonRequired]
