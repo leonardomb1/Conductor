@@ -1,4 +1,4 @@
-name: Docker Image CI
+name: Docker Package CI
 
 on:
   push:
@@ -16,13 +16,13 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set Version Number
-      run: echo "VERSION=main-v${{ github.run_number }}" >> $GITHUB_ENV
+      run: echo "VERSION=main-v0.0.${{ github.run_number }}" >> $GITHUB_ENV
 
     - name: Log in to GitHub Container Registry
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
 
     - name: Build the Docker image
-      run: docker build . --file ./docker/main/Dockerfile --tag ghcr.io/${{ github.repository_owner }}/conductor:main-v0.0.$VERSION
+      run: docker build . --file ./docker/main/Dockerfile --tag ghcr.io/${{ github.repository_owner }}/conductor:$VERSION
 
     - name: Push to GitHub Container Registry
-      run: docker push ghcr.io/${{ github.repository_owner }}/conductor:main-v0.0.$VERSION
+      run: docker push ghcr.io/${{ github.repository_owner }}/conductor:$VERSION
