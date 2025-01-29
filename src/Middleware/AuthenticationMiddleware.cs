@@ -1,6 +1,5 @@
 using Conductor.Shared;
 using Conductor.Shared.Config;
-using static System.Net.HttpStatusCode;
 
 namespace Conductor.Middleware
 {
@@ -18,7 +17,7 @@ namespace Conductor.Middleware
 
             if (!ctx.Request.Headers.TryGetValue("Authorization", out var authorization))
             {
-                ctx.Response.StatusCode = (Int32)Unauthorized;
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await ctx.Response.WriteAsync("Access denied.");
                 return;
             }
@@ -26,7 +25,7 @@ namespace Conductor.Middleware
             string[] keyValue = authorization.ToString().Split(" ");
             if (keyValue.Length != 2)
             {
-                ctx.Response.StatusCode = (Int32)Unauthorized;
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await ctx.Response.WriteAsync("Access denied.");
                 return;
             }
@@ -39,7 +38,7 @@ namespace Conductor.Middleware
 
             if (keyValue[0] != "Bearer")
             {
-                ctx.Response.StatusCode = (Int32)Unauthorized;
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await ctx.Response.WriteAsync("Access denied.");
                 return;
             }
@@ -56,7 +55,7 @@ namespace Conductor.Middleware
 
             if (!Encryption.ValidateJwt(client, keyValue[1], Settings.EncryptionKey).IsSuccessful)
             {
-                ctx.Response.StatusCode = (Int32)Unauthorized;
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await ctx.Response.WriteAsync("");
                 return;
             }

@@ -6,7 +6,6 @@ using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Conductor.App.Database;
@@ -45,6 +44,26 @@ public abstract class DBExchange
     protected virtual string VirtualColumn(string tableName)
     {
         return $"{tableName}_{Settings.IndexFileGroupName}";
+    }
+
+    private async Task<Result<List<Extraction>>> GetDependencies(Extraction extraction)
+    {
+        string[] dependencies = extraction.Dependencies!.Split(Settings.SplitterChar);
+
+        using var repository = new Data.LdbContext();
+        using var service = new Service.ExtractionService(repository);
+
+        var dependenciesList = await service.Search(dependencies);
+        if (!dependenciesList.IsSuccessful) return dependenciesList.Error;
+
+        dependenciesList.Value
+            .ForEach(x =>
+            {
+                x.Origin!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
+                x.Destination!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
+            });
+
+        return dependenciesList.Value;
     }
 
     public virtual async Task<Result<bool>> Exists(Extraction extraction)
@@ -268,22 +287,10 @@ public abstract class DBExchange
     {
         if (extraction.IsVirtual)
         {
-            string[] dependencies = extraction.Dependencies!.Split(Settings.SplitterChar);
+            var deps = await GetDependencies(extraction);
+            if (!deps.IsSuccessful) return deps.Error;
 
-            using var repository = new Data.LdbContext();
-            using var service = new Service.ExtractionService(repository);
-
-            var dependenciesList = await service.Search(dependencies);
-            if (!dependenciesList.IsSuccessful) return dependenciesList.Error;
-
-            dependenciesList.Value
-            .ForEach(x =>
-            {
-                x.Origin!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
-                x.Destination!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
-            });
-
-            return await ParallelFetch(dependenciesList.Value, current, shouldPartition, extraction.Name, token);
+            return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, token);
         }
         else
         {

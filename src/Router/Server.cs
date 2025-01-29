@@ -38,7 +38,7 @@ public sealed class Server : IAsyncDisposable
                     {
                         IPAddress RemoteIpAddress = (ctx.RemoteEndPoint as IPEndPoint)!.Address;
 
-                        Helper.VerifyIpAddress(RemoteIpAddress, ctx);
+                        Helper.FilterIpAddress(RemoteIpAddress, ctx);
 
                         await next(ctx);
                     });

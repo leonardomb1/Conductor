@@ -1,6 +1,7 @@
 using System.Net;
 using Conductor.Logging;
 using Conductor.Shared.Config;
+using Conductor.Shared.Types;
 using Microsoft.AspNetCore.Connections;
 
 namespace Conductor.Shared;
@@ -35,7 +36,7 @@ public static class Helper
         );
     }
 
-    public static void VerifyIpAddress(IPAddress address, HttpContext ctx)
+    public static bool VerifyIpAddress(IPAddress address, HttpContext ctx)
     {
         byte validations = 0;
         for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)
@@ -50,12 +51,13 @@ public static class Helper
                 RecordType.Warning,
                 callerMethod: "Kestrel"
             );
-            ctx.Abort();
-            return;
+            return false;
         }
+
+        return true;
     }
 
-    public static void VerifyIpAddress(IPAddress address, ConnectionContext ctx)
+    public static void FilterIpAddress(IPAddress address, ConnectionContext ctx)
     {
         byte validations = 0;
         for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)

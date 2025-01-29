@@ -1,8 +1,7 @@
-using System.Collections.ObjectModel;
-using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Conductor.Logging;
+using Microsoft.IdentityModel.Tokens;
 using NetTools;
 
 namespace Conductor.Shared.Config;
@@ -13,6 +12,8 @@ public static class Settings
 
     public static Lazy<IPAddressRange[]> AllowedIpsRange => new(() =>
     {
+        if (AllowedIps.IsNullOrEmpty()) return [];
+
         string[] ranges = AllowedIps.Split(SplitterChar);
         IPAddressRange[] arrayOfRanges = new IPAddressRange[ranges.Length];
 
