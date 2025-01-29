@@ -41,6 +41,12 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     [Column, NotNull, JsonRequired]
     public bool IsVirtual { get; set; }
 
+    [Column, Nullable]
+    public string? VirtualId { get; set; }
+
+    [Column, Nullable]
+    public bool? IsVirtualTemplate { get; set; }
+
     [Column, NotNull, JsonRequired]
     public bool BeforeExecutionDeletes { get; set; }
 
@@ -48,12 +54,16 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public bool SingleExecution { get; set; }
 
     [Column, Nullable]
+    [AllowedValues("Columnar", "Relational")]
+    public string? TableStructure { get; set; }
+
+    [Column, Nullable]
     public string? FilterColumn { get; set; }
 
     [Column, Nullable]
     public Int32? FilterTime { get; set; }
 
-    [Column, Nullable]
+    [Column, Nullable, JsonPropertyName("extractionAlias")]
     public string? Alias { get; set; }
 
     [Column, Nullable]

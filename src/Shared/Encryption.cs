@@ -124,9 +124,9 @@ public static class Encryption
 
             string[] availableIssuers = Settings.Nodes.Split("|");
 
-            if (!payload.TryGetPropertyValue("audience", out var audience)) return new Error("Invalid token.");
-            if (!payload.TryGetPropertyValue("issuer", out var issuer)) return new Error("Invalid token.");
-            if (!payload.TryGetPropertyValue("expiration", out var expiration)) return new Error("Invalid token.");
+            if (!payload.TryGetPropertyValue("aud", out var audience)) return new Error("Invalid token.");
+            if (!payload.TryGetPropertyValue("iss", out var issuer)) return new Error("Invalid token.");
+            if (!payload.TryGetPropertyValue("exp", out var expiration)) return new Error("Invalid token.");
 
             if (
                 ip == audience!.GetValue<string>() &&

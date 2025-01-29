@@ -6,6 +6,7 @@ using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Conductor.App.Database;
@@ -22,9 +23,11 @@ public abstract class DBExchange
 
     protected abstract string GetSqlType(Type dataType, Int32? lenght);
 
-    protected abstract StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file = null);
+    protected abstract StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file = null);
 
     protected abstract StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName);
+
+    protected abstract StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName);
 
     protected abstract StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName);
 
@@ -34,21 +37,33 @@ public abstract class DBExchange
 
     protected abstract string GeneratePartitionCondition(Extraction extraction);
 
+    protected virtual StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string tableName)
+    {
+        return stringBuilder.Append($" CONSTRAINT IX_{tableName}_PK PRIMARY KEY (ID_DW_{tableName}),");
+    }
+
+    protected virtual string VirtualColumn(string tableName)
+    {
+        return $"{tableName}_{Settings.IndexFileGroupName}";
+    }
+
     public virtual async Task<Result<bool>> Exists(Extraction extraction)
     {
         using DbConnection connection = CreateConnection(extraction.Destination!.ConnectionString);
         await connection.OpenAsync();
 
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
         using DbCommand command = CreateDbCommand(
             @$"
                 SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES {QueryNonLocking()} 
-                WHERE TABLE_NAME = '{extraction.Name}' AND TABLE_SCHEMA = '{extraction.Origin!.Name}'",
+                WHERE TABLE_NAME = '{tableName}' AND TABLE_SCHEMA = '{schemaName}'",
             connection
         );
 
         try
         {
-            Log.Out($"Creating schema {extraction.Origin.Name}...");
             var res = await command.ExecuteScalarAsync();
             return res != null;
         }
@@ -64,10 +79,13 @@ public abstract class DBExchange
 
     public virtual async Task<Result<bool>> Exists(Extraction extraction, DbConnection connection)
     {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
         using DbCommand command = CreateDbCommand(
             @$"
                 SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES {QueryNonLocking()} 
-                WHERE TABLE_NAME = '{extraction.Name}' AND TABLE_SCHEMA = '{extraction.Origin!.Name}'",
+                WHERE TABLE_NAME = '{tableName}' AND TABLE_SCHEMA = '{schemaName}'",
             connection
         );
 
@@ -87,8 +105,11 @@ public abstract class DBExchange
         using DbConnection connection = CreateConnection(extraction.Destination!.ConnectionString);
         await connection.OpenAsync();
 
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
         using DbCommand command = CreateDbCommand(
-            $"SELECT COUNT(*) FROM  \"{extraction.Origin?.Name}\".\"{extraction.Name}\" {QueryNonLocking()}",
+            $"SELECT COUNT(*) FROM  \"{schemaName}\".\"{tableName}\" {QueryNonLocking()}",
             connection
         );
 
@@ -112,10 +133,13 @@ public abstract class DBExchange
         using DbConnection connection = CreateConnection(extraction.Destination!.ConnectionString);
         await connection.OpenAsync();
 
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
         string cmdText;
         if (!extraction.IsIncremental)
         {
-            cmdText = $"TRUNCATE TABLE \"{extraction.Origin?.Name}\".\"{extraction.Name}\"";
+            cmdText = $"TRUNCATE TABLE \"{schemaName}\".\"{tableName}\"";
         }
         else
         {
@@ -125,15 +149,15 @@ public abstract class DBExchange
             }
 
             cmdText =
-                $"DELETE FROM \"{extraction.Origin?.Name}\".\"{extraction.Name}\" " +
-                GeneratePartitionCondition(extraction);
+                $"DELETE FROM \"{schemaName}\".\"{tableName}\" " +
+                $"{GeneratePartitionCondition(extraction)}";
         }
 
         using DbCommand command = CreateDbCommand(cmdText, connection);
 
         try
         {
-            Log.Out($"Clearing table {extraction.Origin?.Name}.{extraction.Name}...");
+            Log.Out($"Clearing table {schemaName}.{tableName}...");
             await command.ExecuteNonQueryAsync();
             return Result.Ok();
         }
@@ -149,17 +173,20 @@ public abstract class DBExchange
 
     public virtual async Task<Result> DropTable(Extraction extraction)
     {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
         using DbConnection connection = CreateConnection(extraction.Destination!.ConnectionString);
         await connection.OpenAsync();
 
         using DbCommand command = CreateDbCommand(
-            $"DROP TABLE \"{extraction.Origin?.Name}\".\"{extraction.Name}\"",
+            $"DROP TABLE \"{schemaName}\".\"{tableName}\"",
             connection
         );
 
         try
         {
-            Log.Out($"Droping table {extraction.Origin?.Name}.{extraction.Name}...");
+            Log.Out($"Droping table {schemaName}.{tableName}...");
             await command.ExecuteNonQueryAsync();
             return Result.Ok();
         }
@@ -176,23 +203,37 @@ public abstract class DBExchange
     public virtual async Task<Result<DataTable>> SingleFetch(
         Extraction extraction,
         UInt64 current,
-        string partitioning,
+        bool shouldPartition,
+        string? virtualizedTable = null,
         CancellationToken token = default
     )
     {
         using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
 
-        string name = extraction.Alias ?? extraction.Name;
+        string orderMode = shouldPartition ? "DESC" : "ASC";
+
+        string partitioning = "";
+        if (shouldPartition)
+        {
+            partitioning = extraction.IsIncremental ? GeneratePartitionCondition(extraction) : "";
+        }
+
+        string columns;
+        if (extraction.VirtualId != null && virtualizedTable != null)
+        {
+            columns = $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable)}\", *";
+        }
+        else
+        {
+            columns = "*";
+        }
 
         using DbCommand command = CreateDbCommand(
-            $@"
-                SELECT
-                    *
-                FROM {name} {QueryNonLocking() ?? ""}
+            @$"SELECT {columns} FROM {extraction.Name}
+                {QueryNonLocking()}
                 {partitioning}
-                ORDER BY {extraction.IndexName} ASC
-                {QueryPagination(current) ?? ""}
-            ",
+            ORDER BY {extraction.IndexName} {orderMode}
+            {QueryPagination(current)}",
             connection
         );
 
@@ -203,6 +244,8 @@ public abstract class DBExchange
             using var fetched = new DataTable();
             var select = await command.ExecuteReaderAsync(token);
             fetched.Load(select);
+
+            fetched.TableName = extraction.Alias ?? extraction.Name;
 
             return fetched;
         }
@@ -218,17 +261,11 @@ public abstract class DBExchange
 
     public virtual async Task<Result<DataTable>> FetchDataTable(
         Extraction extraction,
-        bool moreThanZero,
+        bool shouldPartition,
         UInt64 current,
         CancellationToken token
     )
     {
-        string partitioning = "";
-        if (moreThanZero)
-        {
-            partitioning = extraction.IsIncremental ? GeneratePartitionCondition(extraction) : "";
-        }
-
         if (extraction.IsVirtual)
         {
             string[] dependencies = extraction.Dependencies!.Split(Settings.SplitterChar);
@@ -246,40 +283,60 @@ public abstract class DBExchange
                 x.Destination!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
             });
 
-            return await ParallelFetch(dependenciesList.Value, current, partitioning, token);
+            return await ParallelFetch(dependenciesList.Value, current, shouldPartition, extraction.Name, token);
         }
         else
         {
-            return await SingleFetch(extraction, current, partitioning, token);
+            return await SingleFetch(extraction, current, shouldPartition, extraction.Name, token);
         }
     }
 
     public virtual async Task<Result<DataTable>> ParallelFetch(
         List<Extraction> extractions,
         UInt64 current,
-        string partitioning,
+        bool shouldPartition,
+        string virtualizedTable,
         CancellationToken token
     )
     {
         ConcurrentBag<DataTable> dataTables = [];
+        DataTable data = new();
+        bool gotTemplate = false;
+        byte errCount = 0;
 
         try
         {
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
-                var fetch = await SingleFetch(e, current, partitioning, t);
-                if (!fetch.IsSuccessful) return;
+                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, t);
+                if (!fetch.IsSuccessful)
+                {
+                    errCount++;
+                    return;
+                }
+
+                bool isTemplate = e.IsVirtualTemplate ?? false;
+
+                if (isTemplate)
+                {
+                    data = fetch.Value.Clone();
+                    gotTemplate = true;
+                }
 
                 dataTables.Add(fetch.Value);
             });
 
-            DataTable data = dataTables.FirstOrDefault()?.Clone() ?? new DataTable();
+            if (errCount == extractions.Count) return new Error("Failed to fetch data from all tables.");
+            if (!gotTemplate) data = dataTables.First().Clone();
 
-            foreach (var table in dataTables)
+            foreach (DataTable table in dataTables)
             {
+                table.Constraints.Clear();
                 data.Merge(table, false, MissingSchemaAction.Ignore);
                 table.Dispose();
             }
+
+            data.TableName = virtualizedTable;
 
             return data;
         }
@@ -303,6 +360,9 @@ public abstract class DBExchange
 
     public virtual async Task<Result> CreateTable(DataTable table, Extraction extraction)
     {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
         using var connection = CreateConnection(extraction.Destination!.ConnectionString);
         await connection.OpenAsync();
 
@@ -317,7 +377,7 @@ public abstract class DBExchange
 
         var queryBuilder = new StringBuilder();
 
-        queryBuilder.AppendLine($"CREATE TABLE \"{extraction.Origin!.Name}\".\"{extraction.Name}\" (");
+        queryBuilder.AppendLine($"CREATE TABLE \"{schemaName}\".\"{tableName}\" (");
 
         foreach (DataColumn column in table.Columns)
         {
@@ -325,18 +385,18 @@ public abstract class DBExchange
             string SqlType = GetSqlType(column.DataType, maxStringLength);
             queryBuilder.AppendLine($"    \"{column.ColumnName}\" {SqlType},");
         }
-
-        queryBuilder = AddChangeColumn(queryBuilder, extraction.Name);
-        queryBuilder = AddPrimaryKey(queryBuilder, extraction.IndexName, extraction.Name, extraction.Dependencies);
-        queryBuilder = AddColumnarStructure(queryBuilder, extraction.Name);
+        queryBuilder = AddChangeColumn(queryBuilder, tableName);
+        queryBuilder = AddIdentityColumn(queryBuilder, tableName);
+        queryBuilder = AddPrimaryKey(queryBuilder, tableName);
+        queryBuilder = AddSurrogateKey(queryBuilder, extraction.IndexName, tableName, extraction.Dependencies);
+        if (extraction.TableStructure == "Columnar") queryBuilder = AddColumnarStructure(queryBuilder, tableName);
         queryBuilder.AppendLine(");");
 
         try
         {
+            await EnsureSchemaCreation(schemaName, connection);
 
-            await EnsureSchemaCreation(extraction.Origin.Name, connection);
-
-            Log.Out($"Creating table {extraction.Origin?.Name}.{extraction.Name}...");
+            Log.Out($"Creating table {schemaName}.{tableName}...");
             using var command = CreateDbCommand(queryBuilder.ToString(), connection);
             await command.ExecuteNonQueryAsync();
 

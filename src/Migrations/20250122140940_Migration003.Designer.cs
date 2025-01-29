@@ -3,6 +3,7 @@ using System;
 using Conductor.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Conductor.Migrations
 {
     [DbContext(typeof(EfContext))]
-    partial class EfContextModelSnapshot : ModelSnapshot
+    [Migration("20250122140940_Migration003")]
+    partial class Migration003
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -99,9 +102,6 @@ namespace Conductor.Migrations
                     b.Property<bool>("IsVirtual")
                         .HasColumnType("boolean");
 
-                    b.Property<bool?>("IsVirtualTemplate")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -129,9 +129,6 @@ namespace Conductor.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("TotalPageAttr")
-                        .HasColumnType("text");
-
-                    b.Property<string>("VirtualId")
                         .HasColumnType("text");
 
                     b.HasKey("Id");

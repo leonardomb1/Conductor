@@ -27,10 +27,10 @@ public class MySQLExchange : DBExchange
         return $"WHERE \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss.fff}'";
     }
 
-    protected override StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string index, string tableName, string? file)
+    protected override StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file)
     {
         string indexGroup = file == null ? $"{index} ASC" : $"{index} ASC, {tableName}_{Settings.IndexFileGroupName} ASC";
-        return stringBuilder.Append($" PRIMARY KEY ({indexGroup}),");
+        return stringBuilder.Append($" UNIQUE ({indexGroup}),");
     }
 
     protected override StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName) =>
@@ -39,6 +39,9 @@ public class MySQLExchange : DBExchange
     protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.Append($"");
 
+    protected override StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName) =>
+        stringBuilder.AppendLine($" ID_DW_{tableName} INT AUTO_INCREMENT,");
+
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
         using MySqlCommand select = new($"SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{system}'", (MySqlConnection)connection);
@@ -46,6 +49,7 @@ public class MySQLExchange : DBExchange
 
         if (res == null)
         {
+            Log.Out($"Creating schema {system}...");
             using MySqlCommand createSchema = new($"CREATE SCHEMA {system}", (MySqlConnection)connection);
             await createSchema.ExecuteNonQueryAsync();
         }
@@ -90,6 +94,8 @@ public class MySQLExchange : DBExchange
 
     protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
     {
+        string tableName = extraction.Alias ?? extraction.Name;
+
         try
         {
             using MySqlConnection connection = new(extraction.Destination!.ConnectionString);
@@ -99,7 +105,7 @@ public class MySQLExchange : DBExchange
 
             MySqlBulkLoader bulk = new(connection)
             {
-                TableName = $"{extraction.Origin!.Name}.{extraction.Name}",
+                TableName = $"{tableName}",
                 FieldTerminator = ",",
                 LineTerminator = "\n",
                 NumberOfLinesToSkip = 0,

@@ -4,6 +4,7 @@ using Conductor.Data;
 using Conductor.Logging;
 using Conductor.Router;
 using Conductor.Shared.Config;
+using LinqToDB;
 using LinqToDB.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,7 +12,7 @@ namespace Conductor.Shared;
 
 public static class Initializer
 {
-    private static void InitializeFromFile(string? envFilePath)
+    public static void InitializeFromFile(string? envFilePath)
     {
         try
         {
@@ -59,7 +60,7 @@ public static class Initializer
     }
 
 
-    private static void InitializeFromEnvVar()
+    public static void InitializeFromEnvVar()
     {
         try
         {
@@ -103,21 +104,12 @@ public static class Initializer
 
     private static void ServerStartup()
     {
-        try
+        if (Settings.DevelopmentMode)
         {
-            if (Settings.DevelopmentMode)
-            {
-                Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
-            }
+            Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+        }
 
-            // Linq2db config
-            DataConnection.DefaultSettings = new ConnectionSettings();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.Message);
-            throw;
-        }
+        DataConnection.DefaultSettings = new ConnectionSettings();
 
         Server server = new();
         server.Run();
@@ -126,6 +118,12 @@ public static class Initializer
     private static async Task Migration(Action<string> say)
     {
         using var db = new EfContext();
+        if (Settings.DbType != ProviderName.PostgreSQL)
+        {
+            Log.Out("Only PostgreSQL is supported for migrations, defaulting to Regular DB Creation...", dump: false);
+            db.Database.EnsureCreated();
+            return;
+        }
         if (db.Database.GetPendingMigrations().Any())
         {
             await db.Database.MigrateAsync();
@@ -164,6 +162,18 @@ public static class Initializer
     public static void MigrateAndInitialize()
     {
         InitializeFromEnvVar();
+        Migration((s) => Log.Out(s)).Wait();
+        ServerStartup();
+    }
+
+    public static void MigrateAndInitialize(string? envFilePath)
+    {
+        if (envFilePath == null)
+        {
+            Console.WriteLine("No .env file path was provided.");
+            Environment.Exit(1);
+        }
+        InitializeFromFile(envFilePath);
         Migration((s) => Log.Out(s)).Wait();
         ServerStartup();
     }

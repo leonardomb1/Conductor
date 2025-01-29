@@ -3,7 +3,7 @@ services:
     image: 'postgres:latest'
     hostname: conductor-db
     ports:
-      - 15432:5432
+      - ${DB_FORWARED_PORT_NUMBER}:5432
     env_file:
       - .env
     environment:
@@ -21,11 +21,11 @@ services:
       retries: 5
 
   api:
-    image: conductor:0.0.1
+    image: conductor:0.0.1-${DOCKER_ENVIRONMENT}
     hostname: conductor-api
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/${DOCKER_ENVIRONMENT}/Dockerfile
     env_file:
       - .env
     environment:
@@ -52,8 +52,7 @@ services:
       - LDAP_VERIFY_CERTIFICATE=${LDAP_VERIFY_CERTIFICATE}
       - NODES=${NODES}
       - USE_HTTPS=${USE_HTTPS}
-      - TCP_ALLOWED_IPS=${TCP_ALLOWED_IPS}
-      - HTTP_ALLOWED_IPS=${HTTP_ALLOWED_IPS}
+      - ALLOWED_IP_ADDRESSES=${ALLOWED_IP_ADDRESSES}
       - ALLOWED_CORS=${ALLOWED_CORS}
       - BULK_TIMEOUT_SEC=${BULK_TIMEOUT_SEC}
       - DEVELOPMENT_MODE=${DEVELOPMENT_MODE}
@@ -66,20 +65,28 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - VERIFY_CONNECTION_ORIGIN=${VERIFY_CONNECTION_ORIGIN}
+      - VERIFY_TCP=${VERIFY_TCP}
+      - VERIFY_HTTP=${VERIFY_HTTP}
+      - VERIFY_CORS=${VERIFY_CORS}
       - MAX_QUERY_PARAMS=${MAX_QUERY_PARAMS}
       - CERTIFICATE_PASSWORD=${CERTIFICATE_PASSWORD}
       - CERTIFICATE_PATH=${CERTIFICATE_PATH}
       - INDEX_FILEGROUP_NAME=${INDEX_FILEGROUP_NAME}
       - ENCRYPT_INDICATOR_BEGIN=${ENCRYPT_INDICATOR_BEGIN}
       - ENCRYPT_INDICATOR_END=${ENCRYPT_INDICATOR_END}
+      - VIRTUAL_TABLE_ID_MAX_LENGHT=${VIRTUAL_TABLE_ID_MAX_LENGHT}
     depends_on:
       database:
         condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "curl -f http://conductor-api:${PORT_NUMBER}/api/health -H 'Key:${API_KEY}' || exit 1"]
+        interval: 200s
+        timeout: 5s
+        retries: 5
     networks:
       - conductor-network
     ports:
-      - '22000:${PORT_NUMBER}'
+      - "${API_FORWARDED_PORT_NUMBER}:${PORT_NUMBER}"
 
 networks:
   conductor-network:
