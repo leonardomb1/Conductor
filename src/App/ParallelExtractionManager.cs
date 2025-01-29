@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Threading.Channels;
 using Conductor.App.Database;
 using Conductor.Model;
@@ -56,27 +57,16 @@ public static class ParallelExtractionManager
 
             if (!e.SingleExecution)
             {
-                var metadataClient = DBExchangeFactory.Create(e.Destination!.DbType);
-                var tableExists = await metadataClient.Exists(e);
-                if (!tableExists.IsSuccessful)
-                {
-                    errCount++;
-                }
+                var metadata = DBExchangeFactory.Create(e.Destination!.DbType);
+                var tableExists = await metadata.Exists(e);
+                if (!tableExists.IsSuccessful) errCount++;
 
                 if (tableExists.Value)
                 {
-                    var rc = await metadataClient.CountTableRows(e);
-                    if (!rc.IsSuccessful)
-                    {
-                        errCount++;
-                    }
+                    var rc = await metadata.CountTableRows(e);
+                    if (!rc.IsSuccessful) errCount++;
 
                     destRc = rc.Value;
-
-                    if (e.BeforeExecutionDeletes)
-                    {
-                        await metadataClient.ClearTable(e);
-                    }
                 }
             }
 
@@ -122,6 +112,7 @@ public static class ParallelExtractionManager
     {
         Result insertRes = new();
         Result createRes = new();
+        Result clear = new();
 
         while (await channel.Reader.WaitToReadAsync())
         {
@@ -149,15 +140,19 @@ public static class ParallelExtractionManager
                     try
                     {
                         var inserter = DBExchangeFactory.Create(e.Extraction.Destination!.DbType);
-                        createRes = await inserter.CreateTable(e.MergedTable, e.Extraction);
-                        insertRes = await inserter.WriteDataTable(e.MergedTable, e.Extraction);
+
+                        using DbConnection con = inserter.CreateConnection(e.Extraction.Destination.ConnectionString);
+
+                        clear = await inserter.ClearTable(e.Extraction, e.MergedTable, con);
+                        createRes = await inserter.CreateTable(e.MergedTable, e.Extraction, con);
+                        insertRes = await inserter.WriteDataTable(e.MergedTable, e.Extraction, con);
                     }
                     finally
                     {
                         e.MergedTable.Dispose();
                     }
                 });
-            } while ((!insertRes.IsSuccessful || !createRes.IsSuccessful) && attempt < Settings.ConsumerAttemptMax);
+            } while ((!insertRes.IsSuccessful || !createRes.IsSuccessful || !clear.IsSuccessful) && attempt < Settings.ConsumerAttemptMax);
 
             if (attempt > Settings.ConsumerAttemptMax) errCount++;
         }

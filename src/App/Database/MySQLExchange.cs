@@ -16,15 +16,26 @@ public class MySQLExchange : DBExchange
 
     protected override string? QueryNonLocking() => "LOCK IN SHARE MODE";
 
-    protected override string GeneratePartitionCondition(Extraction extraction)
+    protected override string GeneratePartitionCondition(Extraction extraction, double timeZoneOffSet, string? virtualColumn = null)
     {
+        StringBuilder builder = new();
         if (!extraction.FilterTime.HasValue)
         {
             throw new Exception("Filter time cannot be null in this context.");
         }
 
-        var lookupTime = DateTime.Now.AddSeconds((double)-extraction.FilterTime!);
-        return $"WHERE \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss.fff}'";
+        if (extraction.FilterTime.HasValue)
+        {
+            var lookupTime = DateTime.UtcNow.AddSeconds((double)-extraction.FilterTime!).AddHours(timeZoneOffSet);
+            builder.Append($"AND \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss}' ");
+        }
+
+        if (extraction.VirtualId != null && virtualColumn != null)
+        {
+            builder.Append($"OR \"{virtualColumn}\" = '{extraction.VirtualId}' ");
+        }
+
+        return builder.ToString();
     }
 
     protected override StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? file)
@@ -55,7 +66,7 @@ public class MySQLExchange : DBExchange
         }
     }
 
-    protected override DbConnection CreateConnection(string conStr)
+    public override DbConnection CreateConnection(string conStr)
     {
         return new MySqlConnection(conStr);
     }
@@ -92,7 +103,7 @@ public class MySQLExchange : DBExchange
         };
     }
 
-    protected override async Task<Result> BulkInsert(DataTable data, Extraction extraction)
+    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction)
     {
         string tableName = extraction.Alias ?? extraction.Name;
 
@@ -134,6 +145,52 @@ public class MySQLExchange : DBExchange
             await transaction.CommitAsync();
             await connection.CloseAsync();
 
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
+    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction, DbConnection connection)
+    {
+        string tableName = extraction.Alias ?? extraction.Name;
+
+        try
+        {
+            using MySqlConnection mySQLConnection = (MySqlConnection)connection;
+            using MySqlTransaction transaction = await mySQLConnection.BeginTransactionAsync();
+
+            MySqlBulkLoader bulk = new(mySQLConnection)
+            {
+                TableName = $"{tableName}",
+                FieldTerminator = ",",
+                LineTerminator = "\n",
+                NumberOfLinesToSkip = 0,
+                Local = true
+            };
+
+            foreach (DataColumn column in data.Columns)
+            {
+                bulk.Columns.Add(column.ColumnName);
+            }
+
+            using MemoryStream memoryStream = new();
+            using StreamWriter writer = new(memoryStream, Encoding.UTF8, 1024, true);
+            foreach (DataRow row in data.Rows)
+            {
+                var fields = row.ItemArray.Select(field => field?.ToString());
+                writer.WriteLine(string.Join(",", fields));
+            }
+
+            memoryStream.Position = 0;
+            using StreamReader reader = new(memoryStream);
+            bulk.Load(reader.BaseStream);
+            Log.Out($"Writing row data {data.Rows.Count} - in {bulk.TableName}");
+            await bulk.LoadAsync();
+
+            await transaction.CommitAsync();
             return Result.Ok();
         }
         catch (Exception ex)

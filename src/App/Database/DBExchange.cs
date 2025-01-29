@@ -18,7 +18,7 @@ public abstract class DBExchange
 
     protected abstract DbCommand CreateDbCommand(string query, DbConnection connection);
 
-    protected abstract DbConnection CreateConnection(string conStr);
+    public abstract DbConnection CreateConnection(string conStr);
 
     protected abstract string GetSqlType(Type dataType, Int32? lenght);
 
@@ -32,9 +32,11 @@ public abstract class DBExchange
 
     protected abstract Task EnsureSchemaCreation(string system, DbConnection connection);
 
-    protected abstract Task<Result> BulkInsert(DataTable data, Extraction extraction);
+    public abstract Task<Result> WriteDataTable(DataTable data, Extraction extraction);
 
-    protected abstract string GeneratePartitionCondition(Extraction extraction);
+    public abstract Task<Result> WriteDataTable(DataTable data, Extraction extraction, DbConnection connection);
+
+    protected abstract string GeneratePartitionCondition(Extraction extraction, double timeZoneOffSet, string? virtualColumn = null);
 
     protected virtual StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string tableName)
     {
@@ -147,38 +149,36 @@ public abstract class DBExchange
         }
     }
 
-    public virtual async Task<Result> ClearTable(Extraction extraction)
+    public virtual async Task<Result> ClearTable(Extraction extraction, DataTable data)
     {
+        if (extraction.BeforeExecutionDeletes) return Result.Ok();
+
         using DbConnection connection = CreateConnection(extraction.Destination!.ConnectionString);
         await connection.OpenAsync();
 
-        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        StringBuilder builder = new();
 
-        string cmdText;
-        if (!extraction.IsIncremental)
+        if (extraction.IsIncremental)
         {
-            cmdText = $"TRUNCATE TABLE \"{schemaName}\".\"{tableName}\"";
+            builder.Append($"DELETE FROM \"{schemaName}\".\"{tableName}\" WHERE 1 = 1 ");
+            foreach (DataRow row in data.Rows)
+            {
+                if (extraction.IsVirtual) builder.Append($"AND \"{VirtualColumn(tableName)}\" = '{row[VirtualColumn(tableName)]}' ");
+                builder.Append($"AND \"{extraction.IndexName}\" = {row[extraction.IndexName]} ");
+            }
         }
         else
         {
-            if (extraction.FilterColumn.IsNullOrEmpty() || extraction.FilterTime == null)
-            {
-                return new Error("Invalid filter column, or value, input.");
-            }
-
-            cmdText =
-                $"DELETE FROM \"{schemaName}\".\"{tableName}\" " +
-                $"{GeneratePartitionCondition(extraction)}";
+            builder.Append($"TRUNCATE TABLE {schemaName}.{tableName}");
         }
-
-        using DbCommand command = CreateDbCommand(cmdText, connection);
 
         try
         {
             Log.Out($"Clearing table {schemaName}.{tableName}...");
+            using DbCommand command = CreateDbCommand(builder.ToString(), connection);
             await command.ExecuteNonQueryAsync();
-            return Result.Ok();
         }
         catch (Exception ex)
         {
@@ -234,7 +234,7 @@ public abstract class DBExchange
         string partitioning = "";
         if (shouldPartition)
         {
-            partitioning = extraction.IsIncremental ? GeneratePartitionCondition(extraction) : "";
+            partitioning = extraction.IsIncremental ? GeneratePartitionCondition(extraction, extraction.Origin!.TimeZoneOffSet) : "";
         }
 
         string columns;
@@ -357,14 +357,6 @@ public abstract class DBExchange
         }
     }
 
-    public virtual async Task<Result> WriteDataTable(DataTable table, Extraction extraction)
-    {
-        var insert = await BulkInsert(table, extraction);
-        if (!insert.IsSuccessful) return insert.Error;
-
-        return Result.Ok();
-    }
-
     public virtual async Task<Result> CreateTable(DataTable table, Extraction extraction)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
@@ -416,6 +408,53 @@ public abstract class DBExchange
         finally
         {
             await connection.CloseAsync();
+        }
+    }
+
+    public virtual async Task<Result> CreateTable(DataTable table, Extraction extraction, DbConnection connection)
+    {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
+        var verify = await Exists(extraction, connection);
+        if (!verify.IsSuccessful) return verify.Error;
+
+        if (verify.Value)
+        {
+            await connection.CloseAsync();
+            return Result.Ok();
+        }
+
+        var queryBuilder = new StringBuilder();
+
+        queryBuilder.AppendLine($"CREATE TABLE \"{schemaName}\".\"{tableName}\" (");
+
+        foreach (DataColumn column in table.Columns)
+        {
+            Int32? maxStringLength = column.MaxLength;
+            string SqlType = GetSqlType(column.DataType, maxStringLength);
+            queryBuilder.AppendLine($"    \"{column.ColumnName}\" {SqlType},");
+        }
+        queryBuilder = AddChangeColumn(queryBuilder, tableName);
+        queryBuilder = AddIdentityColumn(queryBuilder, tableName);
+        queryBuilder = AddPrimaryKey(queryBuilder, tableName);
+        queryBuilder = AddSurrogateKey(queryBuilder, extraction.IndexName, tableName, extraction.Dependencies);
+        if (extraction.TableStructure == "Columnar") queryBuilder = AddColumnarStructure(queryBuilder, tableName);
+        queryBuilder.AppendLine(");");
+
+        try
+        {
+            await EnsureSchemaCreation(schemaName, connection);
+
+            Log.Out($"Creating table {schemaName}.{tableName}...");
+            using var command = CreateDbCommand(queryBuilder.ToString(), connection);
+            await command.ExecuteNonQueryAsync();
+
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 }

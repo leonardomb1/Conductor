@@ -59,8 +59,8 @@ public static class Settings
     [ConfigKey("SESSION_TIME_SEC")]
     public static UInt32 SessionTime { get; set; }
 
-    [ConfigKey("BULK_TIMEOUT_SEC")]
-    public static Int32 BulkCopyTimeout { get; set; }
+    [ConfigKey("QUERY_TIMEOUT_SEC")]
+    public static Int32 QueryTimeout { get; set; }
 
     [ConfigKey("MAX_CONSUMER_ATTEMPT")]
     public static byte ConsumerAttemptMax { get; set; }
