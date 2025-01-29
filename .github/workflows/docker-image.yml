@@ -1,0 +1,20 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set Version Number
+      run: echo "VERSION=${{ github.run_number }}" >> $GITHUB_ENV
+
+    - name: Build the Docker image
+      run: docker build . --file ./docker/main/Dockerfile --tag conductor:main-v0.0.$VERSION
