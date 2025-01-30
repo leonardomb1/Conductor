@@ -58,17 +58,10 @@ public static class ParallelExtractionManager
             if (!e.SingleExecution)
             {
                 var metadata = DBExchangeFactory.Create(e.Destination!.DbType);
-                var tableExists = await metadata.Exists(e);
-                if (!tableExists.IsSuccessful) errCount++;
-
-                if (tableExists.Value)
+                if ((await metadata.Exists(e)).Value)
                 {
-                    var rc = await metadata.CountTableRows(e);
-                    if (!rc.IsSuccessful) errCount++;
-
-                    destRc = rc.Value;
-
                     if (e.BeforeExecutionDeletes) await metadata.TruncateTable(e);
+                    destRc = (await metadata.CountTableRows(e)).Value;
                 }
             }
 
@@ -113,8 +106,6 @@ public static class ParallelExtractionManager
     public static async Task ConsumeDBData(Channel<(DataTable, Extraction)> channel, UInt16 errCount)
     {
         Result insertRes = new();
-        Result createRes = new();
-        Result clear = new();
 
         while (await channel.Reader.WaitToReadAsync())
         {
@@ -139,26 +130,27 @@ public static class ParallelExtractionManager
                 attempt++;
                 await Parallel.ForEachAsync(groupedData, Settings.ParallelRule.Value, async (e, t) =>
                 {
+                    var inserter = DBExchangeFactory.Create(e.Extraction.Destination!.DbType);
+                    using DbConnection con = inserter.CreateConnection(e.Extraction.Destination.ConnectionString);
+
                     try
                     {
-                        var inserter = DBExchangeFactory.Create(e.Extraction.Destination!.DbType);
-
-                        using DbConnection con = inserter.CreateConnection(e.Extraction.Destination.ConnectionString);
-
                         await con.OpenAsync(t);
 
-                        clear = await inserter.ClearTable(e.Extraction, e.MergedTable, con);
-                        createRes = await inserter.CreateTable(e.MergedTable, e.Extraction, con);
-                        insertRes = await inserter.WriteDataTable(e.MergedTable, e.Extraction, con);
+                        UInt64 rowCount = (await inserter.Exists(e.Extraction, con)).Value ? (await inserter.CountTableRows(e.Extraction, con)).Value : 0;
 
-                        await con.CloseAsync();
+                        await inserter.ClearTable(e.Extraction, e.MergedTable, con, rowCount);
+                        await inserter.CreateTable(e.MergedTable, e.Extraction, con);
+
+                        insertRes = await inserter.WriteDataTable(e.MergedTable, e.Extraction, con);
                     }
                     finally
                     {
                         e.MergedTable.Dispose();
+                        await con.CloseAsync();
                     }
                 });
-            } while ((!insertRes.IsSuccessful || !createRes.IsSuccessful || !clear.IsSuccessful) && attempt < Settings.ConsumerAttemptMax);
+            } while ((!insertRes.IsSuccessful) && attempt < Settings.ConsumerAttemptMax);
 
             if (attempt > Settings.ConsumerAttemptMax) errCount++;
         }
