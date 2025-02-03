@@ -28,6 +28,9 @@ public static class ExtractionRoute
         group.MapPost("/execute", async (ExtractionController controller, HttpRequest request) => await controller.ExecuteExtraction(request.Query))
             .WithName("ExecuteExtraction");
 
+        group.MapGet("/fetch", async (ExtractionController controller, HttpRequest request) => await controller.FetchData(request.Query))
+            .WithName("FetchData");
+
         group.MapDelete("/{id}", async (ExtractionController controller, string id) => await controller.Delete(id))
             .WithName("DeleteExtraction");
 

@@ -67,7 +67,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
 
     public static async Task<Result<List<Extraction>>> GetDependencies(Extraction extraction)
     {
-        string[] dependencies = extraction.Dependencies!.Split(Settings.SplitterChar);
+        string[] dependencies = extraction.Dependencies!.Split(Settings.SplitterChar) ?? [];
 
         using var repository = new LdbContext();
         using var service = new ExtractionService(repository);

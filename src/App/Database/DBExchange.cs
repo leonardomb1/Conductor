@@ -258,6 +258,7 @@ public abstract class DBExchange
         bool shouldPartition,
         string? virtualizedTable = null,
         string? virtualizedIdGroup = null,
+        bool shouldPaginate = true,
         CancellationToken token = default
     )
     {
@@ -265,30 +266,21 @@ public abstract class DBExchange
 
         string orderMode = shouldPartition ? "DESC" : "ASC";
 
-        string partitioning = "";
-        if (shouldPartition)
-        {
-            partitioning = extraction.IsIncremental ? GeneratePartitionCondition(extraction, extraction.Origin!.TimeZoneOffSet) : "";
-        }
+        string partitioning = extraction.IsIncremental && shouldPartition ?
+            GeneratePartitionCondition(extraction, extraction.Origin!.TimeZoneOffSet) : "";
 
-        string columns;
-        if (extraction.VirtualId != null && virtualizedTable != null)
-        {
-            columns = $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\", *";
-        }
-        else
-        {
-            columns = "*";
-        }
+        string columns = extraction.VirtualId != null && virtualizedTable != null ?
+            $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\", *" : "*";
 
-        using DbCommand command = CreateDbCommand(
-            @$"SELECT {columns} FROM {extraction.Name}
+        string? pagination = shouldPaginate ? QueryPagination(current) : "" ?? "";
+
+        string query = extraction.OverrideQuery ?? @$"SELECT {columns} FROM {extraction.Name}
                 {QueryNonLocking()}
                 {partitioning}
             ORDER BY {extraction.IndexName} {orderMode}
-            {QueryPagination(current)}",
-            connection
-        );
+            {pagination}";
+
+        using DbCommand command = CreateDbCommand(query, connection);
 
         try
         {
@@ -316,7 +308,8 @@ public abstract class DBExchange
         Extraction extraction,
         bool shouldPartition,
         UInt64 current,
-        CancellationToken token
+        CancellationToken token,
+        bool shouldPaginate = true
     )
     {
         if (extraction.IsVirtual)
@@ -324,11 +317,11 @@ public abstract class DBExchange
             var deps = await ExtractionService.GetDependencies(extraction);
             if (!deps.IsSuccessful) return deps.Error;
 
-            return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup!, token);
+            return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup!, token, shouldPaginate);
         }
         else
         {
-            return await SingleFetch(extraction, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup, token);
+            return await SingleFetch(extraction, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup, shouldPaginate, token);
         }
     }
 
@@ -338,7 +331,8 @@ public abstract class DBExchange
         bool shouldPartition,
         string virtualizedTable,
         string virtualIdGroup,
-        CancellationToken token
+        CancellationToken token,
+        bool shouldPaginate = true
     )
     {
         ConcurrentBag<DataTable> dataTables = [];
@@ -350,7 +344,7 @@ public abstract class DBExchange
         {
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
-                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, virtualIdGroup, t);
+                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, virtualIdGroup, default, t);
                 if (!fetch.IsSuccessful)
                 {
                     errCount++;

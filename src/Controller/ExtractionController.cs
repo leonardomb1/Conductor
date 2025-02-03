@@ -1,3 +1,4 @@
+using System.Data;
 using Conductor.App;
 using Conductor.App.Database;
 using Conductor.Model;
@@ -45,6 +46,56 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         return TypedResults.Ok(
             new Message(Status200OK, "Extraction Successful.")
+        );
+    }
+
+    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>, Ok<Message<Dictionary<string, object>>>>> FetchData(IQueryCollection? filters)
+    {
+        var fetch = await service.Search(filters);
+
+        if (!fetch.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(ErrorMessage(
+                fetch.Error.ExceptionMessage)
+            );
+        }
+
+        var res = fetch.Value.FirstOrDefault();
+
+        if (res == null)
+        {
+            return TypedResults.Ok(new Message(Status200OK, "No such table.", false));
+        }
+
+        res.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(
+            res.Origin!.ConnectionString,
+            Settings.EncryptionKey
+        );
+
+        res.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(
+            res.Destination!.ConnectionString,
+            Settings.EncryptionKey
+        );
+
+        var engine = DBExchangeFactory.Create(res.Origin.DbType);
+        var query = await engine.FetchDataTable(res, false, 0, default, shouldPaginate: false);
+        if (!query.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(ErrorMessage(
+                fetch.Error.ExceptionMessage)
+            );
+        }
+
+        using var dataTable = query.Value;
+        List<Dictionary<string, object>> rows = [.. dataTable.Rows.Cast<DataRow>().Select(row =>
+            dataTable.Columns.Cast<DataColumn>().ToDictionary(
+                col => col.ColumnName,
+                col => row[col]
+            )
+        )];
+
+        return TypedResults.Ok(
+            new Message<Dictionary<string, object>>(Status200OK, "Result fetch was successful.", (dynamic)rows)
         );
     }
 
