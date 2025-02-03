@@ -108,7 +108,96 @@ public class MSSQLExchange : DBExchange
         };
     }
 
-    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction)
+    public override async Task<Result> MergeLoad(DataTable data, Extraction extraction, DbConnection connection)
+    {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+        string virtualColumn = extraction.IsVirtual ? VirtualColumn(tableName, extraction.VirtualIdGroup ?? "file") : "";
+
+        var tempTableName = $"#Temp_{tableName}";
+
+        var createTempTableQuery = new StringBuilder();
+
+        using var dropTempTableCommand = CreateDbCommand($"DROP TABLE IF EXISTS {tempTableName}", connection);
+        await dropTempTableCommand.ExecuteNonQueryAsync();
+
+        createTempTableQuery.AppendLine($"CREATE TABLE {tempTableName} (");
+
+        foreach (DataColumn column in data.Columns)
+        {
+            Int32? maxStringLength = column.MaxLength;
+            string sqlType = GetSqlType(column.DataType, maxStringLength);
+            createTempTableQuery.AppendLine($"    [{column.ColumnName}] {sqlType},");
+        }
+
+        createTempTableQuery.Length--;
+        createTempTableQuery.AppendLine(");");
+
+        try
+        {
+            using var createTempTableCommand = CreateDbCommand(createTempTableQuery.ToString(), connection);
+            await createTempTableCommand.ExecuteNonQueryAsync();
+
+            using var bulkCopy = new SqlBulkCopy((SqlConnection)connection)
+            {
+                DestinationTableName = tempTableName
+            };
+
+            Log.Out($"Executing Bulk load from row data with {data.Rows.Count} lines on table: {tempTableName}");
+            await bulkCopy.WriteToServerAsync(data);
+
+            var mergeQuery = new StringBuilder();
+            mergeQuery.AppendLine($"MERGE INTO [{schemaName}].[{tableName}] AS Target");
+            mergeQuery.AppendLine($"USING {tempTableName} AS Source");
+            if (extraction.IsVirtual)
+            {
+                mergeQuery.AppendLine($"ON Target.[{virtualColumn}] = Source.[{virtualColumn}] ");
+                mergeQuery.AppendLine($"AND Target.[{extraction.IndexName}] = Source.[{extraction.IndexName}]");
+            }
+            else
+            {
+                mergeQuery.AppendLine($"ON Target.[{extraction.IndexName}] = Source.[{extraction.IndexName}] ");
+            }
+            mergeQuery.AppendLine("WHEN MATCHED THEN");
+            mergeQuery.AppendLine("    UPDATE SET");
+
+            var updateColumns = data.Columns.Cast<DataColumn>()
+                .Where(column => column.ColumnName != virtualColumn && column.ColumnName != extraction.IndexName)
+                .Select(column => $"Target.[{column.ColumnName}] = Source.[{column.ColumnName}]");
+            mergeQuery.AppendLine(string.Join(",\n    ", updateColumns));
+
+            mergeQuery.AppendLine("WHEN NOT MATCHED THEN");
+            mergeQuery.AppendLine("    INSERT (");
+
+            var insertColumns = data.Columns.Cast<DataColumn>()
+                .Select(column => $"[{column.ColumnName}]");
+            mergeQuery.AppendLine(string.Join(",\n    ", insertColumns));
+
+            mergeQuery.AppendLine("    ) VALUES (");
+
+            var values = data.Columns.Cast<DataColumn>()
+                .Select(column => $"Source.[{column.ColumnName}]");
+            mergeQuery.AppendLine(string.Join(",\n    ", values));
+
+            mergeQuery.AppendLine("    );");
+
+            Log.Out("Merging temp table with physical...");
+            using var mergeCommand = CreateDbCommand(mergeQuery.ToString(), connection);
+            await mergeCommand.ExecuteNonQueryAsync();
+
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+        finally
+        {
+            await dropTempTableCommand.ExecuteNonQueryAsync();
+        }
+    }
+
+    public override async Task<Result> BulkLoad(DataTable data, Extraction extraction)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
@@ -125,7 +214,7 @@ public class MSSQLExchange : DBExchange
                 DestinationTableName = $"{schemaName}.{tableName}"
             };
 
-            Log.Out($"Writing imported row data with {data.Rows.Count} lines on table: {bulk.DestinationTableName}");
+            Log.Out($"Executing Bulk load from row data with {data.Rows.Count} lines on table: {bulk.DestinationTableName}");
 
             await bulk.WriteToServerAsync(data);
 
@@ -139,7 +228,7 @@ public class MSSQLExchange : DBExchange
         }
     }
 
-    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction, DbConnection connection)
+    public override async Task<Result> BulkLoad(DataTable data, Extraction extraction, DbConnection connection)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
@@ -152,7 +241,7 @@ public class MSSQLExchange : DBExchange
                 DestinationTableName = $"{schemaName}.{tableName}"
             };
 
-            Log.Out($"Writing imported row data with {data.Rows.Count} lines on table: {bulk.DestinationTableName}");
+            Log.Out($"Executing Bulk load from row data with {data.Rows.Count} lines on table: {bulk.DestinationTableName}");
 
             await bulk.WriteToServerAsync(data);
 

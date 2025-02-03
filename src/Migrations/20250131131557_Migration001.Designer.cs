@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Conductor.Migrations
 {
     [DbContext(typeof(EfContext))]
-    [Migration("20250127185043_Migration005")]
-    partial class Migration005
+    [Migration("20250131131557_Migration001")]
+    partial class Migration001
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -47,6 +47,10 @@ namespace Conductor.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "destinationName");
+
+                    b.Property<double>("TimeZoneOffSet")
+                        .HasColumnType("double precision")
+                        .HasAnnotation("Relational:JsonPropertyName", "destinationTimeZoneOffSet");
 
                     b.HasKey("Id");
 
@@ -122,7 +126,7 @@ namespace Conductor.Migrations
                     b.Property<string>("PageAttr")
                         .HasColumnType("text");
 
-                    b.Property<long>("ScheduleId")
+                    b.Property<long?>("ScheduleId")
                         .HasColumnType("bigint");
 
                     b.Property<bool>("SingleExecution")
@@ -135,6 +139,9 @@ namespace Conductor.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("VirtualId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VirtualIdGroup")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -174,6 +181,10 @@ namespace Conductor.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "originName");
+
+                    b.Property<double>("TimeZoneOffSet")
+                        .HasColumnType("double precision")
+                        .HasAnnotation("Relational:JsonPropertyName", "originTimeZoneOffSet");
 
                     b.HasKey("Id");
 
@@ -273,9 +284,7 @@ namespace Conductor.Migrations
 
                     b.HasOne("Conductor.Model.Schedule", "Schedule")
                         .WithMany()
-                        .HasForeignKey("ScheduleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ScheduleId");
 
                     b.Navigation("Destination");
 

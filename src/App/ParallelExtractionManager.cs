@@ -105,12 +105,12 @@ public static class ParallelExtractionManager
 
     public static async Task ConsumeDBData(Channel<(DataTable, Extraction)> channel, UInt16 errCount)
     {
-        Result insertRes = new();
+        HashSet<string> executeBulk = [];
 
         while (await channel.Reader.WaitToReadAsync())
         {
+            List<(DataTable data, Extraction metadata)> fetchedData = [];
             byte attempt = 0;
-            List<(DataTable, Extraction)> fetchedData = [];
 
             for (UInt16 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable, Extraction) item); i++)
             {
@@ -118,41 +118,48 @@ public static class ParallelExtractionManager
             }
 
             var groupedData = fetchedData
-                .GroupBy(e => e.Item2)
+                .GroupBy(e => e.metadata)
                 .Select(group =>
                 {
-                    using var mergedTable = Converter.MergeDataTables([.. group.Select(x => x.Item1)]);
-                    return (MergedTable: mergedTable, Extraction: group.Key);
+                    using var mergedTable = Converter.MergeDataTables([.. group.Select(x => x.data)]);
+                    return (data: mergedTable, metadata: group.Key);
                 }).ToList();
+
+            Result insertRes = new();
 
             do
             {
                 attempt++;
                 await Parallel.ForEachAsync(groupedData, Settings.ParallelRule.Value, async (e, t) =>
                 {
-                    var inserter = DBExchangeFactory.Create(e.Extraction.Destination!.DbType);
-                    using DbConnection con = inserter.CreateConnection(e.Extraction.Destination.ConnectionString);
+                    var inserter = DBExchangeFactory.Create(e.metadata.Destination!.DbType);
+                    using DbConnection con = inserter.CreateConnection(e.metadata.Destination.ConnectionString);
 
                     try
                     {
                         await con.OpenAsync(t);
 
-                        UInt64 rowCount = (await inserter.Exists(e.Extraction, con)).Value ? (await inserter.CountTableRows(e.Extraction, con)).Value : 0;
+                        UInt64 rowCount = (await inserter.Exists(e.metadata, con)).Value ? (await inserter.CountTableRows(e.metadata, con)).Value : 0;
 
-                        await inserter.ClearTable(e.Extraction, e.MergedTable, con, rowCount);
-                        await inserter.CreateTable(e.MergedTable, e.Extraction, con);
+                        await inserter.CreateTable(e.data, e.metadata, con);
 
-                        insertRes = await inserter.WriteDataTable(e.MergedTable, e.Extraction, con);
+                        if ((!e.metadata.IsIncremental || rowCount == 0) ^ executeBulk.Contains(e.metadata.Alias ?? e.metadata.Name))
+                        {
+                            executeBulk.Add(e.metadata.Alias ?? e.metadata.Name);
+                            insertRes = await inserter.BulkLoad(e.data, e.metadata, con);
+                        }
+                        else
+                        {
+                            insertRes = await inserter.MergeLoad(e.data, e.metadata, con);
+                        }
                     }
                     finally
                     {
-                        e.MergedTable.Dispose();
+                        e.data.Dispose();
                         await con.CloseAsync();
                     }
                 });
             } while ((!insertRes.IsSuccessful) && attempt < Settings.ConsumerAttemptMax);
-
-            if (attempt > Settings.ConsumerAttemptMax) errCount++;
         }
     }
 }

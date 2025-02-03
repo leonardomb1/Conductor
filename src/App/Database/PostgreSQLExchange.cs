@@ -111,7 +111,12 @@ public class PostgreSQLExchange : DBExchange
         };
     }
 
-    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction)
+    public override Task<Result> MergeLoad(DataTable data, Extraction extraction, DbConnection connection)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override async Task<Result> BulkLoad(DataTable data, Extraction extraction)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
@@ -147,7 +152,7 @@ public class PostgreSQLExchange : DBExchange
         }
     }
 
-    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction, DbConnection connection)
+    public override async Task<Result> BulkLoad(DataTable data, Extraction extraction, DbConnection connection)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;

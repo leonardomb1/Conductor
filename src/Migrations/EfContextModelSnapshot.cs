@@ -123,7 +123,7 @@ namespace Conductor.Migrations
                     b.Property<string>("PageAttr")
                         .HasColumnType("text");
 
-                    b.Property<long>("ScheduleId")
+                    b.Property<long?>("ScheduleId")
                         .HasColumnType("bigint");
 
                     b.Property<bool>("SingleExecution")
@@ -281,9 +281,7 @@ namespace Conductor.Migrations
 
                     b.HasOne("Conductor.Model.Schedule", "Schedule")
                         .WithMany()
-                        .HasForeignKey("ScheduleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ScheduleId");
 
                     b.Navigation("Destination");
 

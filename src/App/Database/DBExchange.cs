@@ -4,6 +4,7 @@ using System.Data.Common;
 using System.Text;
 using Conductor.Logging;
 using Conductor.Model;
+using Conductor.Service;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
 
@@ -33,9 +34,9 @@ public abstract class DBExchange
 
     protected abstract Task EnsureSchemaCreation(string system, DbConnection connection);
 
-    public abstract Task<Result> WriteDataTable(DataTable data, Extraction extraction);
+    public abstract Task<Result> BulkLoad(DataTable data, Extraction extraction);
 
-    public abstract Task<Result> WriteDataTable(DataTable data, Extraction extraction, DbConnection connection);
+    public abstract Task<Result> BulkLoad(DataTable data, Extraction extraction, DbConnection connection);
 
     protected abstract string GeneratePartitionCondition(Extraction extraction, double timeZoneOffSet, string? virtualColumn = null);
 
@@ -44,29 +45,11 @@ public abstract class DBExchange
         return stringBuilder.Append($" CONSTRAINT IX_{tableName}_PK PRIMARY KEY (ID_DW_{tableName}),");
     }
 
+    public abstract Task<Result> MergeLoad(DataTable data, Extraction extraction, DbConnection connection);
+
     protected virtual string VirtualColumn(string tableName, string fileGroup)
     {
         return $"{tableName}_{fileGroup}";
-    }
-
-    private async Task<Result<List<Extraction>>> GetDependencies(Extraction extraction)
-    {
-        string[] dependencies = extraction.Dependencies!.Split(Settings.SplitterChar);
-
-        using var repository = new Data.LdbContext();
-        using var service = new Service.ExtractionService(repository);
-
-        var dependenciesList = await service.Search(dependencies);
-        if (!dependenciesList.IsSuccessful) return dependenciesList.Error;
-
-        dependenciesList.Value
-            .ForEach(x =>
-            {
-                x.Origin!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
-                x.Destination!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
-            });
-
-        return dependenciesList.Value;
     }
 
     public virtual async Task<Result<bool>> Exists(Extraction extraction)
@@ -173,7 +156,12 @@ public abstract class DBExchange
 
     public virtual async Task<Result> ClearTable(Extraction extraction, DataTable data, DbConnection connection, UInt64 rowCount)
     {
-        if (extraction.BeforeExecutionDeletes || extraction.SingleExecution || rowCount == 0 || data.Rows.Count == 0) return Result.Ok();
+        if (
+            !extraction.IsIncremental ||
+            extraction.SingleExecution ||
+            rowCount == 0 ||
+            data.Rows.Count == 0
+        ) return Result.Ok();
 
         string tableName = extraction.Alias ?? extraction.Name;
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
@@ -181,26 +169,17 @@ public abstract class DBExchange
 
         StringBuilder builder = new();
 
-        if (extraction.IsIncremental)
-        {
-            string columnCondition;
-            if (extraction.IsVirtual)
-            {
-                columnCondition = $"AND {GetCastType($"\"{extraction.IndexName}\"", typeof(string), extraction.IndexName.Length)} + '{Settings.SplitterChar}' + \"{tableName}_{virtualIdGroup}\"";
-            }
-            else
-            {
-                columnCondition = $"AND \"{extraction.IndexName}\"";
-            }
+        string columnCondition = extraction.IsVirtual ?
+            $"AND {GetCastType($"\"{extraction.IndexName}\"", typeof(string), extraction.IndexName.Length)} + '{Settings.SplitterChar}' + \"{tableName}_{virtualIdGroup}\"" :
+            $"AND \"{extraction.IndexName}\"";
 
-            builder.Append($"DELETE FROM \"{schemaName}\".\"{tableName}\" WHERE 1 = 1 {columnCondition} IN (");
+        builder.Append($"DELETE FROM \"{schemaName}\".\"{tableName}\" WHERE 1 = 1 {columnCondition} IN (");
 
-            var values = data.Rows.Cast<DataRow>().Select(row =>
-                extraction.IsVirtual ? $"'{row[extraction.IndexName]}{Settings.SplitterChar}{row[$"{tableName}_{virtualIdGroup}"]}'" : $"{row[extraction.IndexName]}"
-            );
+        var values = data.Rows.Cast<DataRow>().Select(row =>
+            extraction.IsVirtual ? $"'{row[extraction.IndexName]}{Settings.SplitterChar}{row[$"{tableName}_{virtualIdGroup}"]}'" : $"{row[extraction.IndexName]}"
+        );
 
-            builder.Append($"{string.Join(",", values)})");
-        }
+        builder.Append($"{string.Join(",", values)})");
 
         try
         {
@@ -342,7 +321,7 @@ public abstract class DBExchange
     {
         if (extraction.IsVirtual)
         {
-            var deps = await GetDependencies(extraction);
+            var deps = await ExtractionService.GetDependencies(extraction);
             if (!deps.IsSuccessful) return deps.Error;
 
             return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup!, token);
@@ -380,6 +359,11 @@ public abstract class DBExchange
 
                 bool isTemplate = e.IsVirtualTemplate ?? false;
 
+                for (Int32 i = 0; i < fetch.Value.Columns.Count; i++)
+                {
+                    fetch.Value.Columns[i].AllowDBNull = true;
+                }
+
                 if (isTemplate)
                 {
                     data = fetch.Value.Clone();
@@ -394,18 +378,6 @@ public abstract class DBExchange
 
             foreach (DataTable table in dataTables)
             {
-                foreach (DataColumn column in data.Columns)
-                {
-                    if (!table.Columns.Contains(column.ColumnName))
-                    {
-                        table.Columns.Add(column.ColumnName, column.DataType);
-                        foreach (DataRow row in table.Rows)
-                        {
-                            row[column.ColumnName] = "";
-                        }
-                    }
-                }
-
                 data.Merge(table, false, MissingSchemaAction.Ignore);
                 table.Dispose();
             }
