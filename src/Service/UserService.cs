@@ -86,7 +86,7 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
     public async Task<Result> Create(User user)
     {
         User encryptedUser = user;
-        Encryption.SymmetricEncryptAES256(encryptedUser.Password!, Settings.EncryptionKey);
+        encryptedUser.Password = Encryption.SymmetricEncryptAES256(encryptedUser.Password!, Settings.EncryptionKey);
 
         try
         {
@@ -102,7 +102,7 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
     public async Task<Result> Update(User user, UInt32 id)
     {
         User encryptedUser = user;
-        Encryption.SymmetricEncryptAES256(encryptedUser.Password!, Settings.EncryptionKey);
+        encryptedUser.Password = Encryption.SymmetricEncryptAES256(encryptedUser.Password!, Settings.EncryptionKey);
 
         try
         {
