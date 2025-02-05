@@ -85,7 +85,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         }
 
         var engine = DBExchangeFactory.Create(res.Origin.DbType);
-        var query = await engine.FetchDataTable(res, true, current, default, shouldPaginate: false);
+        var query = await engine.FetchDataTable(res, false, current, default, shouldPaginate: true);
         if (!query.IsSuccessful)
         {
             return TypedResults.InternalServerError(ErrorMessage(

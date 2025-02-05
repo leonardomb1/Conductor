@@ -279,7 +279,7 @@ public abstract class DBExchange
                 {partitioning}
             ORDER BY {extraction.IndexName} {orderMode}";
 
-        using DbCommand command = CreateDbCommand(query + pagination, connection);
+        using DbCommand command = CreateDbCommand($"{query}  {pagination}", connection);
 
         try
         {
