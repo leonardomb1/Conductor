@@ -277,10 +277,9 @@ public abstract class DBExchange
         string query = extraction.OverrideQuery ?? @$"SELECT {columns} FROM {extraction.Name}
                 {QueryNonLocking()}
                 {partitioning}
-            ORDER BY {extraction.IndexName} {orderMode}
-            {pagination}";
+            ORDER BY {extraction.IndexName} {orderMode}";
 
-        using DbCommand command = CreateDbCommand(query, connection);
+        using DbCommand command = CreateDbCommand(query + pagination, connection);
 
         try
         {

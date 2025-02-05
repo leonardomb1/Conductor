@@ -20,11 +20,15 @@ public sealed class Message<T>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<T>? Content { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Int32? Page { get; set; }
+
     public Message(
         Int32 statusId,
         string info,
         List<T>? values = null,
-        bool err = false
+        bool err = false,
+        Int32? page = null
     )
     {
         StatusCode = statusId;
@@ -32,6 +36,7 @@ public sealed class Message<T>
         Error = err;
         Content = values;
         EntityCount = values?.Count;
+        Page = page;
     }
 }
 

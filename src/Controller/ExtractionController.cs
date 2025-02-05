@@ -77,8 +77,15 @@ public sealed class ExtractionController(ExtractionService service) : Controller
             Settings.EncryptionKey
         );
 
+        UInt64 current = 0;
+
+        if (UInt16.TryParse(filters?["page"] ?? "0", out UInt16 page))
+        {
+            current = page == 1 ? 0 : page * Settings.ProducerLineMax;
+        }
+
         var engine = DBExchangeFactory.Create(res.Origin.DbType);
-        var query = await engine.FetchDataTable(res, false, 0, default, shouldPaginate: false);
+        var query = await engine.FetchDataTable(res, true, current, default, shouldPaginate: false);
         if (!query.IsSuccessful)
         {
             return TypedResults.InternalServerError(ErrorMessage(
@@ -95,7 +102,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         )];
 
         return TypedResults.Ok(
-            new Message<Dictionary<string, object>>(Status200OK, "Result fetch was successful.", rows)
+            new Message<Dictionary<string, object>>(Status200OK, "Result fetch was successful.", rows, page: page)
         );
     }
 
