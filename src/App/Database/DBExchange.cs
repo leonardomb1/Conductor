@@ -343,7 +343,7 @@ public abstract class DBExchange
         {
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
-                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, virtualIdGroup, default, t);
+                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, virtualIdGroup, shouldPaginate, t);
                 if (!fetch.IsSuccessful)
                 {
                     errCount++;
