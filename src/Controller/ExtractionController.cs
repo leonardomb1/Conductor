@@ -102,7 +102,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         )];
 
         return TypedResults.Ok(
-            new Message<Dictionary<string, object>>(Status200OK, "Result fetch was successful.", rows, page: page)
+            new Message<Dictionary<string, object>>(Status200OK, "Result fetch was successful.", rows, page: page == 0 ? 1 : page)
         );
     }
 

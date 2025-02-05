@@ -18,10 +18,10 @@ public sealed class Message<T>
     public Int32? EntityCount { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<T>? Content { get; set; }
+    public Int32? Page { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Int32? Page { get; set; }
+    public List<T>? Content { get; set; }
 
     public Message(
         Int32 statusId,
