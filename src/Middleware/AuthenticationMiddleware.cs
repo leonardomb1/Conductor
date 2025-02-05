@@ -34,6 +34,12 @@ namespace Conductor.Middleware
                 return;
             }
 
+            if (keyValue[0] == "Key" && keyValue[1] == Settings.ApiKey)
+            {
+                await next(ctx);
+                return;
+            }
+
             if (keyValue[0] == "Basic")
             {
                 using UserService service = new(new Data.LdbContext());

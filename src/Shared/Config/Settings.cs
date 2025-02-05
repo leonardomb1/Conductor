@@ -95,11 +95,11 @@ public static class Settings
     [ConfigKey("ENCRYPT_KEY")]
     public static string EncryptionKey { get; set; } = "";
 
-    [ConfigKey("API_KEY")]
-    public static string ApiKey { get; set; } = "";
-
     [ConfigKey("LDAP_SERVER")]
     public static string LdapServer { get; set; } = "";
+
+    [ConfigKey("API_KEY")]
+    public static string ApiKey { get; set; } = "";
 
     [ConfigKey("LDAP_DOMAIN")]
     public static string LdapDomain { get; set; } = "";
