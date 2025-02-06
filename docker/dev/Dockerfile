@@ -1,17 +1,27 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
+FROM alpine:latest
+
+RUN apk add --no-cache \
+    icu-libs \
+    tzdata \
+    curl \
+    bash \
+    libgcc \
+    libintl \
+    libssl3 \
+    libstdc++ \
+    zlib
+
+RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \
+    chmod +x dotnet-install.sh && \
+    ./dotnet-install.sh --channel 9.0 --install-dir /usr/share/dotnet && \
+    ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 
 WORKDIR /app
-COPY ../../src/* ./
-RUN dotnet publish -c Debug -r linux-musl-x64 -o pub
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-alpine AS final
+COPY ../../src/ ./src/
+COPY ../../*.sln ./
 
-WORKDIR /app
-COPY --from=build /app/pub/* /app
+RUN cp /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime && \
+    echo "America/Sao_Paulo" > /etc/timezone
 
-RUN apk add --no-cache icu-libs tzdata curl && \
-    cp /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime && \
-    echo "America/Sao_Paulo" > /etc/timezone && \
-    chmod +x /app/Conductor
-
-ENTRYPOINT ["/app/Conductor", "-eM"]
+ENTRYPOINT ["sh", "-c", "while :; do sleep 2073600; done"]
