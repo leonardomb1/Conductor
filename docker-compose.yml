@@ -51,7 +51,7 @@ services:
       - LDAP_VERIFY_CERTIFICATE=${LDAP_VERIFY_CERTIFICATE}
       - NODES=${NODES}
       - USE_HTTPS=${USE_HTTPS}
-      - ALLOWED_IP_ADDRESSES=${ALLOWED_IP_ADDRESSES}
+      - ALLOWED_IP_ADDRESSES=${ALLOWED_IP_ADDRESSES}${SPLITTER_CHAR}172.18.0.1/16
       - ALLOWED_CORS=${ALLOWED_CORS}
       - DEVELOPMENT_MODE=${DEVELOPMENT_MODE}
       - DEBUG_DETAILED_ERROR=${DEBUG_DETAILED_ERROR}
@@ -90,3 +90,7 @@ services:
 networks:
   conductor-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+          gateway: 172.18.0.1
