@@ -69,6 +69,13 @@ public sealed class ExtractionController(ExtractionService service) : Controller
             );
         }
 
+        if (fetch.Value.Any(e => e.DestinationId == null))
+        {
+            return TypedResults.BadRequest(
+                new Message(Status400BadRequest, "Any of the extractions used need to have a destionation defined.", true)
+            );
+        }
+
         fetch.Value
             .ForEach(x =>
             {
@@ -114,11 +121,6 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         res.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(
             res.Origin!.ConnectionString,
-            Settings.EncryptionKey
-        );
-
-        res.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(
-            res.Destination!.ConnectionString,
             Settings.EncryptionKey
         );
 
@@ -173,6 +175,13 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         {
             return TypedResults.Ok(
                 new Message(Status200OK, "No such table.")
+            );
+        }
+
+        if (fetch.Value.DestinationId == null)
+        {
+            return TypedResults.BadRequest(
+                new Message(Status400BadRequest, "Any of the extractions used need to have a destination defined.", true)
             );
         }
 
