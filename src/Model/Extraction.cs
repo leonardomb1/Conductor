@@ -29,8 +29,8 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     [Column, NotNull, JsonRequired]
     public UInt32 OriginId { get; set; }
 
-    [Column, NotNull, JsonRequired]
-    public UInt32 DestinationId { get; set; }
+    [Column, Nullable]
+    public UInt32? DestinationId { get; set; }
 
     [Column, NotNull, JsonRequired]
     public string IndexName { get; set; } = "";

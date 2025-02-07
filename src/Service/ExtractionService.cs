@@ -31,6 +31,8 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
                         "name" => select.Where(e => e.Name == value),
                         "contains" => select.Where(e => arrayVal.Any(s => e.Name.Contains(s))),
                         "schedule" => select.Where(e => e.Schedule!.Name == value),
+                        "scheduleId" when UInt32.TryParse(value, out UInt32 schId) =>
+                            select.Where(e => e.ScheduleId == schId),
                         "origin" => select.Where(e => e.Origin!.Name == value),
                         "destination" => select.Where(e => e.Destination!.Name == value),
                         _ => select
@@ -78,8 +80,10 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         dependenciesList.Value
             .ForEach(x =>
             {
-                x.Origin!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
-                x.Destination!.ConnectionString = Shared.Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
+                x.Origin!.ConnectionString =
+                    Shared.Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
+                x.Destination!.ConnectionString =
+                    Shared.Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
             });
 
         return dependenciesList.Value;

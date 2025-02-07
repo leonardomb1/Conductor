@@ -13,8 +13,53 @@ namespace Conductor.Controller;
 
 public sealed class ExtractionController(ExtractionService service) : ControllerBase<Extraction>(service)
 {
-    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters)
+    public override async Task<Results<Ok<Message<Extraction>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
     {
+        if (filters?.Count > Settings.MaxQueryParams)
+        {
+            return TypedResults.BadRequest(
+                new Message(Status400BadRequest, "Query limit has been hit.", true)
+            );
+        }
+
+        var invalidFilters = filters?.Where(f =>
+            (f.Key == "scheduleId") &&
+            !UInt32.TryParse(f.Value, out _)).ToList();
+
+        if (invalidFilters?.Count > 0)
+        {
+            return TypedResults.BadRequest(
+                new Message(Status400BadRequest, "Invalid query parameters.", true)
+            );
+        }
+
+        var result = await service.Search(filters);
+
+        if (!result.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(
+                ErrorMessage("Failed to fetch data from Db.", result.Error)
+            );
+        }
+
+        return TypedResults.Ok(
+            new Message<Extraction>(Status200OK, "Data fetch successful.", result.Value)
+        );
+    }
+
+    public async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters)
+    {
+        var invalidFilters = filters?.Where(f =>
+            (f.Key == "scheduleId") &&
+            !UInt32.TryParse(f.Value, out _)).ToList();
+
+        if (invalidFilters?.Count > 0)
+        {
+            return TypedResults.BadRequest(
+                new Message(Status400BadRequest, "Invalid query parameters.", true)
+            );
+        }
+
         var fetch = await service.Search(filters);
 
         if (!fetch.IsSuccessful)
