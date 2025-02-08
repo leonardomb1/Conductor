@@ -130,7 +130,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         if (UInt16.TryParse(filters?["page"] ?? "0", out UInt16 page))
         {
-            current = page == 1 ? 0 : page * Settings.ProducerLineMax;
+            current = page == 1 ? 0 : page * Settings.FetcherLineMax;
         }
 
         var engine = DBExchangeFactory.Create(res.Origin.DbType);

@@ -56,6 +56,9 @@ public static class Settings
     [ConfigKey("MAX_PRODUCER_LINECOUNT")]
     public static UInt64 ProducerLineMax { get; set; }
 
+    [ConfigKey("MAX_FETCHING_LINECOUNT")]
+    public static UInt64 FetcherLineMax { get; set; }
+
     [ConfigKey("SESSION_TIME_SEC")]
     public static UInt32 SessionTime { get; set; }
 
