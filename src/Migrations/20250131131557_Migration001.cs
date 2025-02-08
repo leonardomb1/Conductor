@@ -20,7 +20,8 @@ namespace Conductor.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     Name = table.Column<string>(type: "text", nullable: false),
                     DbType = table.Column<string>(type: "text", nullable: false),
-                    ConnectionString = table.Column<string>(type: "text", nullable: false)
+                    ConnectionString = table.Column<string>(type: "text", nullable: false),
+                    TimeZoneOffSet = table.Column<double>(type: "double precision", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -34,8 +35,10 @@ namespace Conductor.Migrations
                     Id = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     Name = table.Column<string>(type: "text", nullable: false),
+                    Alias = table.Column<string>(type: "text", nullable: true),
                     DbType = table.Column<string>(type: "text", nullable: false),
-                    ConnectionString = table.Column<string>(type: "text", nullable: false)
+                    ConnectionString = table.Column<string>(type: "text", nullable: false),
+                    TimeZoneOffSet = table.Column<double>(type: "double precision", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -95,14 +98,18 @@ namespace Conductor.Migrations
                     Id = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     Name = table.Column<string>(type: "text", nullable: false),
-                    ScheduleId = table.Column<long>(type: "bigint", nullable: false),
+                    ScheduleId = table.Column<long>(type: "bigint", nullable: true),
                     OriginId = table.Column<long>(type: "bigint", nullable: false),
                     DestinationId = table.Column<long>(type: "bigint", nullable: false),
                     IndexName = table.Column<string>(type: "text", nullable: false),
                     IsIncremental = table.Column<bool>(type: "boolean", nullable: false),
                     IsVirtual = table.Column<bool>(type: "boolean", nullable: false),
+                    VirtualId = table.Column<string>(type: "text", nullable: true),
+                    VirtualIdGroup = table.Column<string>(type: "text", nullable: true),
+                    IsVirtualTemplate = table.Column<bool>(type: "boolean", nullable: true),
                     BeforeExecutionDeletes = table.Column<bool>(type: "boolean", nullable: false),
                     SingleExecution = table.Column<bool>(type: "boolean", nullable: false),
+                    TableStructure = table.Column<string>(type: "text", nullable: true),
                     FilterColumn = table.Column<string>(type: "text", nullable: true),
                     FilterTime = table.Column<int>(type: "integer", nullable: true),
                     Alias = table.Column<string>(type: "text", nullable: true),
@@ -135,8 +142,7 @@ namespace Conductor.Migrations
                         name: "FK_EXTRACTIONS_SCHEDULES_ScheduleId",
                         column: x => x.ScheduleId,
                         principalTable: "SCHEDULES",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateIndex(

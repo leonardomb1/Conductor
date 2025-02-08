@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Conductor.Migrations
 {
     [DbContext(typeof(EfContext))]
-    [Migration("20250122140940_Migration003")]
-    partial class Migration003
+    [Migration("20250203144600_Migration002")]
+    partial class Migration002
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -47,6 +47,10 @@ namespace Conductor.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "destinationName");
+
+                    b.Property<double>("TimeZoneOffSet")
+                        .HasColumnType("double precision")
+                        .HasAnnotation("Relational:JsonPropertyName", "destinationTimeZoneOffSet");
 
                     b.HasKey("Id");
 
@@ -102,6 +106,9 @@ namespace Conductor.Migrations
                     b.Property<bool>("IsVirtual")
                         .HasColumnType("boolean");
 
+                    b.Property<bool?>("IsVirtualTemplate")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -116,10 +123,13 @@ namespace Conductor.Migrations
                     b.Property<long>("OriginId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("OverrideQuery")
+                        .HasColumnType("text");
+
                     b.Property<string>("PageAttr")
                         .HasColumnType("text");
 
-                    b.Property<long>("ScheduleId")
+                    b.Property<long?>("ScheduleId")
                         .HasColumnType("bigint");
 
                     b.Property<bool>("SingleExecution")
@@ -129,6 +139,12 @@ namespace Conductor.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("TotalPageAttr")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VirtualId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("VirtualIdGroup")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -168,6 +184,10 @@ namespace Conductor.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasAnnotation("Relational:JsonPropertyName", "originName");
+
+                    b.Property<double>("TimeZoneOffSet")
+                        .HasColumnType("double precision")
+                        .HasAnnotation("Relational:JsonPropertyName", "originTimeZoneOffSet");
 
                     b.HasKey("Id");
 
@@ -267,9 +287,7 @@ namespace Conductor.Migrations
 
                     b.HasOne("Conductor.Model.Schedule", "Schedule")
                         .WithMany()
-                        .HasForeignKey("ScheduleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ScheduleId");
 
                     b.Navigation("Destination");
 

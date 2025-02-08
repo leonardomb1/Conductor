@@ -52,3 +52,28 @@ public readonly struct Result
         Func<Error, R> onError
     ) => success ? onSuccess() : onError(Error);
 }
+
+public readonly struct MResult
+{
+    private readonly bool success;
+    public readonly List<Error> Error;
+
+    private MResult(List<Error> error, bool isSuccess)
+    {
+        Error = error;
+        success = isSuccess;
+    }
+
+    public bool IsSuccessful => success;
+
+    public static MResult Ok() => new(null!, true);
+
+    public static MResult Err(List<Error> error) => new(error, false);
+
+    public static implicit operator MResult(List<Error> error) => new(error, false);
+
+    public R Match<R>(
+        Func<R> onSuccess,
+        Func<List<Error>, R> onError
+    ) => success ? onSuccess() : onError(Error);
+}

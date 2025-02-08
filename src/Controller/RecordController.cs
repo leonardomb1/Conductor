@@ -12,7 +12,7 @@ public sealed class RecordController(RecordService service) : ControllerBase<Rec
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "relative" || f.Key == "take") &&
-            !Int32.TryParse(f.Value, out _)).ToList();
+            !UInt32.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
         {

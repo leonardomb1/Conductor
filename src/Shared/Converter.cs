@@ -23,6 +23,23 @@ public static class Converter
         }
     }
 
+    public static async Task<Result> TrySerializeAsync<T>(Stream stream, T data)
+    {
+        try
+        {
+            await JsonSerializer.SerializeAsync<T>(
+                stream,
+                data,
+                Settings.JsonSOptions.Value
+            );
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
     public static DataTable MergeDataTables(List<DataTable> tables)
     {
         if (tables == null || tables.Count == 0)

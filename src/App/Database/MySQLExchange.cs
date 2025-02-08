@@ -108,7 +108,12 @@ public class MySQLExchange : DBExchange
         };
     }
 
-    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction)
+    public override Task<Result> MergeLoad(DataTable data, Extraction extraction, DbConnection connection)
+    {
+        throw new NotImplementedException();
+    }
+
+    public override async Task<Result> BulkLoad(DataTable data, Extraction extraction)
     {
         string tableName = extraction.Alias ?? extraction.Name;
 
@@ -158,7 +163,7 @@ public class MySQLExchange : DBExchange
         }
     }
 
-    public override async Task<Result> WriteDataTable(DataTable data, Extraction extraction, DbConnection connection)
+    public override async Task<Result> BulkLoad(DataTable data, Extraction extraction, DbConnection connection)
     {
         string tableName = extraction.Alias ?? extraction.Name;
 

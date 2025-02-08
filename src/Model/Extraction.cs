@@ -23,14 +23,14 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     [Column, NotNull, JsonRequired, JsonPropertyName("extractionName")]
     public string Name { get; set; } = "";
 
-    [Column, NotNull, JsonRequired]
-    public UInt32 ScheduleId { get; set; }
+    [Column, Nullable]
+    public UInt32? ScheduleId { get; set; }
 
     [Column, NotNull, JsonRequired]
     public UInt32 OriginId { get; set; }
 
-    [Column, NotNull, JsonRequired]
-    public UInt32 DestinationId { get; set; }
+    [Column, Nullable]
+    public UInt32? DestinationId { get; set; }
 
     [Column, NotNull, JsonRequired]
     public string IndexName { get; set; } = "";
@@ -65,6 +65,9 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
 
     [Column, Nullable]
     public Int32? FilterTime { get; set; }
+
+    [Column, Nullable]
+    public string? OverrideQuery { get; set; }
 
     [Column, Nullable, JsonPropertyName("extractionAlias")]
     public string? Alias { get; set; }

@@ -5,13 +5,13 @@
 namespace Conductor.Migrations
 {
     /// <inheritdoc />
-    public partial class Migration003 : Migration
+    public partial class Migration002 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
-                name: "TableStructure",
+                name: "OverrideQuery",
                 table: "EXTRACTIONS",
                 type: "text",
                 nullable: true);
@@ -21,7 +21,7 @@ namespace Conductor.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "TableStructure",
+                name: "OverrideQuery",
                 table: "EXTRACTIONS");
         }
     }

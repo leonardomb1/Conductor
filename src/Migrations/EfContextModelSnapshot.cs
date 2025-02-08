@@ -75,7 +75,7 @@ namespace Conductor.Migrations
                     b.Property<string>("Dependencies")
                         .HasColumnType("text");
 
-                    b.Property<long>("DestinationId")
+                    b.Property<long?>("DestinationId")
                         .HasColumnType("bigint");
 
                     b.Property<string>("EndpointFullName")
@@ -120,10 +120,13 @@ namespace Conductor.Migrations
                     b.Property<long>("OriginId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("OverrideQuery")
+                        .HasColumnType("text");
+
                     b.Property<string>("PageAttr")
                         .HasColumnType("text");
 
-                    b.Property<long>("ScheduleId")
+                    b.Property<long?>("ScheduleId")
                         .HasColumnType("bigint");
 
                     b.Property<bool>("SingleExecution")
@@ -269,9 +272,7 @@ namespace Conductor.Migrations
                 {
                     b.HasOne("Conductor.Model.Destination", "Destination")
                         .WithMany()
-                        .HasForeignKey("DestinationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("DestinationId");
 
                     b.HasOne("Conductor.Model.Origin", "Origin")
                         .WithMany()
@@ -281,9 +282,7 @@ namespace Conductor.Migrations
 
                     b.HasOne("Conductor.Model.Schedule", "Schedule")
                         .WithMany()
-                        .HasForeignKey("ScheduleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("ScheduleId");
 
                     b.Navigation("Destination");
 

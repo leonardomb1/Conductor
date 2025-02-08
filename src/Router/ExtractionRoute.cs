@@ -25,8 +25,15 @@ public static class ExtractionRoute
             .Accepts<Extraction>("application/json")
             .WithName("PutExtraction");
 
-        group.MapPost("/execute", async (ExtractionController controller, HttpRequest request) => await controller.ExecuteExtraction(request.Query))
-            .WithName("ExecuteExtraction");
+        group.MapPost("/execute", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
+        {
+            return await controller.ExecuteExtraction(request.Query, token);
+        }).WithName("ExecuteExtraction");
+
+        group.MapGet("/fetch", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
+        {
+            return await controller.FetchData(request.Query, token);
+        }).WithName("FetchData");
 
         group.MapDelete("/{id}", async (ExtractionController controller, string id) => await controller.Delete(id))
             .WithName("DeleteExtraction");
