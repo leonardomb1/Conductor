@@ -7,11 +7,16 @@ using Conductor.Model;
 using Conductor.Service;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
+using LinqToDB;
 
 namespace Conductor.App.Database;
 
 public abstract class DBExchange
 {
+    private static readonly HashSet<string> MARSCompatibleDatabases = [ProviderName.SqlServer];
+
+    public static bool SupportsMARS(string dbType) => MARSCompatibleDatabases.Contains(dbType);
+
     protected abstract string? QueryNonLocking();
 
     protected abstract string? QueryPagination(UInt64 current);

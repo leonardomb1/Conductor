@@ -46,7 +46,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         );
 
         Log.Out(
-            $"Some errors may have occurred while processing a long running request: {err.Select(x => x.ExceptionMessage)}",
+            $"Some errors may have occurred while processing a long running request.",
             callerMethod: method,
             logType: RecordType.Error
         );

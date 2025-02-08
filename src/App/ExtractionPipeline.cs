@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using Conductor.App.Database;
 using Conductor.Logging;
 using Conductor.Model;
+using Conductor.Shared;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
 
@@ -20,8 +21,13 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
 
     private DbConnection GetOrCreateConnection(string connectionString, string dbType)
     {
-        return connectionPool.GetOrAdd(connectionString, _ =>
+        var key = $"{connectionString} {dbType}";
+        return connectionPool.GetOrAdd(key, _ =>
         {
+            if (DBExchange.SupportsMARS(dbType))
+            {
+                connectionString += ";MultipleActiveResultSets=True";
+            }
             var dbFactory = DBExchangeFactory.Create(dbType);
             var connection = dbFactory.CreateConnection(connectionString);
             connection.Open();
@@ -59,29 +65,37 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
         CancellationToken token
     )
     {
-        Channel<(DataTable, Extraction)> channel = Channel.CreateBounded<(DataTable, Extraction)>(Settings.MaxDegreeParallel);
+        Channel<(DataTable, Extraction)> channel = Channel.CreateUnbounded<(DataTable, Extraction)>();
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-        Task producer = Task.Run(async () =>
-        {
-            await produceData(extractions, channel, cts.Token);
-        }, cts.Token);
+        Task producer = Task.Run(async () => await produceData(extractions, channel, cts.Token), cts.Token);
+        Task consumer = Task.Run(async () => await ConsumeData(channel, cts), cts.Token);
 
-        Task consumer = Task.Run(async () =>
+        try
         {
-            await ConsumeData(channel, cts);
-        }, cts.Token);
-
-        await Task.WhenAll(producer, consumer).ContinueWith(async _ =>
+            await Task.WhenAll(producer, consumer);
+        }
+        finally
         {
             foreach (var connection in connectionPool.Values)
             {
-                await connection.CloseAsync();
-                await connection.DisposeAsync();
+                try
+                {
+                    await connection.CloseAsync();
+                }
+                catch (Exception ex)
+                {
+                    pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
+                }
+                finally
+                {
+                    await connection.DisposeAsync();
+                }
             }
+
             connectionPool.Clear();
-        }, cts.Token);
+        }
 
         return pipelineErrors.IsEmpty ? MResult.Ok() : pipelineErrors.ToList();
     }
@@ -102,11 +116,8 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
             {
                 if (t.IsCancellationRequested) return;
 
-                var fetcher = DBExchangeFactory.Create(e.Origin!.DbType);
-                var con = GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType);
-
                 var metadata = DBExchangeFactory.Create(e.Destination!.DbType);
-                var metCon = GetOrCreateConnection(e.Destination.ConnectionString, e.Destination.DbType);
+                var metCon = metadata.CreateConnection(e.Destination.ConnectionString);
 
                 var exists = await metadata.Exists(e, metCon);
                 if (!HandleError(exists, t)) return;
@@ -126,10 +137,21 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                     destRc = count.Value;
                 }
 
+                var fetcher = DBExchangeFactory.Create(e.Origin!.DbType);
                 for (UInt64 curr = 0; !t.IsCancellationRequested; curr += Settings.ProducerLineMax)
                 {
                     bool shouldPartition = destRc > 0;
-                    var attempt = await fetcher.FetchDataTable(e, shouldPartition, curr, con, t);
+
+                    var attempt = DBExchange.SupportsMARS(e.Origin.DbType) ?
+                        await fetcher.FetchDataTable(
+                            e,
+                            shouldPartition,
+                            curr,
+                            GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
+                            t
+                        ) :
+                        await fetcher.FetchDataTable(e, shouldPartition, curr, t);
+
                     if (!HandleError(attempt, t)) break;
 
                     if (attempt.Value.Rows.Count == 0) break;
@@ -137,6 +159,10 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                     await channel.Writer.WriteAsync((attempt.Value, e), t);
                 }
             });
+        }
+        catch (Exception ex)
+        {
+            pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
         }
         finally
         {
@@ -153,24 +179,36 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
         {
             if (cts.Token.IsCancellationRequested) return;
 
-            List<(DataTable data, Extraction metadata)> fetchedData = [];
+            var fetchedData = new Dictionary<Extraction, List<DataTable>>();
 
-            for (UInt16 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable, Extraction) item); i++)
+            for (UInt16 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable data, Extraction metadata) item); i++)
             {
-                fetchedData.Add(item);
+                if (!fetchedData.TryGetValue(item.metadata, out var dataList))
+                {
+                    dataList = [];
+                    fetchedData[item.metadata] = dataList;
+                }
+
+                dataList.Add(item.data);
             }
+
+            var mergedData = fetchedData.Select(group =>
+            {
+                using var mergedData = Converter.MergeDataTables(group.Value);
+                return (data: mergedData, metadata: group.Key);
+            });
 
             Result insertRes = new();
             byte attempt = 0;
             do
             {
                 attempt++;
-                await Parallel.ForEachAsync(fetchedData, options, async (e, t) =>
+                await Parallel.ForEachAsync(mergedData, options, async (e, t) =>
                 {
                     if (t.IsCancellationRequested) return;
 
                     var inserter = DBExchangeFactory.Create(e.metadata.Destination!.DbType);
-                    var con = GetOrCreateConnection(e.metadata.Destination.ConnectionString, e.metadata.Destination.DbType);
+                    var con = inserter.CreateConnection(e.metadata.Destination.ConnectionString);
 
                     var exists = await inserter.Exists(e.metadata, con);
                     if (!HandleError(exists, t)) return;
@@ -198,6 +236,11 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                 }
 
             } while (!insertRes.IsSuccessful && attempt < Settings.ConsumerAttemptMax);
+
+            foreach (var (data, _) in mergedData)
+            {
+                data.Dispose();
+            }
         }
     }
 
