@@ -252,6 +252,28 @@ public abstract class DBExchange
         }
     }
 
+    public virtual async Task<Result> TruncateTable(Extraction extraction, DbConnection connection)
+    {
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+
+        using DbCommand command = CreateDbCommand(
+            $"TRUNCATE TABLE \"{schemaName}\".\"{tableName}\"",
+            connection
+        );
+
+        try
+        {
+            Log.Out($"Droping table {schemaName}.{tableName}...");
+            await command.ExecuteNonQueryAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
     public virtual async Task<Result<DataTable>> SingleFetch(
         Extraction extraction,
         UInt64 current,
@@ -262,6 +284,8 @@ public abstract class DBExchange
         CancellationToken token = default
     )
     {
+        if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
+
         using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
 
         string orderMode = shouldPartition ? "DESC" : "ASC";
@@ -303,6 +327,54 @@ public abstract class DBExchange
         }
     }
 
+    public virtual async Task<Result<DataTable>> SingleFetch(
+        Extraction extraction,
+        UInt64 current,
+        bool shouldPartition,
+        DbConnection connection,
+        string? virtualizedTable = null,
+        string? virtualizedIdGroup = null,
+        bool shouldPaginate = true,
+        CancellationToken token = default
+    )
+    {
+        if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
+
+        string orderMode = shouldPartition ? "DESC" : "ASC";
+
+        string partitioning = extraction.IsIncremental && shouldPartition ?
+            GeneratePartitionCondition(extraction, extraction.Origin!.TimeZoneOffSet) : "";
+
+        string columns = extraction.VirtualId != null && virtualizedTable != null ?
+            $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\", *" : "*";
+
+        string? pagination = shouldPaginate ? QueryPagination(current) : "" ?? "";
+
+        string query = extraction.OverrideQuery ?? @$"SELECT {columns} FROM {extraction.Name}
+                {QueryNonLocking()}
+                {partitioning}
+            ORDER BY {extraction.IndexName} {orderMode}";
+
+        using DbCommand command = CreateDbCommand($"{query}  {pagination}", connection);
+
+        try
+        {
+            await connection.OpenAsync(token);
+
+            using var fetched = new DataTable();
+            var select = await command.ExecuteReaderAsync(token);
+            fetched.Load(select);
+
+            fetched.TableName = extraction.Alias ?? extraction.Name;
+
+            return fetched;
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
     public virtual async Task<Result<DataTable>> FetchDataTable(
         Extraction extraction,
         bool shouldPartition,
@@ -311,6 +383,8 @@ public abstract class DBExchange
         bool shouldPaginate = true
     )
     {
+        if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
+
         if (extraction.IsVirtual)
         {
             var deps = await ExtractionService.GetDependencies(extraction);
@@ -321,6 +395,28 @@ public abstract class DBExchange
         else
         {
             return await SingleFetch(extraction, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup, shouldPaginate, token);
+        }
+    }
+
+    public virtual async Task<Result<DataTable>> FetchDataTable(
+        Extraction extraction,
+        bool shouldPartition,
+        UInt64 current,
+        DbConnection connection,
+        CancellationToken token,
+        bool shouldPaginate = true
+    )
+    {
+        if (extraction.IsVirtual)
+        {
+            var deps = await ExtractionService.GetDependencies(extraction);
+            if (!deps.IsSuccessful) return deps.Error;
+
+            return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup!, connection, token, shouldPaginate);
+        }
+        else
+        {
+            return await SingleFetch(extraction, current, shouldPartition, connection, extraction.Name, extraction.VirtualIdGroup, shouldPaginate, token);
         }
     }
 
@@ -341,9 +437,79 @@ public abstract class DBExchange
 
         try
         {
+            if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
+                if (t.IsCancellationRequested) return;
                 var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, virtualIdGroup, shouldPaginate, t);
+                if (!fetch.IsSuccessful)
+                {
+                    errCount++;
+                    return;
+                }
+
+                bool isTemplate = e.IsVirtualTemplate ?? false;
+
+                for (Int32 i = 0; i < fetch.Value.Columns.Count; i++)
+                {
+                    fetch.Value.Columns[i].AllowDBNull = true;
+                }
+
+                if (isTemplate)
+                {
+                    data = fetch.Value.Clone();
+                    gotTemplate = true;
+                }
+
+                dataTables.Add(fetch.Value);
+            });
+
+            if (errCount == extractions.Count) return new Error("Failed to fetch data from all tables.");
+            if (!gotTemplate) data = dataTables.First().Clone();
+
+            foreach (DataTable table in dataTables)
+            {
+                data.Merge(table, false, MissingSchemaAction.Ignore);
+                table.Dispose();
+            }
+
+            data.TableName = virtualizedTable;
+
+            return data;
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+        finally
+        {
+            dataTables.Clear();
+        }
+    }
+
+    public virtual async Task<Result<DataTable>> ParallelFetch(
+        List<Extraction> extractions,
+        UInt64 current,
+        bool shouldPartition,
+        string virtualizedTable,
+        string virtualIdGroup,
+        DbConnection connection,
+        CancellationToken token,
+        bool shouldPaginate = true
+    )
+    {
+        ConcurrentBag<DataTable> dataTables = [];
+        DataTable data = new();
+        bool gotTemplate = false;
+        byte errCount = 0;
+
+        try
+        {
+            if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
+            await Parallel.ForEachAsync(extractions, token, async (e, t) =>
+            {
+                if (t.IsCancellationRequested) return;
+                var fetch = await SingleFetch(e, current, shouldPartition, connection, virtualizedTable, virtualIdGroup, shouldPaginate, t);
                 if (!fetch.IsSuccessful)
                 {
                     errCount++;
@@ -447,14 +613,6 @@ public abstract class DBExchange
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
-
-        var verify = await Exists(extraction, connection);
-        if (!verify.IsSuccessful) return verify.Error;
-
-        if (verify.Value)
-        {
-            return Result.Ok();
-        }
 
         var queryBuilder = new StringBuilder();
 

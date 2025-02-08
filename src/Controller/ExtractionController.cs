@@ -47,7 +47,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         );
     }
 
-    public async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters)
+    public async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters, CancellationToken token)
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId") &&
@@ -83,16 +83,18 @@ public sealed class ExtractionController(ExtractionService service) : Controller
                 x.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
             });
 
-        var result = await ParallelExtractionManager.ChannelParallelize(
+        await using var pipeline = new ExtractionPipeline();
+
+        var result = await pipeline.ChannelParallelize(
             fetch.Value,
-            ParallelExtractionManager.ProduceDBData,
-            ParallelExtractionManager.ConsumeDBData
+            pipeline.ProduceDBData,
+            token
         );
 
         if (!result.IsSuccessful)
         {
             return TypedResults.InternalServerError(
-                ErrorMessage("Extraction failed", result.Error)
+                ErrorMessage("Extraction failed.", result.Error)
             );
         }
 
@@ -101,7 +103,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         );
     }
 
-    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>, Ok<Message<Dictionary<string, object>>>>> FetchData(IQueryCollection? filters)
+    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>, Ok<Message<Dictionary<string, object>>>>> FetchData(IQueryCollection? filters, CancellationToken token)
     {
         var fetch = await service.Search(filters);
 
@@ -132,7 +134,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         }
 
         var engine = DBExchangeFactory.Create(res.Origin.DbType);
-        var query = await engine.FetchDataTable(res, false, current, default, shouldPaginate: true);
+        var query = await engine.FetchDataTable(res, false, current, token, shouldPaginate: true);
         if (!query.IsSuccessful)
         {
             return TypedResults.InternalServerError(ErrorMessage(

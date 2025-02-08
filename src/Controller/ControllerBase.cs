@@ -36,6 +36,30 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         return errMsg;
     }
 
+    protected Message<Error> ErrorMessage(string msg, List<Error> err, [CallerMemberName] string? method = null)
+    {
+        Message<Error> errMsg = new(
+                Status500InternalServerError,
+                msg,
+                values: err,
+                err: true
+        );
+
+        Log.Out(
+            $"Some errors may have occurred while processing a long running request: {err.Select(x => x.ExceptionMessage)}",
+            callerMethod: method,
+            logType: RecordType.Error
+        );
+
+        if (!Settings.DevelopmentMode)
+        {
+            errMsg.Content = null;
+            errMsg.EntityCount = null;
+        }
+
+        return errMsg;
+    }
+
     public virtual async Task<Results<Ok<Message<TModel>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
     {
 
