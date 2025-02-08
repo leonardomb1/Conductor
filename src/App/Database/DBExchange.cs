@@ -436,7 +436,7 @@ public abstract class DBExchange
         ConcurrentBag<DataTable> dataTables = [];
         DataTable data = new();
         bool gotTemplate = false;
-        byte errCount = 0;
+        Int32 errCount = 0;
 
         try
         {
@@ -447,7 +447,7 @@ public abstract class DBExchange
                 var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, virtualIdGroup, shouldPaginate, t);
                 if (!fetch.IsSuccessful)
                 {
-                    errCount++;
+                    Interlocked.Increment(ref errCount);
                     return;
                 }
 
@@ -504,18 +504,19 @@ public abstract class DBExchange
         ConcurrentBag<DataTable> dataTables = [];
         DataTable data = new();
         bool gotTemplate = false;
-        byte errCount = 0;
+        Int32 errCount = 0;
 
         try
         {
             if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
+
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
                 if (t.IsCancellationRequested) return;
                 var fetch = await SingleFetch(e, current, shouldPartition, connection, virtualizedTable, virtualIdGroup, shouldPaginate, t);
                 if (!fetch.IsSuccessful)
                 {
-                    errCount++;
+                    Interlocked.Increment(ref errCount);
                     return;
                 }
 

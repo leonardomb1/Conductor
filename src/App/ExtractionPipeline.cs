@@ -5,7 +5,6 @@ using System.Threading.Channels;
 using Conductor.App.Database;
 using Conductor.Logging;
 using Conductor.Model;
-using Conductor.Shared;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
 
@@ -45,6 +44,38 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
             return false;
         }
         return true;
+    }
+
+    private async Task ProcessFetchAsync(
+        Extraction e,
+        DBExchange fetcher,
+        UInt64 destRc,
+        byte offsetMultiplier,
+        Channel<(DataTable, Extraction)> channel,
+        CancellationToken t
+    )
+    {
+        for (UInt64 curr = offsetMultiplier * Settings.ProducerLineMax;
+            !t.IsCancellationRequested;
+            curr += Settings.ConsumerConcurrentFetches * Settings.ProducerLineMax)
+        {
+            bool shouldPartition = destRc > 0;
+
+            var attempt = DBExchange.SupportsMARS(e.Origin!.DbType)
+                ? await fetcher.FetchDataTable(
+                    e,
+                    shouldPartition,
+                    curr,
+                    GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
+                    t
+                )
+                : await fetcher.FetchDataTable(e, shouldPartition, curr, t);
+
+            if (!HandleError(attempt, t)) break;
+            if (attempt.Value.Rows.Count == 0) break;
+
+            await channel.Writer.WriteAsync((attempt.Value, e), t);
+        }
     }
 
     private bool HandleError(Result result, CancellationToken token)
@@ -143,26 +174,15 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                 await con.DisposeAsync();
 
                 var fetcher = DBExchangeFactory.Create(e.Origin!.DbType);
-                for (UInt64 curr = 0; !t.IsCancellationRequested; curr += Settings.ProducerLineMax)
+                var fetchTasks = new List<Task>();
+
+                for (byte i = 0; i < Settings.ConsumerConcurrentFetches; i++)
                 {
-                    bool shouldPartition = destRc > 0;
-
-                    var attempt = DBExchange.SupportsMARS(e.Origin.DbType) ?
-                        await fetcher.FetchDataTable(
-                            e,
-                            shouldPartition,
-                            curr,
-                            GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
-                            t
-                        ) :
-                        await fetcher.FetchDataTable(e, shouldPartition, curr, t);
-
-                    if (!HandleError(attempt, t)) break;
-
-                    if (attempt.Value.Rows.Count == 0) break;
-
-                    await channel.Writer.WriteAsync((attempt.Value, e), t);
+                    byte offsetMultiplier = i;
+                    fetchTasks.Add(ProcessFetchAsync(e, fetcher, destRc, offsetMultiplier, channel, t));
                 }
+
+                await Task.WhenAll(fetchTasks);
             });
         }
         catch (Exception ex)
@@ -175,7 +195,6 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
         }
     }
 
-
     public async Task ConsumeData(Channel<(DataTable, Extraction)> channel, CancellationTokenSource cts)
     {
         ParallelOptions options = Settings.ParallelRule.Value;
@@ -187,7 +206,7 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
         {
             if (cts.Token.IsCancellationRequested) return;
 
-            var fetchedData = new List<(DataTable data, Extraction metadata)>();
+            var fetchedData = new List<(DataTable data, Extraction metadata)>(Settings.ConsumerFetchMax);
 
             for (UInt16 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable data, Extraction metadata) item); i++)
             {
@@ -251,6 +270,8 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                 if (insertRes.IsSuccessful)
                     break;
+
+                await Task.Delay(TimeSpan.FromMilliseconds(Settings.ConsumerBackoff * Math.Pow(2, attempt)), cts.Token);
             }
 
             if (!insertRes.IsSuccessful)

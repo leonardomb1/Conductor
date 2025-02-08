@@ -134,6 +134,12 @@ public static class Settings
     [ConfigKey("RESPONSE_CACHING_LIMIT_MB")]
     public static Int32 ResponseCachingLimit { get; set; }
 
+    [ConfigKey("CONSUMER_CONCURRENT_FETCHES")]
+    public static byte ConsumerConcurrentFetches { get; set; }
+
+    [ConfigKey("")]
+    public static Int32 ConsumerBackoff { get; set; }
+
     [ConfigKey("SPLITTER_CHAR")]
     public static string SplitterChar { get; set; } = "";
 
