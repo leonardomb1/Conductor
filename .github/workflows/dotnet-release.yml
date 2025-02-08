@@ -1,0 +1,65 @@
+name: .NET Release Build
+
+on:
+  push:
+    tags:
+      - "release-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [win-x64, linux-x64, linux-musl-x64, win-arm64, linux-arm64, linux-musl-arm64]
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: "9.0.x"
+
+    - name: Restore Dependencies
+      run: dotnet restore
+
+    - name: Publish for ${{ matrix.platform }}
+      run: dotnet publish -c Release -r ${{ matrix.platform }} --self-contained false -o out/${{ matrix.platform }}
+
+    - name: Create Archive
+      run: |
+        zip -r release-${{ matrix.platform }}.zip out/${{ matrix.platform }}
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-${{ matrix.platform }}
+        path: release-${{ matrix.platform }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Get Release Tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ env.VERSION }}
+        name: Release ${{ env.VERSION }}
+        files: artifacts/**/release-*.zip
+        body: "Automated release build for version ${{ env.VERSION }}."
+        draft: false
+        prerelease: false
