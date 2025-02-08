@@ -132,7 +132,14 @@ public sealed class Server : IAsyncDisposable
             return new LoggingRoutine(logger);
         });
 
-        Log.Out($"Starting {ProgramInfo.ProgramName} API Server...", callerMethod: "Server");
+        string runningEnvironment = Environment.GetEnvironmentVariable("DOCKER_ENVIRONMENT") == null ? "CLI" : "Docker";
+        string runningArch = Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit";
+
+        Log.Out(
+            $"Starting {ProgramInfo.ProgramName} API Server {ProgramInfo.ProgramVersion} ({runningEnvironment} on {Environment.OSVersion} {runningArch}) at {Environment.MachineName}.",
+            callerMethod: "Server"
+        );
+
         app = builder.Build();
 
         /// Add Middleware and configuration

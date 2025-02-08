@@ -21,7 +21,7 @@ services:
       retries: 5
 
   api:
-    image: conductor:0.0.1-${DOCKER_ENVIRONMENT}
+    image: conductor:0.0.2-${DOCKER_ENVIRONMENT}
     hostname: conductor-api
     build:
       context: .
@@ -76,6 +76,7 @@ services:
       - VIRTUAL_TABLE_ID_MAX_LENGHT=${VIRTUAL_TABLE_ID_MAX_LENGHT}
       - CONSUMER_ATTEMPT_BACKOFF_BASE_MS=${CONSUMER_ATTEMPT_BACKOFF_BASE_MS}
       - CONSUMER_CONCURRENT_FETCHES=${CONSUMER_CONCURRENT_FETCHES}
+      - DOCKER_ENVIRONMENT=${DOCKER_ENVIRONMENT}
     depends_on:
       database:
         condition: service_healthy
