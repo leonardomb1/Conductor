@@ -117,9 +117,11 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                 if (t.IsCancellationRequested) return;
 
                 var metadata = DBExchangeFactory.Create(e.Destination!.DbType);
-                var metCon = metadata.CreateConnection(e.Destination.ConnectionString);
+                var con = metadata.CreateConnection(e.Destination.ConnectionString);
 
-                var exists = await metadata.Exists(e, metCon);
+                await con.OpenAsync(t);
+
+                var exists = await metadata.Exists(e, con);
                 if (!HandleError(exists, t)) return;
 
                 UInt64 destRc = 0;
@@ -127,15 +129,18 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                 {
                     if (!e.IsIncremental)
                     {
-                        var truncate = await metadata.TruncateTable(e, metCon);
+                        var truncate = await metadata.TruncateTable(e, con);
                         if (!HandleError(truncate, t)) return;
                     }
 
-                    var count = await metadata.CountTableRows(e, metCon);
+                    var count = await metadata.CountTableRows(e, con);
                     if (!HandleError(count, t)) return;
 
                     destRc = count.Value;
                 }
+
+                await con.CloseAsync();
+                await con.DisposeAsync();
 
                 var fetcher = DBExchangeFactory.Create(e.Origin!.DbType);
                 for (UInt64 curr = 0; !t.IsCancellationRequested; curr += Settings.ProducerLineMax)
@@ -208,7 +213,9 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                     if (t.IsCancellationRequested) return;
 
                     var inserter = DBExchangeFactory.Create(e.metadata.Destination!.DbType);
-                    var con = inserter.CreateConnection(e.metadata.Destination.ConnectionString);
+                    using var con = inserter.CreateConnection(e.metadata.Destination.ConnectionString);
+
+                    await con.OpenAsync(t);
 
                     var exists = await inserter.Exists(e.metadata, con);
                     if (!HandleError(exists, t)) return;
@@ -224,6 +231,9 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                     insertRes = (!e.metadata.IsIncremental || count.Value == 0)
                         ? await inserter.BulkLoad(e.data, e.metadata, con)
                         : await inserter.MergeLoad(e.data, e.metadata, con);
+
+                    await con.CloseAsync();
+
                     e.data.Dispose();
                 });
 
