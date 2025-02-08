@@ -137,7 +137,7 @@ public static class Settings
     [ConfigKey("CONSUMER_CONCURRENT_FETCHES")]
     public static byte ConsumerConcurrentFetches { get; set; }
 
-    [ConfigKey("")]
+    [ConfigKey("CONSUMER_ATTEMPT_BACKOFF_BASE_MS")]
     public static Int32 ConsumerBackoff { get; set; }
 
     [ConfigKey("SPLITTER_CHAR")]
