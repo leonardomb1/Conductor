@@ -175,40 +175,32 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
         }
     }
 
+
     public async Task ConsumeData(Channel<(DataTable, Extraction)> channel, CancellationTokenSource cts)
     {
         ParallelOptions options = Settings.ParallelRule.Value;
         options.CancellationToken = cts.Token;
 
+        Dictionary<string, bool> tableFirstExecutionState = [];
+
         while (await channel.Reader.WaitToReadAsync(cts.Token))
         {
             if (cts.Token.IsCancellationRequested) return;
 
-            var fetchedData = new Dictionary<Extraction, List<DataTable>>();
+            var fetchedData = new List<(DataTable data, Extraction metadata)>();
 
             for (UInt16 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable data, Extraction metadata) item); i++)
             {
-                if (!fetchedData.TryGetValue(item.metadata, out var dataList))
-                {
-                    dataList = [];
-                    fetchedData[item.metadata] = dataList;
-                }
-
-                dataList.Add(item.data);
+                fetchedData.Add(item);
             }
 
-            var mergedData = fetchedData.Select(group =>
-            {
-                using var mergedData = Converter.MergeDataTables(group.Value);
-                return (data: mergedData, metadata: group.Key);
-            });
+            Result insertRes = Result.Ok();
 
-            Result insertRes = new();
-            byte attempt = 0;
-            do
+            for (byte attempt = 0; attempt < Settings.ConsumerAttemptMax; attempt++)
             {
-                attempt++;
-                await Parallel.ForEachAsync(mergedData, options, async (e, t) =>
+                insertRes = Result.Ok();
+
+                await Parallel.ForEachAsync(fetchedData, options, async (e, t) =>
                 {
                     if (t.IsCancellationRequested) return;
 
@@ -217,8 +209,14 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                     await con.OpenAsync(t);
 
+                    string tableKey = e.metadata.Alias ?? e.metadata.Name;
+
                     var exists = await inserter.Exists(e.metadata, con);
-                    if (!HandleError(exists, t)) return;
+                    if (!HandleError(exists, t))
+                    {
+                        insertRes = Result.Err(exists.Error);
+                        return;
+                    }
 
                     if (!exists.Value)
                     {
@@ -226,30 +224,40 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
                     }
 
                     var count = await inserter.CountTableRows(e.metadata, con);
-                    if (!HandleError(count, t)) return;
+                    if (!HandleError(count, t))
+                    {
+                        insertRes = Result.Err(count.Error);
+                        return;
+                    }
 
-                    insertRes = (!e.metadata.IsIncremental || count.Value == 0)
-                        ? await inserter.BulkLoad(e.data, e.metadata, con)
-                        : await inserter.MergeLoad(e.data, e.metadata, con);
+                    if (!tableFirstExecutionState.TryGetValue(tableKey, out bool value))
+                    {
+                        value = count.Value == 0;
+                        tableFirstExecutionState[tableKey] = value;
+                    }
+
+                    if (value)
+                    {
+                        await inserter.BulkLoad(e.data, e.metadata, con);
+                    }
+                    else
+                    {
+                        await inserter.MergeLoad(e.data, e.metadata, con);
+                    }
 
                     await con.CloseAsync();
-
                     e.data.Dispose();
                 });
 
-                if (!insertRes.IsSuccessful && attempt >= Settings.ConsumerAttemptMax)
-                {
-                    pipelineErrors.Add(insertRes.Error!);
-                    Log.Out("Maximum attempt count has been reached, cancelling...");
-                    cts.Cancel();
-                    return;
-                }
+                if (insertRes.IsSuccessful)
+                    break;
+            }
 
-            } while (!insertRes.IsSuccessful && attempt < Settings.ConsumerAttemptMax);
-
-            foreach (var (data, _) in mergedData)
+            if (!insertRes.IsSuccessful)
             {
-                data.Dispose();
+                pipelineErrors.Add(insertRes.Error!);
+                Log.Out("Maximum attempt count has been reached, cancelling...");
+                cts.Cancel();
             }
         }
     }
