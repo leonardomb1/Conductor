@@ -135,7 +135,7 @@ public static class Settings
     public static Int32 ResponseCachingLimit { get; set; }
 
     [ConfigKey("CONSUMER_CONCURRENT_FETCHES")]
-    public static byte ConsumerConcurrentFetches { get; set; }
+    public static UInt32 ConsumerConcurrentFetches { get; set; }
 
     [ConfigKey("CONSUMER_ATTEMPT_BACKOFF_BASE_MS")]
     public static Int32 ConsumerBackoff { get; set; }
