@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Service;
@@ -22,7 +23,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         );
 
         Log.Out(
-            $"An error occurred while processing a request: {err?.ExceptionMessage}.\nTrace: {err?.StackTrace}",
+            $"An error occurred while processing a request:\nMessage: {err?.ExceptionMessage}, Faulted Method: {err?.FaultedMethod}, Trace: {err?.StackTrace}",
             callerMethod: method,
             logType: RecordType.Error
         );
@@ -45,8 +46,15 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
                 err: true
         );
 
+        StringBuilder builder = new("Some errors have occurred while processing a long running request: ");
+
+        for (Int32 i = 0; i < err.Count; i++)
+        {
+            builder.Append($"Error {i}:\nMessage: {err[i].ExceptionMessage}, Faulted Method: {err[i].FaultedMethod}, Trace: {err[i].StackTrace}\n");
+        }
+
         Log.Out(
-            $"Some errors may have occurred while processing a long running request.",
+            builder.ToString(),
             callerMethod: method,
             logType: RecordType.Error
         );
