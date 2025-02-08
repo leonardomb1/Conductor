@@ -359,8 +359,6 @@ public abstract class DBExchange
 
         try
         {
-            await connection.OpenAsync(token);
-
             using var fetched = new DataTable();
             var select = await command.ExecuteReaderAsync(token);
             fetched.Load(select);
