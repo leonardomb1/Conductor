@@ -2,7 +2,9 @@ name: Docker Package CI
 
 on:
   push:
-    branches: [ "main" ]
+    tags:
+      - "docker-v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,7 +18,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Set Version Number
-      run: echo "VERSION=main-v0.0.${{ github.run_number }}" >> $GITHUB_ENV
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
     - name: Log in to GitHub Container Registry
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
