@@ -41,7 +41,7 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -57,7 +57,7 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -72,7 +72,7 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -85,7 +85,7 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -99,7 +99,7 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 

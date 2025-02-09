@@ -32,7 +32,7 @@ public class JobExtractionService(LdbContext context) : ServiceBase(context), IS
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -46,7 +46,7 @@ public class JobExtractionService(LdbContext context) : ServiceBase(context), IS
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 

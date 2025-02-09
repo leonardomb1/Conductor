@@ -57,7 +57,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -77,7 +77,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -90,7 +90,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -104,7 +104,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 

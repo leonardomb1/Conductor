@@ -23,7 +23,7 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         );
 
         Log.Out(
-            $"An error occurred while processing a request:\nMessage: {err?.ExceptionMessage}, Faulted Method: {err?.FaultedMethod}, Trace: {err?.StackTrace}",
+            $"An error occurred while processing a request:\n   Message: {err?.ExceptionMessage}\n   Faulted Method: {err?.FaultedMethod}\n   Trace: {err?.StackTrace}",
             callerMethod: method,
             logType: RecordType.Error
         );

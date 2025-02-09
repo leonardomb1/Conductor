@@ -41,7 +41,7 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -61,7 +61,7 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -79,7 +79,7 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -95,7 +95,7 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -114,7 +114,7 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -130,7 +130,7 @@ public sealed class UserService(LdbContext context) : ServiceBase(context), ISer
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 }

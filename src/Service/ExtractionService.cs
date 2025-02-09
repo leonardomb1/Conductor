@@ -44,7 +44,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -64,7 +64,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -83,7 +83,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -124,7 +124,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -137,7 +137,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -153,7 +153,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 
@@ -169,7 +169,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         }
         catch (Exception ex)
         {
-            return ErrorHandler(ex);
+            return new Error(ex.Message, ex.StackTrace);
         }
     }
 }

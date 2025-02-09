@@ -125,9 +125,6 @@ public static class Settings
     [ConfigKey("LDAP_GROUPDN")]
     public static string LdapGroupDN { get; set; } = "";
 
-    [ConfigKey("DEBUG_DETAILED_ERROR")]
-    public static bool DebugDetailedError { get; set; }
-
     [ConfigKey("REQUIRE_AUTHENTICATION")]
     public static bool RequireAuthentication { get; set; }
 
