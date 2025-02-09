@@ -12,7 +12,7 @@ public static class JobRoute
         group.MapGet("/active", (JobController controller) => controller.GetActiveJobs())
             .WithName("GetActiveJobs");
 
-        group.MapGet("/search", (JobController controller, HttpRequest request) => controller.Get(request.Query))
+        group.MapGet("/search", (JobController controller, HttpRequest request) => controller.GetJobs(request.Query))
             .WithName("SearchJobs");
 
         group.MapDelete("/", async (JobController controller, HttpRequest request) => await controller.Clear())

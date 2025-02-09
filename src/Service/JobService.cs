@@ -8,14 +8,30 @@ namespace Conductor.Service;
 
 public class JobService(LdbContext context) : ServiceBase(context), IService<Job>
 {
-    public async Task<Result<List<Job>>> Search(IQueryCollection? filters = null)
+    public Task<Result<List<Job>>> Search(IQueryCollection? filters = null)
+    {
+        throw new NotImplementedException();
+    }
+
+    public async Task<Result<List<object>>> SearchJob(IQueryCollection? filters = null)
     {
         try
         {
             var select = (from j in Repository.Jobs
-                          .LoadWith(j => j.JobExtractions)
+                          join je in Repository.JobExtractions on j.JobGuid equals je.JobGuid
+                          join e in Repository.Extractions on je.ExtractionId equals e.Id
                           orderby j.StartTime descending
-                          select j).AsQueryable();
+                          select new
+                          {
+                              e.Name,
+                              j.JobGuid,
+                              JobType = $"{j.JobType}",
+                              Status = $"{j.Status}",
+                              j.StartTime,
+                              j.EndTime,
+                              TimeSpentSec = (j.EndTime - j.StartTime)!.Value.Seconds,
+                              TotalMbTransfered = j.BytesAccumulated > 0 ? (float)j.BytesAccumulated / 1_000_000 : 0
+                          }).AsQueryable();
 
             if (filters != null)
             {
@@ -29,16 +45,15 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
                         "relative" when Int32.TryParse(value, out var time) => select.Where(
                                 j => j.StartTime >= DateTime.Now.AddSeconds(-time)
                             ),
-                        "extractionId" when UInt32.TryParse(value, out var id) => select.Where(
-                            j => j.JobExtractions.Any(je => je.ExtractionId == id)
-                        ),
+                        "extractionName" => select.Where(j => j.Name == value),
                         "take" when Int32.TryParse(value, out Int32 count) => select.Take(count),
                         _ => select
                     };
                 }
             }
 
-            return await select.ToListAsync();
+            var result = await select.ToListAsync();
+            return result.Cast<object>().ToList();
         }
         catch (Exception ex)
         {
