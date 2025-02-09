@@ -72,7 +72,7 @@ public sealed class JobController(JobService jobService, JobExtractionService jo
                        Status = $"{je.Job.Status}",
                        je.Job.StartTime,
                        je.Job.EndTime,
-                       TimeSpentSec = (je.Job.EndTime - je.Job.StartTime)!.Value.TotalSeconds,
+                       TimeSpentMs = (je.Job.EndTime - je.Job.StartTime)!.Value.TotalMilliseconds,
                        TotalMbTransfered = je.Job.BytesAccumulated > 0 ? (float)je.Job.BytesAccumulated / 1_000_000 : 0
                    };
 

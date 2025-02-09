@@ -29,7 +29,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
                               Status = $"{j.Status}",
                               j.StartTime,
                               j.EndTime,
-                              TimeSpentSec = (j.EndTime - j.StartTime)!.Value.Seconds,
+                              TimeSpentMs = (j.EndTime - j.StartTime)!.Value.TotalMilliseconds,
                               TotalMbTransfered = j.BytesAccumulated > 0 ? (float)j.BytesAccumulated / 1_000_000 : 0
                           }).AsQueryable();
 
