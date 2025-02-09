@@ -15,6 +15,39 @@ public abstract class DBExchange
 {
     private static readonly HashSet<string> MARSCompatibleDatabases = [ProviderName.SqlServer];
 
+    public static Int64 CalculateBytesUsed(DataTable data)
+    {
+        Int64 bytes = 0;
+        foreach (DataRow row in data.Rows)
+        {
+            foreach (DataColumn col in data.Columns)
+            {
+                if (row[col] == null || row[col] == DBNull.Value) continue;
+                bytes += GetTypeByteSize(row[col], col.DataType);
+            }
+        }
+        return bytes;
+    }
+
+    public static Int64 GetTypeByteSize(object value, Type type)
+    {
+        return type switch
+        {
+            _ when type == typeof(string) => Encoding.UTF8.GetByteCount((string)value),
+            _ when type == typeof(byte[]) => ((byte[])value).LongLength,
+            _ when type == typeof(DateTime) => sizeof(long),
+            _ when type == typeof(bool) => sizeof(bool),
+            _ when type == typeof(int) => sizeof(int),
+            _ when type == typeof(long) => sizeof(long),
+            _ when type == typeof(decimal) => sizeof(decimal),
+            _ when type == typeof(double) => sizeof(double),
+            _ when type == typeof(float) => sizeof(float),
+            _ when type == typeof(short) => sizeof(short),
+            _ when type == typeof(byte) => sizeof(byte),
+            _ => value.ToString()?.Length * sizeof(char) ?? 0
+        };
+    }
+
     public static bool SupportsMARS(string dbType) => MARSCompatibleDatabases.Contains(dbType);
 
     protected abstract string? QueryNonLocking();
@@ -34,8 +67,6 @@ public abstract class DBExchange
     protected abstract StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName);
 
     protected abstract StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName);
-
-    protected abstract StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName);
 
     protected abstract Task EnsureSchemaCreation(string system, DbConnection connection);
 
@@ -590,7 +621,6 @@ public abstract class DBExchange
         queryBuilder = AddIdentityColumn(queryBuilder, tableName);
         queryBuilder = AddPrimaryKey(queryBuilder, tableName);
         queryBuilder = AddSurrogateKey(queryBuilder, extraction.IndexName, tableName, extraction.VirtualIdGroup);
-        if (extraction.TableStructure == "Columnar") queryBuilder = AddColumnarStructure(queryBuilder, tableName);
         queryBuilder.AppendLine(");");
 
         try
@@ -632,7 +662,6 @@ public abstract class DBExchange
         queryBuilder = AddIdentityColumn(queryBuilder, tableName);
         queryBuilder = AddPrimaryKey(queryBuilder, tableName);
         queryBuilder = AddSurrogateKey(queryBuilder, extraction.IndexName, tableName, extraction.VirtualIdGroup);
-        if (extraction.TableStructure == "Columnar") queryBuilder = AddColumnarStructure(queryBuilder, tableName);
         queryBuilder.AppendLine(");");
 
         try

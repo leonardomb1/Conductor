@@ -6,15 +6,15 @@ using LinqToDB.Data;
 
 namespace Conductor.Service;
 
-public class RecordService(LdbContext context) : ServiceBase(context), IService<Record>
+public class JobService(LdbContext context) : ServiceBase(context), IService<Job>
 {
-    public async Task<Result<List<Record>>> Search(IQueryCollection? filters = null)
+    public async Task<Result<List<Job>>> Search(IQueryCollection? filters = null)
     {
         try
         {
-            var select = (from r in Repository.Records
-                          orderby r.TimeStamp descending
-                          select r).AsQueryable();
+            var select = (from j in Repository.Jobs
+                          orderby j.StartTime descending
+                          select j).AsQueryable();
 
             if (filters != null)
             {
@@ -26,11 +26,11 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
                     select = key switch
                     {
                         "relative" when Int32.TryParse(value, out var time) => select.Where(
-                                e => e.TimeStamp >= DateTime.Now.AddSeconds(-time)
+                                j => j.StartTime >= DateTime.Now.AddSeconds(-time)
                             ),
-                        "hostname" => select.Where(e => e.HostName == value),
-                        "type" => select.Where(e => e.EventType == value),
-                        "event" => select.Where(e => e.Event.Contains(value)),
+                        "extractionId" when UInt32.TryParse(value, out var id) => select.Where(
+                                j => j.ExtractionIds.Contains(id)
+                            ),
                         "take" when Int32.TryParse(value, out Int32 count) => select.Take(count),
                         _ => select
                     };
@@ -45,20 +45,9 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
         }
     }
 
-    public async Task<Result<Record?>> Search(UInt32 id)
+    public Task<Result<Job?>> Search(UInt32 id)
     {
-        try
-        {
-            var select = from r in Repository.Records
-                         where r.Id == id
-                         select r;
-
-            return await select.FirstOrDefaultAsync();
-        }
-        catch (Exception ex)
-        {
-            return ErrorHandler(ex);
-        }
+        throw new NotImplementedException();
     }
 
     public async Task<Result<Int32>> Count()
@@ -76,11 +65,11 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
         }
     }
 
-    public async Task<Result> CreateBulk(List<Record> record)
+    public async Task<Result> CreateBulk(List<Job> jobs)
     {
         try
         {
-            var insert = await Repository.BulkCopyAsync(record);
+            var insert = await Repository.BulkCopyAsync(jobs);
             return Result.Ok();
         }
         catch (Exception ex)
@@ -93,7 +82,7 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
     {
         try
         {
-            await Repository.Records.TruncateAsync();
+            await Repository.Jobs.TruncateAsync();
 
             return Result.Ok();
         }
@@ -108,12 +97,12 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
         throw new NotImplementedException();
     }
 
-    public Task<Result> Create(Record record)
+    public Task<Result> Create(Job job)
     {
         throw new NotImplementedException();
     }
 
-    public Task<Result> Update(Record record, UInt32 id)
+    public Task<Result> Update(Job job, UInt32 id)
     {
         throw new NotImplementedException();
     }

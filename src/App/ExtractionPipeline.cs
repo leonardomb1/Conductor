@@ -5,12 +5,13 @@ using System.Threading.Channels;
 using Conductor.App.Database;
 using Conductor.Logging;
 using Conductor.Model;
+using Conductor.Service;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
 
 namespace Conductor.App;
 
-public class ExtractionPipeline : IAsyncDisposable, IDisposable
+public class ExtractionPipeline() : IAsyncDisposable, IDisposable
 {
     private readonly ConcurrentBag<Error> pipelineErrors = [];
 
@@ -73,6 +74,10 @@ public class ExtractionPipeline : IAsyncDisposable, IDisposable
 
             if (!HandleError(attempt, t)) break;
             if (attempt.Value.Rows.Count == 0) break;
+
+            Int64 byteSize = DBExchange.CalculateBytesUsed(attempt.Value);
+            var job = JobTracker.GetJobByExtractionId(e.Id);
+            if (job != null) JobTracker.UpdateTransferedBytes(job.JobGuid, byteSize);
 
             await channel.Writer.WriteAsync((attempt.Value, e), t);
         }

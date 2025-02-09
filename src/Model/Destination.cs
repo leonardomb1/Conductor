@@ -13,8 +13,7 @@ public sealed class Destination : IDbModel, IEndpointParameterMetadataProvider
 {
     private const string tableName = "DESTINATIONS";
 
-    [PrimaryKey, Identity]
-    [Key]
+    [PrimaryKey, Identity, Key]
     public UInt32 Id { get; set; }
 
     [Column, NotNull, JsonRequired, JsonPropertyName("destinationName")]

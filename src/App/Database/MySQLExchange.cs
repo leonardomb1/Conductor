@@ -52,9 +52,6 @@ public class MySQLExchange : DBExchange
     protected override StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.AppendLine($" DT_UPDATE_{tableName} DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,");
 
-    protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
-        stringBuilder.Append($"");
-
     protected override StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.AppendLine($" ID_DW_{tableName} INT AUTO_INCREMENT,");
 

@@ -13,8 +13,7 @@ public sealed class Schedule : IDbModel, IEndpointParameterMetadataProvider
 {
     private const string tableName = "SCHEDULES";
 
-    [PrimaryKey, Identity]
-    [Key]
+    [PrimaryKey, Identity, Key]
     public UInt32 Id { get; set; }
 
     [Column, NotNull, JsonRequired, JsonPropertyName("scheduleName")]

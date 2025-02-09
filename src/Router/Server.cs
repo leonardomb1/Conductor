@@ -112,6 +112,7 @@ public sealed class Server : IAsyncDisposable
         builder.Services.AddScoped<UserService>();
         builder.Services.AddScoped<ExtractionService>();
         builder.Services.AddScoped<ScheduleService>();
+        builder.Services.AddScoped<JobService>();
 
         /// Controllers
         builder.Services.AddScoped<RecordController>();
@@ -120,16 +121,26 @@ public sealed class Server : IAsyncDisposable
         builder.Services.AddScoped<UserController>();
         builder.Services.AddScoped<ExtractionController>();
         builder.Services.AddScoped<ScheduleController>();
+        builder.Services.AddScoped<JobController>();
 
         /// Custom logging
         builder.Logging.ClearProviders();
         builder.Logging.SetMinimumLevel(LogLevel.None);
+
         builder.Services.AddHostedService(provider =>
         {
             var ctx = new LdbContext();
             var logger = new RecordService(ctx);
 
             return new LoggingRoutine(logger);
+        });
+
+        builder.Services.AddHostedService(provider =>
+        {
+            var ctx = new LdbContext();
+            var service = new JobService(ctx);
+
+            return new JobRoutine(service);
         });
 
         string runningEnvironment = Environment.GetEnvironmentVariable("DOCKER_ENVIRONMENT") == null ? "CLI" : "Docker";
@@ -171,11 +182,12 @@ public sealed class Server : IAsyncDisposable
         LoginRoute.Add(api);
         ExtractionRoute.Add(api);
         HealthRoute.Add(api);
+        JobRoute.Add(api);
     }
 
     public void Run()
     {
-        Log.Out($"Server is listening at port: {Settings.PortNumber}.", callerMethod: "Server");
+        Log.Out($"Listening on IPv4 address \"0.0.0.0\", port: {Settings.PortNumber}.", callerMethod: "Server");
         app.Run();
     }
 

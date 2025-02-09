@@ -13,8 +13,7 @@ public sealed class Origin : IDbModel, IEndpointParameterMetadataProvider
 {
     private const string tableName = "ORIGINS";
 
-    [PrimaryKey, Identity]
-    [Key]
+    [PrimaryKey, Identity, Key]
     public UInt32 Id { get; set; }
 
     [Column, NotNull, JsonRequired, JsonPropertyName("originName")]

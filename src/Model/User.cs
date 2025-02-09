@@ -12,8 +12,7 @@ public sealed class User : IDbModel, IEndpointParameterMetadataProvider
 {
     private const string tableName = "USERS";
 
-    [PrimaryKey, Identity]
-    [Key]
+    [PrimaryKey, Identity, Key]
     public UInt32 Id { get; set; }
 
     [Column, NotNull, JsonRequired, JsonPropertyName("username")]

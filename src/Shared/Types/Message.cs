@@ -1,64 +1,50 @@
-using System.Net;
 using System.Text.Json.Serialization;
+using LinqToDB.Common;
 
 namespace Conductor.Shared.Types;
 
-public sealed class Message<T>
+public sealed class Message<T>(
+    Int32 statusId,
+    string info,
+    List<T>? values = null,
+    bool err = false,
+    Int32? page = null
+    )
 {
     [JsonRequired]
-    public Int32 StatusCode { get; set; }
+    public Int32 StatusCode { get; set; } = statusId;
 
     [JsonRequired]
-    public string Information { get; set; }
+    public string Information { get; set; } = info;
 
     [JsonRequired]
-    public bool Error { get; set; }
+    public bool Error { get; set; } = err;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Int32? EntityCount { get; set; }
+    public Int32? EntityCount { get; set; } = values?.Count;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Int32? Page { get; set; }
+    public Int32? Page { get; set; } = page;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<T>? Content { get; set; }
+    public bool? HasData { get; } = page == null ? null : values.IsNullOrEmpty();
 
-    public Message(
-        Int32 statusId,
-        string info,
-        List<T>? values = null,
-        bool err = false,
-        Int32? page = null
-    )
-    {
-        StatusCode = statusId;
-        Information = info;
-        Error = err;
-        Content = values;
-        EntityCount = values?.Count;
-        Page = page;
-    }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<T>? Content { get; set; } = values;
 }
 
-public sealed class Message
+public sealed class Message(
+    Int32 statusId,
+    string info,
+    bool err = false
+    )
 {
     [JsonRequired]
-    public Int32 StatusCode { get; set; }
+    public Int32 StatusCode { get; set; } = statusId;
 
     [JsonRequired]
-    public string Information { get; set; }
+    public string Information { get; set; } = info;
 
     [JsonRequired]
-    public bool Error { get; set; }
-
-    public Message(
-        Int32 statusId,
-        string info,
-        bool err = false
-    )
-    {
-        StatusCode = statusId;
-        Information = info;
-        Error = err;
-    }
+    public bool Error { get; set; } = err;
 }

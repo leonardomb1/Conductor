@@ -13,8 +13,7 @@ public sealed class Record : IDbModel, IEndpointParameterMetadataProvider
 {
     private const string tableName = "RECORDS";
 
-    [PrimaryKey, Identity]
-    [Key]
+    [PrimaryKey, Identity, Key]
     public UInt32 Id { get; set; }
 
     [Column, JsonRequired, NotNull]

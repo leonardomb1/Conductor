@@ -50,9 +50,6 @@ public class MSSQLExchange : DBExchange
     protected override StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.AppendLine($" DT_UPDATE_{tableName} DATETIME NOT NULL CONSTRAINT CK_UPDATE_{tableName} DEFAULT (GETDATE()),");
 
-    protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
-        stringBuilder.Append($" INDEX IX_{tableName}_CCI CLUSTERED COLUMNSTORE");
-
     protected override StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.AppendLine($" ID_DW_{tableName} INT IDENTITY(1,1),");
 

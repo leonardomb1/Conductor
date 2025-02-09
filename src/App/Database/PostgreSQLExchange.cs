@@ -56,9 +56,6 @@ public class PostgreSQLExchange : DBExchange
     protected override StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.AppendLine($" ID_DW_{tableName} INT GENERATED ALWAYS AS IDENTITY,");
 
-    protected override StringBuilder AddColumnarStructure(StringBuilder stringBuilder, string tableName) =>
-        stringBuilder.Append($"");
-
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
         using var select = new NpgsqlCommand("SELECT schema_name FROM information_schema.schemata WHERE schema_name = @schema", (NpgsqlConnection)connection);

@@ -1,6 +1,7 @@
 using System.Data;
 using Conductor.App;
 using Conductor.App.Database;
+using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Service;
 using Conductor.Shared;
@@ -72,35 +73,46 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         if (fetch.Value.Any(e => e.DestinationId == null))
         {
             return TypedResults.BadRequest(
-                new Message(Status400BadRequest, "Any of the extractions used need to have a destionation defined.", true)
+                new Message(Status400BadRequest, "Any of the extractions used need to have a destination defined.", true)
             );
         }
 
-        fetch.Value
-            .ForEach(x =>
-            {
-                x.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
-                x.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
-            });
+        var extractions = fetch.Value;
+        var extractionIds = extractions.Select(x => x.Id);
+        var job = JobTracker.StartJob(extractionIds);
 
-        await using var pipeline = new ExtractionPipeline();
-
-        var result = await pipeline.ChannelParallelize(
-            fetch.Value,
-            pipeline.ProduceDBData,
-            token
-        );
-
-        if (!result.IsSuccessful)
+        try
         {
-            return TypedResults.InternalServerError(
-                ErrorMessage("Extraction failed.", result.Error)
-            );
-        }
+            extractions
+                .ForEach(x =>
+                {
+                    x.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
+                    x.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
+                });
 
-        return TypedResults.Ok(
-            new Message(Status200OK, "Extraction Successful.")
-        );
+            await using var pipeline = new ExtractionPipeline();
+            var result = await pipeline.ChannelParallelize(
+                extractions,
+                pipeline.ProduceDBData,
+                token
+            );
+
+            if (!result.IsSuccessful)
+            {
+                JobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+                return TypedResults.InternalServerError(
+                    ErrorMessage("Extraction failed.", result.Error));
+            }
+
+            JobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
+            return TypedResults.Ok(new Message(Status200OK, "Extraction Successful."));
+        }
+        catch (Exception ex)
+        {
+            JobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+            return TypedResults.InternalServerError(
+                ErrorMessage("Extraction failed.", [new Error(ex.Message, ex.StackTrace)]));
+        }
     }
 
     public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>, Ok<Message<Dictionary<string, object>>>>> FetchData(IQueryCollection? filters, CancellationToken token)
@@ -152,64 +164,6 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         return TypedResults.Ok(
             new Message<Dictionary<string, object>>(Status200OK, "Result fetch was successful.", rows, page: page == 0 ? 1 : page)
-        );
-    }
-
-    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>, BadRequest<Message>>> DropPhysicalTable(string stringId)
-    {
-        if (!UInt32.TryParse(stringId, out UInt32 id))
-        {
-            return TypedResults.BadRequest(
-                new Message(Status400BadRequest, "This is an invalid parameter type.", true)
-            );
-        }
-
-        var fetch = await service.Search(id);
-
-        if (!fetch.IsSuccessful)
-        {
-            return TypedResults.InternalServerError(ErrorMessage(
-                fetch.Error.ExceptionMessage)
-            );
-        }
-
-        if (fetch.Value == null)
-        {
-            return TypedResults.Ok(
-                new Message(Status200OK, "No such table.")
-            );
-        }
-
-        if (fetch.Value.DestinationId == null)
-        {
-            return TypedResults.BadRequest(
-                new Message(Status400BadRequest, "Any of the extractions used need to have a destination defined.", true)
-            );
-        }
-
-        fetch.Value.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(
-            fetch.Value.Origin!.ConnectionString,
-            Settings.EncryptionKey
-        );
-
-        fetch.Value.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(
-            fetch.Value.Destination!.ConnectionString,
-            Settings.EncryptionKey
-        );
-
-        var engine = DBExchangeFactory.Create(fetch.Value.Destination.DbType);
-
-        var result = await engine.DropTable(fetch.Value);
-
-        if (!result.IsSuccessful)
-        {
-            return TypedResults.InternalServerError(
-                ErrorMessage("Drop table has failed.", result.Error)
-            );
-        }
-
-        return TypedResults.Ok(
-            new Message(Status200OK, "Table has been dropped.")
         );
     }
 }

@@ -20,4 +20,6 @@ public class LdbContext : DataConnection
     public ITable<Destination> Destinations => this.GetTable<Destination>();
 
     public ITable<Record> Records => this.GetTable<Record>();
+
+    public ITable<Job> Jobs => this.GetTable<Job>();
 }

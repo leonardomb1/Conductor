@@ -1,4 +1,3 @@
-using Conductor.App;
 using Conductor.Controller;
 using Conductor.Model;
 
@@ -25,7 +24,7 @@ public static class ExtractionRoute
             .Accepts<Extraction>("application/json")
             .WithName("PutExtraction");
 
-        group.MapPost("/execute", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
+        group.MapPost("/transfer", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
         {
             return await controller.ExecuteExtraction(request.Query, token);
         }).WithName("ExecuteExtraction");
@@ -37,9 +36,6 @@ public static class ExtractionRoute
 
         group.MapDelete("/{id}", async (ExtractionController controller, string id) => await controller.Delete(id))
             .WithName("DeleteExtraction");
-
-        group.MapDelete("/physical/{id}", async (ExtractionController controller, string id) => await controller.DropPhysicalTable(id))
-            .WithName("DropPhysicalTable");
 
         return group;
     }

@@ -16,8 +16,7 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
 {
     private const string tableName = "EXTRACTIONS";
 
-    [PrimaryKey, Identity]
-    [Key]
+    [PrimaryKey, Identity, Key]
     public UInt32 Id { get; set; }
 
     [Column, NotNull, JsonRequired, JsonPropertyName("extractionName")]
@@ -51,14 +50,7 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public bool? IsVirtualTemplate { get; set; }
 
     [Column, NotNull, JsonRequired]
-    public bool BeforeExecutionDeletes { get; set; }
-
-    [Column, NotNull, JsonRequired]
     public bool SingleExecution { get; set; }
-
-    [Column, Nullable]
-    [AllowedValues("Columnar", "Relational")]
-    public string? TableStructure { get; set; }
 
     [Column, Nullable]
     public string? FilterColumn { get; set; }
