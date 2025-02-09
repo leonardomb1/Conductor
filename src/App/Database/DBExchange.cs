@@ -190,46 +190,6 @@ public abstract class DBExchange
         }
     }
 
-    public virtual async Task<Result> ClearTable(Extraction extraction, DataTable data, DbConnection connection, UInt64 rowCount)
-    {
-        if (
-            !extraction.IsIncremental ||
-            extraction.SingleExecution ||
-            rowCount == 0 ||
-            data.Rows.Count == 0
-        ) return Result.Ok();
-
-        string tableName = extraction.Alias ?? extraction.Name;
-        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
-        string virtualIdGroup = extraction.VirtualIdGroup ?? "file";
-
-        StringBuilder builder = new();
-
-        string columnCondition = extraction.IsVirtual ?
-            $"AND {GetCastType($"\"{extraction.IndexName}\"", typeof(string), extraction.IndexName.Length)} + '{Settings.SplitterChar}' + \"{tableName}_{virtualIdGroup}\"" :
-            $"AND \"{extraction.IndexName}\"";
-
-        builder.Append($"DELETE FROM \"{schemaName}\".\"{tableName}\" WHERE 1 = 1 {columnCondition} IN (");
-
-        var values = data.Rows.Cast<DataRow>().Select(row =>
-            extraction.IsVirtual ? $"'{row[extraction.IndexName]}{Settings.SplitterChar}{row[$"{tableName}_{virtualIdGroup}"]}'" : $"{row[extraction.IndexName]}"
-        );
-
-        builder.Append($"{string.Join(",", values)})");
-
-        try
-        {
-            Log.Out($"Clearing table {schemaName}.{tableName}...");
-            using DbCommand command = CreateDbCommand(builder.ToString(), connection);
-            await command.ExecuteNonQueryAsync();
-            return Result.Ok();
-        }
-        catch (Exception ex)
-        {
-            return new Error(ex.Message, ex.StackTrace);
-        }
-    }
-
     public virtual async Task<Result> DropTable(Extraction extraction)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
@@ -592,6 +552,7 @@ public abstract class DBExchange
 
     public virtual async Task<Result> CreateTable(DataTable table, Extraction extraction)
     {
+        if (extraction.IndexName == null) return new Error("Invalid metadata, missing index name.");
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
 
@@ -645,6 +606,7 @@ public abstract class DBExchange
 
     public virtual async Task<Result> CreateTable(DataTable table, Extraction extraction, DbConnection connection)
     {
+        if (extraction.IndexName == null) return new Error("Invalid metadata, missing index name.");
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
 

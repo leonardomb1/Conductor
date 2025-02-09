@@ -14,6 +14,7 @@ public class EfContext(string? dbType = null) : DbContext
     public DbSet<Record> Records { get; set; } = null!;
     public DbSet<Schedule> Schedules { get; set; } = null!;
     public DbSet<Job> Jobs { get; set; } = null!;
+    public DbSet<JobExtraction> JobExtractions { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

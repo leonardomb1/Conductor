@@ -13,6 +13,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
         try
         {
             var select = (from j in Repository.Jobs
+                          .LoadWith(j => j.JobExtractions)
                           orderby j.StartTime descending
                           select j).AsQueryable();
 
@@ -29,8 +30,8 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
                                 j => j.StartTime >= DateTime.Now.AddSeconds(-time)
                             ),
                         "extractionId" when UInt32.TryParse(value, out var id) => select.Where(
-                                j => j.ExtractionIds.Contains(id)
-                            ),
+                            j => j.JobExtractions.Any(je => je.ExtractionId == id)
+                        ),
                         "take" when Int32.TryParse(value, out Int32 count) => select.Take(count),
                         _ => select
                     };

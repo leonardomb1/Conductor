@@ -4,7 +4,7 @@ using Conductor.Service;
 
 namespace Conductor.Logging;
 
-public class JobRoutine(JobService jobService) : BackgroundService
+public class JobRoutine(JobService jobService, JobExtractionService jobExtractionService) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -12,7 +12,7 @@ public class JobRoutine(JobService jobService) : BackgroundService
         {
             try
             {
-                await JobTracker.DumpJobs(jobService);
+                await JobTracker.DumpJobs(jobService, jobExtractionService);
                 await Task.Delay(TimeSpan.FromSeconds(Settings.LogDumpTimeSec), stoppingToken);
             }
             catch (Exception ex)

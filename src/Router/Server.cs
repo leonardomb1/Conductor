@@ -113,6 +113,7 @@ public sealed class Server : IAsyncDisposable
         builder.Services.AddScoped<ExtractionService>();
         builder.Services.AddScoped<ScheduleService>();
         builder.Services.AddScoped<JobService>();
+        builder.Services.AddScoped<JobExtractionService>();
 
         /// Controllers
         builder.Services.AddScoped<RecordController>();
@@ -139,8 +140,9 @@ public sealed class Server : IAsyncDisposable
         {
             var ctx = new LdbContext();
             var service = new JobService(ctx);
+            var relatedService = new JobExtractionService(ctx);
 
-            return new JobRoutine(service);
+            return new JobRoutine(service, relatedService);
         });
 
         string runningEnvironment = Environment.GetEnvironmentVariable("DOCKER_ENVIRONMENT") == null ? "CLI" : "Docker";

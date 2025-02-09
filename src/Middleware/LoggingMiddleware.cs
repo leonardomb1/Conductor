@@ -43,7 +43,7 @@ public class LoggingMiddleware(RequestDelegate req)
 
         Log.Out(
             $"{statusCode} - Request for {ctx.Request.Path} by {client} was processed in {stopwatch.ElapsedMilliseconds} ms.",
-            statusCode.StartsWith('5') ? RecordType.Error : RecordType.Info,
+            RecordType.Info,
             callerMethod: "Server",
             raw: raw
         );

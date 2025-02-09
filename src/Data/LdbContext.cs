@@ -22,4 +22,6 @@ public class LdbContext : DataConnection
     public ITable<Record> Records => this.GetTable<Record>();
 
     public ITable<Job> Jobs => this.GetTable<Job>();
+
+    public ITable<JobExtraction> JobExtractions => this.GetTable<JobExtraction>();
 }

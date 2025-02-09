@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Service;
@@ -7,7 +8,7 @@ using static Microsoft.AspNetCore.Http.StatusCodes;
 
 namespace Conductor.Controller;
 
-public sealed class JobController(JobService service) : ControllerBase<Job>(service)
+public sealed class JobController(JobService service, JobExtractionService relatedService) : ControllerBase<Job>(service)
 {
     public async Task<Results<Ok<Message<Job>>, InternalServerError<Message<Error>>, BadRequest<Message>>> GetJobs(IQueryCollection? filters)
     {
@@ -45,5 +46,26 @@ public sealed class JobController(JobService service) : ControllerBase<Job>(serv
         var activeJobs = JobTracker.GetActiveJobs().ToList();
         return TypedResults.Ok(
             new Message<Job>(Status200OK, "Active jobs retrieved.", activeJobs));
+    }
+
+    public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>>> Clear()
+    {
+        var relatedTable = await relatedService.Clear();
+        if (!relatedTable.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(
+                ErrorMessage("Failed to clear data from Db.", relatedTable.Error)
+            );
+        }
+
+        var mainTable = await service.Clear();
+        if (!mainTable.IsSuccessful)
+        {
+            return TypedResults.InternalServerError(
+                ErrorMessage("Failed to clear data from Db.", mainTable.Error)
+            );
+        }
+        return TypedResults.Ok(
+            new Message(Status200OK, "Table has been cleared."));
     }
 }

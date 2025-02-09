@@ -138,6 +138,10 @@ public sealed class ExtractionController(ExtractionService service) : Controller
             Settings.EncryptionKey
         );
 
+        var extractions = fetch.Value;
+        var extractionIds = extractions.Select(x => x.Id);
+        var job = JobTracker.StartJob(extractionIds);
+
         UInt64 current = 0;
 
         if (UInt16.TryParse(filters?["page"] ?? "0", out UInt16 page))
@@ -149,6 +153,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         var query = await engine.FetchDataTable(res, false, current, token, shouldPaginate: true);
         if (!query.IsSuccessful)
         {
+            JobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
             return TypedResults.InternalServerError(ErrorMessage(
                 fetch.Error.ExceptionMessage)
             );
@@ -162,6 +167,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
             )
         )];
 
+        JobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
         return TypedResults.Ok(
             new Message<Dictionary<string, object>>(Status200OK, "Result fetch was successful.", rows, page: page == 0 ? 1 : page)
         );

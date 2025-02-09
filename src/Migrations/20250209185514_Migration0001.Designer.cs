@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Conductor.Migrations
 {
     [DbContext(typeof(EfContext))]
-    [Migration("20250209165034_Migration001")]
-    partial class Migration001
+    [Migration("20250209185514_Migration0001")]
+    partial class Migration0001
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -94,7 +94,6 @@ namespace Conductor.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("IndexName")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<bool>("IsIncremental")
@@ -154,24 +153,15 @@ namespace Conductor.Migrations
 
             modelBuilder.Entity("Conductor.Model.Job", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<Guid>("JobGuid")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+                        .HasColumnType("uuid");
 
                     b.Property<long>("BytesAccumulated")
                         .HasColumnType("bigint");
 
                     b.Property<DateTime?>("EndTime")
                         .HasColumnType("timestamp with time zone");
-
-                    b.PrimitiveCollection<long[]>("ExtractionIds")
-                        .IsRequired()
-                        .HasColumnType("bigint[]");
-
-                    b.Property<Guid>("JobGuid")
-                        .HasColumnType("uuid");
 
                     b.Property<int>("JobType")
                         .HasColumnType("integer");
@@ -182,9 +172,32 @@ namespace Conductor.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
-                    b.HasKey("Id");
+                    b.HasKey("JobGuid");
 
                     b.ToTable("JOBS");
+                });
+
+            modelBuilder.Entity("Conductor.Model.JobExtraction", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("ExtractionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("JobGuid")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExtractionId");
+
+                    b.HasIndex("JobGuid");
+
+                    b.ToTable("JOBS_EXTRACTIONS");
                 });
 
             modelBuilder.Entity("Conductor.Model.Origin", b =>
@@ -321,6 +334,30 @@ namespace Conductor.Migrations
                     b.Navigation("Origin");
 
                     b.Navigation("Schedule");
+                });
+
+            modelBuilder.Entity("Conductor.Model.JobExtraction", b =>
+                {
+                    b.HasOne("Conductor.Model.Extraction", "Extraction")
+                        .WithMany()
+                        .HasForeignKey("ExtractionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Conductor.Model.Job", "Job")
+                        .WithMany("JobExtractions")
+                        .HasForeignKey("JobGuid")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Extraction");
+
+                    b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("Conductor.Model.Job", b =>
+                {
+                    b.Navigation("JobExtractions");
                 });
 #pragma warning restore 612, 618
         }

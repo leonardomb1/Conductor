@@ -10,7 +10,14 @@ public static class JobTracker
 
     public static Job? StartJob(IEnumerable<UInt32> extractionIds)
     {
-        var job = new Job { ExtractionIds = [.. extractionIds] };
+        var job = new Job();
+
+        job.JobExtractions = [.. extractionIds.Select(id => new JobExtraction
+        {
+            JobGuid = job.JobGuid,
+            ExtractionId = id
+        })];
+
         return Jobs.Value.TryAdd(job.JobGuid, job) ? job : null;
     }
 
@@ -26,7 +33,7 @@ public static class JobTracker
     public static Job? GetJobByExtractionId(UInt32 extractionId)
     {
         return Jobs.Value.Values.FirstOrDefault(job =>
-            job.ExtractionIds.Contains(extractionId) &&
+            job.JobExtractions.Any(je => je.ExtractionId == extractionId) &&
             job.Status == JobStatus.Running);
     }
 
@@ -41,7 +48,7 @@ public static class JobTracker
     public static IEnumerable<Job> GetActiveJobs() =>
         Jobs.Value.Values.Where(j => j.Status == JobStatus.Running);
 
-    public static async Task DumpJobs(JobService service)
+    public static async Task DumpJobs(JobService service, JobExtractionService relatedService)
     {
         if (Jobs.Value.IsEmpty) return;
 
@@ -51,6 +58,7 @@ public static class JobTracker
             await service.CreateBulk(completedJobs);
             foreach (var job in completedJobs)
             {
+                await relatedService.CreateBulk(job.JobExtractions);
                 Jobs.Value.TryRemove(job.JobGuid, out _);
             }
         }
