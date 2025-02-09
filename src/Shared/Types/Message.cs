@@ -27,9 +27,6 @@ public sealed class Message<T>(
     public Int32? Page { get; set; } = page;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public bool? HasData { get; } = page == null ? null : !values.IsNullOrEmpty();
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<T>? Content { get; set; } = values;
 }
 
