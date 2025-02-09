@@ -1,4 +1,3 @@
-using System.Threading.Tasks;
 using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Service;
@@ -10,7 +9,7 @@ namespace Conductor.Controller;
 
 public sealed class JobController(JobService jobService, JobExtractionService jobExtractionService, ExtractionService extractionService) : ControllerBase<Job>(jobService)
 {
-    public async Task<Results<Ok<Message<object>>, InternalServerError<Message<Error>>, BadRequest<Message>>> GetJobs(IQueryCollection? filters)
+    public async Task<Results<Ok<Message<JobDto>>, InternalServerError<Message<Error>>, BadRequest<Message>>> GetJobs(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "relative" || f.Key == "take" || f.Key == "extractionId") &&
@@ -37,12 +36,19 @@ public sealed class JobController(JobService jobService, JobExtractionService jo
         }
 
         return TypedResults.Ok(
-            new Message<object>(Status200OK, "Data fetch successful.", result.Value)
+            new Message<JobDto>(Status200OK, "Data fetch successful.", result.Value)
         );
     }
 
-    public async Task<Results<Ok<Message<object>>, InternalServerError<Message<Error>>>> GetActiveJobs()
+    public async Task<Results<Ok<Message<JobDto>>, Ok<Message>, InternalServerError<Message<Error>>>> GetActiveJobs()
     {
+        if (JobTracker.Jobs.Value.IsEmpty)
+        {
+            return TypedResults.Ok(
+                new Message(Status200OK, "No active jobs.")
+            );
+        }
+
         var extractionFetch = await extractionService.GetNames();
         if (!extractionFetch.IsSuccessful)
         {
@@ -51,33 +57,31 @@ public sealed class JobController(JobService jobService, JobExtractionService jo
             );
         }
 
-        List<object> extractions = extractionFetch.Value;
-        IEnumerable<Job> activeJobs = JobTracker.GetActiveJobs();
+        var activeJobs = JobTracker.GetActiveJobs();
+        var jobsWithExtractions = activeJobs
+        .SelectMany(j => j.JobExtractions.Select(je => new { Job = j, je.ExtractionId }));
 
-        var typedExtractions = extractions
-            .Select(e => (dynamic)e)
+        var result = jobsWithExtractions
+            .Join(extractionFetch.Value,
+                je => je.ExtractionId,
+                e => e.Id,
+                (je, e) => new JobDto(
+                    e.Name,
+                    je.Job.JobGuid,
+                    je.Job.JobType.ToString(),
+                    je.Job.Status.ToString(),
+                    je.Job.StartTime,
+                    je.Job.EndTime,
+                    (je.Job.EndTime - je.Job.StartTime)!.Value.TotalMilliseconds,
+                    je.Job.BytesAccumulated / 1_000_000f
+                )
+            )
+            .OrderByDescending(j => j.StartTime)
             .ToList();
 
-        var jobWithExtractions = activeJobs
-            .SelectMany(j => j.JobExtractions.Select(je => new { Job = j, je.ExtractionId }));
-
-        var linq = from je in jobWithExtractions
-                   join e in typedExtractions on je.ExtractionId equals (UInt32)e.Id
-                   orderby je.Job.StartTime descending
-                   select new
-                   {
-                       e.Name,
-                       je.Job.JobGuid,
-                       JobType = $"{je.Job.JobType}",
-                       Status = $"{je.Job.Status}",
-                       je.Job.StartTime,
-                       je.Job.EndTime,
-                       TimeSpentMs = (je.Job.EndTime - je.Job.StartTime)!.Value.TotalMilliseconds,
-                       TotalMbTransfered = je.Job.BytesAccumulated > 0 ? (float)je.Job.BytesAccumulated / 1_000_000 : 0
-                   };
-
         return TypedResults.Ok(
-            new Message<object>(Status200OK, "Active jobs retrieved.", linq.Cast<object>().ToList()));
+            new Message<JobDto>(Status200OK, "Active jobs retrieved.", result)
+        );
     }
 
     public async Task<Results<Ok<Message>, InternalServerError<Message<Error>>>> Clear()

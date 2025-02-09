@@ -48,19 +48,15 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
         }
     }
 
-    public async Task<Result<List<object>>> GetNames()
+    public async Task<Result<List<SimpleExtractionDto>>> GetNames()
     {
         try
         {
             var select = from e in Repository.Extractions
-                         select new
-                         {
-                             e.Id,
-                             e.Name
-                         };
+                         select new SimpleExtractionDto(e.Id, e.Name);
 
-            var result = await select.ToListAsync();
-            return result.Cast<object>().ToList();
+
+            return await select.ToListAsync();
         }
         catch (Exception ex)
         {

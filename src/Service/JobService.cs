@@ -13,7 +13,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
         throw new NotImplementedException();
     }
 
-    public async Task<Result<List<object>>> SearchJob(IQueryCollection? filters = null)
+    public async Task<Result<List<JobDto>>> SearchJob(IQueryCollection? filters = null)
     {
         try
         {
@@ -21,17 +21,17 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
                           join je in Repository.JobExtractions on j.JobGuid equals je.JobGuid
                           join e in Repository.Extractions on je.ExtractionId equals e.Id
                           orderby j.StartTime descending
-                          select new
-                          {
-                              e.Name,
-                              j.JobGuid,
-                              JobType = $"{j.JobType}",
-                              Status = $"{j.Status}",
-                              j.StartTime,
-                              j.EndTime,
-                              TimeSpentMs = (j.EndTime - j.StartTime)!.Value.TotalMilliseconds,
-                              TotalMbTransfered = j.BytesAccumulated > 0 ? (float)j.BytesAccumulated / 1_000_000 : 0
-                          }).AsQueryable();
+                          select new JobDto(
+                                e.Name,
+                                je.Job.JobGuid,
+                                je.Job.JobType.ToString(),
+                                je.Job.Status.ToString(),
+                                je.Job.StartTime,
+                                je.Job.EndTime,
+                                (je.Job.EndTime - je.Job.StartTime)!.Value.TotalMilliseconds,
+                                je.Job.BytesAccumulated / 1_000_000f
+                            )
+                        ).AsQueryable();
 
             if (filters != null)
             {
@@ -52,8 +52,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
                 }
             }
 
-            var result = await select.ToListAsync();
-            return result.Cast<object>().ToList();
+            return await select.ToListAsync();
         }
         catch (Exception ex)
         {

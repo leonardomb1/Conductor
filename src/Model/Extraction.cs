@@ -110,3 +110,8 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
         builder.Metadata.Add(new AcceptsMetadata(["application/json"], typeof(Extraction)));
     }
 }
+
+public record SimpleExtractionDto(
+    UInt32 Id,
+    string Name
+);

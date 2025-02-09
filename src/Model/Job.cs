@@ -65,3 +65,14 @@ public enum JobType
     Transfer,
     Fetch,
 }
+
+public record JobDto(
+    string Name,
+    Guid JobGuid,
+    string JobType,
+    string Status,
+    DateTime StartTime,
+    DateTime? EndTime,
+    double TimeSpentMs,
+    float TotalMbTransfered
+);
