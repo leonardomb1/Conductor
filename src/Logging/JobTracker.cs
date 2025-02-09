@@ -8,9 +8,12 @@ public static class JobTracker
 {
     public static readonly Lazy<ConcurrentDictionary<Guid, Job>> Jobs = new();
 
-    public static Job? StartJob(IEnumerable<UInt32> extractionIds)
+    public static Job? StartJob(IEnumerable<UInt32> extractionIds, JobType jobType)
     {
-        var job = new Job();
+        var job = new Job()
+        {
+            JobType = jobType
+        };
 
         job.JobExtractions = [.. extractionIds.Select(id => new JobExtraction
         {
@@ -26,7 +29,7 @@ public static class JobTracker
         if (Jobs.Value.TryGetValue(JobGuid, out var job))
         {
             job.Status = status;
-            job.EndTime = DateTime.UtcNow;
+            job.EndTime = DateTime.Now;
         }
     }
 

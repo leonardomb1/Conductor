@@ -79,7 +79,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         var extractions = fetch.Value;
         var extractionIds = extractions.Select(x => x.Id);
-        var job = JobTracker.StartJob(extractionIds);
+        var job = JobTracker.StartJob(extractionIds, JobType.Transfer);
 
         try
         {
@@ -140,7 +140,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         var extractions = fetch.Value;
         var extractionIds = extractions.Select(x => x.Id);
-        var job = JobTracker.StartJob(extractionIds);
+        var job = JobTracker.StartJob(extractionIds, JobType.Fetch);
 
         UInt64 current = 0;
 
