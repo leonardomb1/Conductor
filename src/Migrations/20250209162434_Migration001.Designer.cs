@@ -5,51 +5,44 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace Conductor.Migrations
 {
     [DbContext(typeof(EfContext))]
-    [Migration("20250131131557_Migration001")]
+    [Migration("20250209162434_Migration001")]
     partial class Migration001
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.1")
-                .HasAnnotation("Relational:MaxIdentifierLength", 63);
-
-            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+            modelBuilder.HasAnnotation("ProductVersion", "9.0.1");
 
             modelBuilder.Entity("Conductor.Model.Destination", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<uint>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ConnectionString")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "destinationConStr");
 
                     b.Property<string>("DbType")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "destinationDbType");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "destinationName");
 
                     b.Property<double>("TimeZoneOffSet")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasAnnotation("Relational:JsonPropertyName", "destinationTimeZoneOffSet");
 
                     b.HasKey("Id");
@@ -59,90 +52,85 @@ namespace Conductor.Migrations
 
             modelBuilder.Entity("Conductor.Model.Extraction", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<uint>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Alias")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "extractionAlias");
 
-                    b.Property<bool>("BeforeExecutionDeletes")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("BodyStructure")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Dependencies")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
-                    b.Property<long>("DestinationId")
-                        .HasColumnType("bigint");
+                    b.Property<uint?>("DestinationId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("EndpointFullName")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("FilterColumn")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<int?>("FilterTime")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("HeaderStructure")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("HttpMethod")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("IndexName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("IsIncremental")
-                        .HasColumnType("boolean");
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsVirtual")
-                        .HasColumnType("boolean");
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool?>("IsVirtualTemplate")
-                        .HasColumnType("boolean");
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "extractionName");
 
                     b.Property<string>("OffsetAttr")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("OffsetLimitAttr")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
-                    b.Property<long>("OriginId")
-                        .HasColumnType("bigint");
+                    b.Property<uint>("OriginId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OverrideQuery")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("PageAttr")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
-                    b.Property<long?>("ScheduleId")
-                        .HasColumnType("bigint");
+                    b.Property<uint?>("ScheduleId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("SingleExecution")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("TableStructure")
-                        .HasColumnType("text");
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TotalPageAttr")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("VirtualId")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("VirtualIdGroup")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -155,35 +143,66 @@ namespace Conductor.Migrations
                     b.ToTable("EXTRACTIONS");
                 });
 
+            modelBuilder.Entity("Conductor.Model.Job", b =>
+                {
+                    b.Property<uint>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("BytesAccumulated")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EndTime")
+                        .HasColumnType("TEXT");
+
+                    b.PrimitiveCollection<string>("ExtractionIds")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("JobGuid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("JobType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartTime")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("JOBS");
+                });
+
             modelBuilder.Entity("Conductor.Model.Origin", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<uint>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Alias")
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "originAlias");
 
                     b.Property<string>("ConnectionString")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "originConStr");
 
                     b.Property<string>("DbType")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "originDbType");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "originName");
 
                     b.Property<double>("TimeZoneOffSet")
-                        .HasColumnType("double precision")
+                        .HasColumnType("REAL")
                         .HasAnnotation("Relational:JsonPropertyName", "originTimeZoneOffSet");
 
                     b.HasKey("Id");
@@ -193,30 +212,28 @@ namespace Conductor.Migrations
 
             modelBuilder.Entity("Conductor.Model.Record", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<uint>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("CallerMethod")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Event")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("EventType")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("HostName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("TimeStamp")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -225,22 +242,20 @@ namespace Conductor.Migrations
 
             modelBuilder.Entity("Conductor.Model.Schedule", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<uint>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "scheduleName");
 
                     b.Property<bool>("Status")
-                        .HasColumnType("boolean");
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("Value")
-                        .HasColumnType("integer");
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -249,19 +264,17 @@ namespace Conductor.Migrations
 
             modelBuilder.Entity("Conductor.Model.User", b =>
                 {
-                    b.Property<long>("Id")
+                    b.Property<uint>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasColumnType("TEXT")
                         .HasAnnotation("Relational:JsonPropertyName", "username");
 
                     b.Property<string>("Password")
-                        .HasColumnType("text");
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -272,9 +285,7 @@ namespace Conductor.Migrations
                 {
                     b.HasOne("Conductor.Model.Destination", "Destination")
                         .WithMany()
-                        .HasForeignKey("DestinationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("DestinationId");
 
                     b.HasOne("Conductor.Model.Origin", "Origin")
                         .WithMany()
