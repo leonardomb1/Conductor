@@ -72,7 +72,7 @@ public sealed class JobController(JobService jobService, JobExtractionService jo
                     je.Job.Status.ToString(),
                     je.Job.StartTime,
                     je.Job.EndTime,
-                    (je.Job.EndTime - je.Job.StartTime)!.Value.TotalMilliseconds,
+                    ((je.Job.EndTime ?? DateTime.Now) - je.Job.StartTime)!.TotalMilliseconds,
                     je.Job.BytesAccumulated / 1_000_000f
                 )
             )
