@@ -300,6 +300,7 @@ public abstract class DBExchange
             ORDER BY {extraction.IndexName} {orderMode}";
 
         using DbCommand command = CreateDbCommand($"{query}  {pagination}", connection);
+        command.CommandTimeout = Settings.QueryTimeout;
 
         try
         {
@@ -352,6 +353,7 @@ public abstract class DBExchange
             ORDER BY {extraction.IndexName} {orderMode}";
 
         using DbCommand command = CreateDbCommand($"{query}  {pagination}", connection);
+        command.CommandTimeout = Settings.QueryTimeout;
 
         try
         {

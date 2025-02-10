@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using Conductor.App.Database;
 using Conductor.Logging;
 using Conductor.Model;
+using Conductor.Service;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
 
@@ -50,18 +51,18 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
         Extraction e,
         DBExchange fetcher,
         UInt64 destRc,
-        UInt64 curr,
+        byte offsetMultiplier,
         Channel<(DataTable, Extraction)> channel,
-        CancellationToken t = default
+        CancellationToken t
     )
     {
-        bool shouldPartition = destRc > 0;
-
-        Result<DataTable> query = new();
-
-        for (byte attempt = 0; attempt < Settings.PipelineAttemptMax; attempt++)
+        for (UInt64 curr = offsetMultiplier * Settings.ProducerLineMax;
+            !t.IsCancellationRequested;
+            curr += Settings.ProducerConcurrentFetches * Settings.ProducerLineMax)
         {
-            query = DBExchange.SupportsMARS(e.Origin!.DbType)
+            bool shouldPartition = destRc > 0;
+
+            var attempt = DBExchange.SupportsMARS(e.Origin!.DbType)
                 ? await fetcher.FetchDataTable(
                     e,
                     shouldPartition,
@@ -71,18 +72,15 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
                 )
                 : await fetcher.FetchDataTable(e, shouldPartition, curr, t);
 
-            if (query.IsSuccessful) break;
-            await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), t);
+            if (!HandleError(attempt, t)) break;
+            if (attempt.Value.Rows.Count == 0) break;
+
+            Int64 byteSize = DBExchange.CalculateBytesUsed(attempt.Value);
+            var job = JobTracker.GetJobByExtractionId(e.Id);
+            if (job != null) JobTracker.UpdateTransferedBytes(job.JobGuid, byteSize);
+
+            await channel.Writer.WriteAsync((attempt.Value, e), t);
         }
-
-        if (!HandleError(query, t)) return;
-        if (query.Value?.Rows.Count == 0) return;
-
-        Int64 byteSize = DBExchange.CalculateBytesUsed(query.Value!);
-        var job = JobTracker.GetJobByExtractionId(e.Id);
-        if (job != null) JobTracker.UpdateTransferedBytes(job.JobGuid, byteSize);
-
-        await channel.Writer.WriteAsync((query.Value!, e), t);
     }
 
     private bool HandleError(Result result, CancellationToken token)
@@ -183,33 +181,13 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
                 var fetcher = DBExchangeFactory.Create(e.Origin!.DbType);
                 var fetchTasks = new List<Task>();
 
-                if (Settings.ProducerConcurrentFetches > 1)
+                for (byte i = 0; i < Settings.ProducerConcurrentFetches; i++)
                 {
-                    for (byte i = 0; i < Settings.ProducerConcurrentFetches; i++)
-                    {
-                        byte offsetMultiplier = i;
-
-                        fetchTasks.Add(Task.Run(async () =>
-                        {
-                            for (UInt64 curr = offsetMultiplier * Settings.ProducerLineMax;
-                                !t.IsCancellationRequested;
-                                curr += Settings.ProducerConcurrentFetches * Settings.ProducerLineMax
-                            )
-                            {
-                                await ProcessFetchAsync(e, fetcher, destRc, curr, channel, t);
-                            }
-                        }, t));
-                    }
-
-                    await Task.WhenAll(fetchTasks);
+                    byte offsetMultiplier = i;
+                    fetchTasks.Add(ProcessFetchAsync(e, fetcher, destRc, offsetMultiplier, channel, t));
                 }
-                else
-                {
-                    for (UInt64 curr = 0; !t.IsCancellationRequested; curr += Settings.ProducerLineMax)
-                    {
-                        await ProcessFetchAsync(e, fetcher, destRc, curr, channel, t);
-                    }
-                }
+
+                await Task.WhenAll(fetchTasks);
             });
         }
         catch (Exception ex)
