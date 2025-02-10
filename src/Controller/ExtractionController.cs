@@ -1,4 +1,5 @@
 using System.Data;
+using System.Security.Policy;
 using Conductor.App;
 using Conductor.App.Database;
 using Conductor.Logging;
@@ -48,7 +49,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         );
     }
 
-    public async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> ExecuteExtraction(IQueryCollection? filters, CancellationToken token)
+    public async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>, Accepted<Message>>> ExecuteExtraction(IQueryCollection? filters, CancellationToken token)
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId") &&
@@ -77,7 +78,23 @@ public sealed class ExtractionController(ExtractionService service) : Controller
             );
         }
 
-        var extractions = fetch.Value;
+        var executingId = JobTracker.Jobs.Value
+            .Where(j => j.Value.Status == JobStatus.Running)
+            .SelectMany(
+                l => l.Value.JobExtractions.Select(
+                    je => je.ExtractionId
+                )
+            );
+
+        var extractions = fetch.Value.Where(
+            e => !executingId.Any(l => l == e.Id)
+        ).ToList();
+
+        if (fetch.Value.Count - extractions.Count == 1)
+        {
+            return TypedResults.Accepted("", new Message(Status202Accepted, "The request is already running."));
+        }
+
         var extractionIds = extractions.Select(x => x.Id);
         var job = JobTracker.StartJob(extractionIds, JobType.Transfer);
 

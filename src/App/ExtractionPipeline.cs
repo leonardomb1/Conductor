@@ -5,7 +5,6 @@ using System.Threading.Channels;
 using Conductor.App.Database;
 using Conductor.Logging;
 using Conductor.Model;
-using Conductor.Service;
 using Conductor.Shared.Config;
 using Conductor.Shared.Types;
 
