@@ -35,6 +35,7 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
                             select.Where(e => e.ScheduleId == schId),
                         "origin" => select.Where(e => e.Origin!.Name == value),
                         "destination" => select.Where(e => e.Destination!.Name == value),
+                        "take" when UInt32.TryParse(value, out UInt32 count) => select.Take((Int32)count),
                         _ => select
                     };
                 }

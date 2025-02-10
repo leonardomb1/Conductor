@@ -42,11 +42,17 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
 
                     select = key switch
                     {
-                        "relative" when Int32.TryParse(value, out var time) => select.Where(
+                        "relativeStart" when Int32.TryParse(value, out var time) => select.Where(
                                 j => j.StartTime >= DateTime.Now.AddSeconds(-time)
                             ),
-                        "extractionName" => select.Where(j => j.Name == value),
-                        "take" when Int32.TryParse(value, out Int32 count) => select.Take(count),
+                        "relativeEnd" when Int32.TryParse(value, out var time) => select.Where(
+                                j => j.EndTime >= DateTime.Now.AddSeconds(-time)
+                            ),
+                        "name" => select.Where(j => j.Name == value),
+                        "status" => select.Where(j => j.Status == value),
+                        "type" => select.Where(j => j.JobType == value),
+                        "mbs" when float.TryParse(value, out var mbs) => select.Where(j => j.TotalMbTransfered > mbs),
+                        "take" when UInt32.TryParse(value, out UInt32 count) => select.Take((Int32)count),
                         _ => select
                     };
                 }

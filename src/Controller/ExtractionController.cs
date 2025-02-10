@@ -25,7 +25,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         }
 
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "scheduleId") &&
+            (f.Key == "scheduleId" || f.Key == "take") &&
             !UInt32.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)

@@ -12,10 +12,11 @@ public sealed class JobController(JobService jobService, JobExtractionService jo
     public async Task<Results<Ok<Message<JobDto>>, InternalServerError<Message<Error>>, BadRequest<Message>>> GetJobs(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "relative" || f.Key == "take" || f.Key == "extractionId") &&
+            (f.Key == "relativeStart" || f.Key == "relativeEnd" || f.Key == "take" || f.Key == "mbs") &&
                 (
                     !Int32.TryParse(f.Value, out _) ||
-                    !UInt32.TryParse(f.Value, out _)
+                    !UInt32.TryParse(f.Value, out _) ||
+                    !float.TryParse(f.Value, out _)
                 )
             ).ToList();
 

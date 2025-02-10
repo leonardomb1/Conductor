@@ -10,9 +10,13 @@ public sealed class RecordController(RecordService service) : ControllerBase<Rec
 {
     public override async Task<Results<Ok<Message<Record>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
     {
-        var invalidFilters = filters?.Where(f =>
-            (f.Key == "relative" || f.Key == "take") &&
-            !UInt32.TryParse(f.Value, out _)).ToList();
+        var invalidFilters =
+            filters?.Where(f => (f.Key == "relative" || f.Key == "take") &&
+                (
+                    UInt32.TryParse(f.Value, out _) ||
+                    Int32.TryParse(f.Value, out _)
+                )
+            ).ToList();
 
         if (invalidFilters?.Count > 0)
         {

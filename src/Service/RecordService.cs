@@ -31,7 +31,7 @@ public class RecordService(LdbContext context) : ServiceBase(context), IService<
                         "hostname" => select.Where(e => e.HostName == value),
                         "type" => select.Where(e => e.EventType == value),
                         "event" => select.Where(e => e.Event.Contains(value)),
-                        "take" when Int32.TryParse(value, out Int32 count) => select.Take(count),
+                        "take" when UInt32.TryParse(value, out UInt32 count) => select.Take((Int32)count),
                         _ => select
                     };
                 }
