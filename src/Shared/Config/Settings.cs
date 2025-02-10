@@ -65,8 +65,8 @@ public static class Settings
     [ConfigKey("QUERY_TIMEOUT_SEC")]
     public static Int32 QueryTimeout { get; set; }
 
-    [ConfigKey("MAX_CONSUMER_ATTEMPT")]
-    public static byte ConsumerAttemptMax { get; set; }
+    [ConfigKey("MAX_PIPELINE_ATTEMPT")]
+    public static byte PipelineAttemptMax { get; set; }
 
     [ConfigKey("ENABLE_LOG_DUMP")]
     public static bool Logging { get; set; }
@@ -134,11 +134,11 @@ public static class Settings
     [ConfigKey("RESPONSE_CACHING_LIMIT_MB")]
     public static Int32 ResponseCachingLimit { get; set; }
 
-    [ConfigKey("CONSUMER_CONCURRENT_FETCHES")]
-    public static UInt32 ConsumerConcurrentFetches { get; set; }
+    [ConfigKey("PRODUCER_CONCURRENT_FETCHES")]
+    public static UInt32 ProducerConcurrentFetches { get; set; }
 
-    [ConfigKey("CONSUMER_ATTEMPT_BACKOFF_BASE_MS")]
-    public static Int32 ConsumerBackoff { get; set; }
+    [ConfigKey("PIPELINE_BACKOFF_BASE_MS")]
+    public static Int32 PipelineBackoff { get; set; }
 
     [ConfigKey("SPLITTER_CHAR")]
     public static string SplitterChar { get; set; } = "";
