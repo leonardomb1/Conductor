@@ -12,11 +12,12 @@ public sealed class ExtractionService(LdbContext context) : ServiceBase(context)
     {
         try
         {
-            var select = from e in Repository.Extractions
+            var select = (from e in Repository.Extractions
                          .LoadWith(e => e.Schedule)
                          .LoadWith(e => e.Origin)
                          .LoadWith(e => e.Destination)
-                         select e;
+                          orderby e.Id descending
+                          select e).AsQueryable();
 
             if (filters != null)
             {
