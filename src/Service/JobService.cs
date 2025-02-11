@@ -29,7 +29,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
                                 je.Job.StartTime,
                                 je.Job.EndTime,
                                 (je.Job.EndTime - je.Job.StartTime)!.Value.TotalMilliseconds,
-                                je.Job.BytesAccumulated / 1_000_000f
+                                je.Job.BytesAccumulated
                             )
                         ).AsQueryable();
 
@@ -51,7 +51,7 @@ public class JobService(LdbContext context) : ServiceBase(context), IService<Job
                         "name" => select.Where(j => j.Name == value),
                         "status" => select.Where(j => j.Status == value),
                         "type" => select.Where(j => j.JobType == value),
-                        "mbs" when float.TryParse(value, out var mbs) => select.Where(j => j.TotalMbTransfered > mbs),
+                        "mbs" when float.TryParse(value, out var mbs) => select.Where(j => j.Bytes > mbs),
                         "take" when UInt32.TryParse(value, out UInt32 count) => select.Take((Int32)count),
                         _ => select
                     };

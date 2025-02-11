@@ -74,5 +74,5 @@ public record JobDto(
     DateTime StartTime,
     DateTime? EndTime,
     double TimeSpentMs,
-    float TotalMbTransfered
+    float Bytes
 );
