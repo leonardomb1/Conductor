@@ -313,18 +313,20 @@ public abstract class DBExchange
         using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
         await connection.OpenAsync(token);
 
-        var lookUpColumns = await GetColumnInformation(connection, extraction.Name, token);
-        if (!lookUpColumns.IsSuccessful) return lookUpColumns.Error;
+        string metadata = "*";
 
-        List<string> list = lookUpColumns.Value;
         if (extraction.IgnoreColumns != null)
         {
+            var lookUpColumns = await GetColumnInformation(connection, extraction.Name, token);
+            if (!lookUpColumns.IsSuccessful) return lookUpColumns.Error;
+
+            List<string> list = lookUpColumns.Value;
             list = [.. list.Where(
                 col => !extraction.IgnoreColumns.Split(Settings.SplitterChar).Any(ig => ig == col)
             )];
-        }
 
-        string metadata = string.Join(",", list.Select(s => $"\"{s}\""));
+            metadata = string.Join(",", list.Select(s => $"\"{s}\""));
+        }
 
         string columns = extraction.VirtualId != null && virtualizedTable != null ?
             $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\"" +
@@ -377,18 +379,20 @@ public abstract class DBExchange
     {
         if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
 
-        var lookUpColumns = await GetColumnInformation(connection, extraction.Name, token);
-        if (!lookUpColumns.IsSuccessful) return lookUpColumns.Error;
+        string metadata = "*";
 
-        List<string> list = lookUpColumns.Value;
         if (extraction.IgnoreColumns != null)
         {
+            var lookUpColumns = await GetColumnInformation(connection, extraction.Name, token);
+            if (!lookUpColumns.IsSuccessful) return lookUpColumns.Error;
+
+            List<string> list = lookUpColumns.Value;
             list = [.. list.Where(
                 col => !extraction.IgnoreColumns.Split(Settings.SplitterChar).Any(ig => ig == col)
             )];
-        }
 
-        string metadata = string.Join(",", list.Select(s => $"\"{s}\""));
+            metadata = string.Join(",", list.Select(s => $"\"{s}\""));
+        }
 
         string columns = extraction.VirtualId != null && virtualizedTable != null ?
             $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\"" +
