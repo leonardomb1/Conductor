@@ -68,6 +68,9 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public string? Dependencies { get; set; }
 
     [Column, Nullable]
+    public string? IgnoreColumns { get; set; }
+
+    [Column, Nullable]
     public string? HttpMethod { get; set; }
 
     [Column, Nullable]

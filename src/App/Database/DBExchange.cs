@@ -270,6 +270,34 @@ public abstract class DBExchange
         }
     }
 
+    protected virtual async Task<Result<List<string>>> GetColumnInformation(DbConnection connection, string tableName, CancellationToken token)
+    {
+        if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
+
+        using DbCommand command = CreateDbCommand(
+            $"SELECT \"COLUMN_NAME\" FROM \"INFORMATION_SCHEMA\".\"COLUMNS\" WHERE \"TABLE_NAME\" = '{tableName}'",
+            connection
+        );
+        command.CommandTimeout = Settings.QueryTimeout;
+
+        List<string> columns = [];
+
+        try
+        {
+            using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token))
+            {
+                columns.Add(reader.GetFieldValue<string>("COLUMN_NAME"));
+            }
+
+            return columns;
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
     public virtual async Task<Result<DataTable>> SingleFetch(
         Extraction extraction,
         UInt64 current,
@@ -283,28 +311,40 @@ public abstract class DBExchange
         if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
 
         using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
+        await connection.OpenAsync(token);
 
-        string orderMode = shouldPartition ? "DESC" : "ASC";
+        var lookUpColumns = await GetColumnInformation(connection, extraction.Name, token);
+        if (!lookUpColumns.IsSuccessful) return lookUpColumns.Error;
+
+        List<string> list = lookUpColumns.Value;
+        if (extraction.IgnoreColumns != null)
+        {
+            list = [.. list.Where(
+                col => !extraction.IgnoreColumns.Split(Settings.SplitterChar).Any(ig => ig == col)
+            )];
+        }
+
+        string metadata = string.Join(",", list.Select(s => $"\"{s}\""));
+
+        string columns = extraction.VirtualId != null && virtualizedTable != null ?
+            $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\"" +
+            $", {metadata}" : $"{metadata}";
 
         string partitioning = extraction.IsIncremental && shouldPartition ?
             GeneratePartitionCondition(extraction, extraction.Origin!.TimeZoneOffSet) : "";
 
-        string columns = extraction.VirtualId != null && virtualizedTable != null ?
-            $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\", *" : "*";
+        string queryBase = extraction.OverrideQuery ??
+            @$"SELECT {columns} FROM {extraction.Name} {QueryNonLocking()}
+            {partitioning}
+            ORDER BY {extraction.IndexName} {(shouldPartition ? "DESC" : "ASC")}";
 
-        string? pagination = shouldPaginate ? QueryPagination(current) : "" ?? "";
+        string query = $"{queryBase} {(shouldPaginate ? QueryPagination(current) : "")}";
 
-        string query = extraction.OverrideQuery ?? @$"SELECT {columns} FROM {extraction.Name}
-                {QueryNonLocking()}
-                {partitioning}
-            ORDER BY {extraction.IndexName} {orderMode}";
-
-        using DbCommand command = CreateDbCommand($"{query}  {pagination}", connection);
+        using DbCommand command = CreateDbCommand(query, connection);
         command.CommandTimeout = Settings.QueryTimeout;
 
         try
         {
-            await connection.OpenAsync(token);
 
             using var fetched = new DataTable();
             var select = await command.ExecuteReaderAsync(token);
@@ -337,22 +377,34 @@ public abstract class DBExchange
     {
         if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
 
-        string orderMode = shouldPartition ? "DESC" : "ASC";
+        var lookUpColumns = await GetColumnInformation(connection, extraction.Name, token);
+        if (!lookUpColumns.IsSuccessful) return lookUpColumns.Error;
+
+        List<string> list = lookUpColumns.Value;
+        if (extraction.IgnoreColumns != null)
+        {
+            list = [.. list.Where(
+                col => !extraction.IgnoreColumns.Split(Settings.SplitterChar).Any(ig => ig == col)
+            )];
+        }
+
+        string metadata = string.Join(",", list.Select(s => $"\"{s}\""));
+
+        string columns = extraction.VirtualId != null && virtualizedTable != null ?
+            $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\"" +
+            $", {metadata}" : $"{metadata}";
 
         string partitioning = extraction.IsIncremental && shouldPartition ?
             GeneratePartitionCondition(extraction, extraction.Origin!.TimeZoneOffSet) : "";
 
-        string columns = extraction.VirtualId != null && virtualizedTable != null ?
-            $"'{extraction.VirtualId}' AS \"{VirtualColumn(virtualizedTable, virtualizedIdGroup!)}\", *" : "*";
+        string queryBase = extraction.OverrideQuery ??
+            @$"SELECT {columns} FROM {extraction.Name} {QueryNonLocking()}
+            {partitioning}
+            ORDER BY {extraction.IndexName} {(shouldPartition ? "DESC" : "ASC")}";
 
-        string? pagination = shouldPaginate ? QueryPagination(current) : "" ?? "";
+        string query = $"{queryBase} {(shouldPaginate ? QueryPagination(current) : "")}";
 
-        string query = extraction.OverrideQuery ?? @$"SELECT {columns} FROM {extraction.Name}
-                {QueryNonLocking()}
-                {partitioning}
-            ORDER BY {extraction.IndexName} {orderMode}";
-
-        using DbCommand command = CreateDbCommand($"{query}  {pagination}", connection);
+        using DbCommand command = CreateDbCommand(query, connection);
         command.CommandTimeout = Settings.QueryTimeout;
 
         try
