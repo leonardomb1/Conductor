@@ -103,6 +103,8 @@ public abstract class DBExchange
             connection
         );
 
+        command.CommandTimeout = Settings.QueryTimeout;
+
         try
         {
             var res = await command.ExecuteScalarAsync();
@@ -130,6 +132,8 @@ public abstract class DBExchange
             connection
         );
 
+        command.CommandTimeout = Settings.QueryTimeout;
+
         try
         {
             var res = await command.ExecuteScalarAsync();
@@ -153,6 +157,8 @@ public abstract class DBExchange
             $"SELECT COUNT(*) FROM  \"{schemaName}\".\"{tableName}\" {QueryNonLocking()}",
             connection
         );
+
+        command.CommandTimeout = Settings.QueryTimeout;
 
         try
         {
@@ -178,6 +184,8 @@ public abstract class DBExchange
             $"SELECT COUNT(*) FROM  \"{schemaName}\".\"{tableName}\" {QueryNonLocking()}",
             connection
         );
+
+        command.CommandTimeout = Settings.QueryTimeout;
 
         try
         {
@@ -232,9 +240,11 @@ public abstract class DBExchange
             connection
         );
 
+        command.CommandTimeout = Settings.QueryTimeout;
+
         try
         {
-            Log.Out($"Droping table {schemaName}.{tableName}...");
+            Log.Out($"Truncating table {schemaName}.{tableName}...");
             await command.ExecuteNonQueryAsync();
             return Result.Ok();
         }
@@ -258,9 +268,11 @@ public abstract class DBExchange
             connection
         );
 
+        command.CommandTimeout = Settings.QueryTimeout;
+
         try
         {
-            Log.Out($"Droping table {schemaName}.{tableName}...");
+            Log.Out($"Truncating table {schemaName}.{tableName}...");
             await command.ExecuteNonQueryAsync();
             return Result.Ok();
         }
