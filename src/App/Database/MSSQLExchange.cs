@@ -183,22 +183,6 @@ public class MSSQLExchange : DBExchange
 
             await mergeCommand.ExecuteNonQueryAsync();
 
-            StringBuilder deleteQuery = new($"DELETE FROM \"{schemaName}\".\"{tableName}\" ");
-            deleteQuery.AppendLine($"WHERE \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2)");
-            deleteQuery.AppendLine("AND NOT EXISTS (");
-            deleteQuery.AppendLine($"SELECT 1 FROM {tempTableName} AS Source");
-            deleteQuery.AppendLine($"WHERE Source.\"{extraction.IndexName}\" = \"{schemaName}\".\"{tableName}\".\"{extraction.IndexName}\"");
-
-            if (extraction.IsVirtual)
-            {
-                deleteQuery.AppendLine($"AND Source.\"{virtualColumn}\" = \"{schemaName}\".\"{tableName}\".\"{virtualColumn}\");");
-            }
-
-            using var deleteCommand = CreateDbCommand(deleteQuery.ToString(), connection);
-            deleteCommand.CommandTimeout = Settings.QueryTimeout;
-
-            Log.Out("Deleting source lines...");
-            await deleteCommand.ExecuteNonQueryAsync();
             return Result.Ok();
         }
         catch (Exception ex)
