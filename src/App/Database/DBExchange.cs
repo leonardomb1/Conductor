@@ -85,7 +85,7 @@ public abstract class DBExchange
 
     protected virtual DateTime RequestTimeWithOffSet(DateTime requestTime, double filterTime, double offSet)
     {
-        return requestTime.AddSeconds(filterTime).AddHours(offSet);
+        return requestTime.AddSeconds(-filterTime).AddHours(offSet);
     }
 
     protected virtual string VirtualColumn(string tableName, string fileGroup)

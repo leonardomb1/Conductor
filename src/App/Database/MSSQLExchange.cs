@@ -163,7 +163,7 @@ public class MSSQLExchange : DBExchange
                 .Select(column => $"Target.\"{column.ColumnName}\" = Source.\"{column.ColumnName}\"");
             mergeQuery.AppendLine(string.Join(",\n    ", updateColumns));
 
-            mergeQuery.AppendLine("WHEN NOT MATCHED THEN");
+            mergeQuery.AppendLine("WHEN NOT MATCHED BY Target THEN");
             mergeQuery.AppendLine("    INSERT (");
 
             var insertColumns = data.Columns.Cast<DataColumn>()
@@ -175,17 +175,19 @@ public class MSSQLExchange : DBExchange
             var values = data.Columns.Cast<DataColumn>()
                 .Select(column => $"Source.\"{column.ColumnName}\"");
             mergeQuery.AppendLine(string.Join(",\n    ", values));
+            mergeQuery.AppendLine("    )");
 
             var lookupTime = RequestTimeWithOffSet(requestTime, (double)extraction.FilterTime!, extraction.Destination!.TimeZoneOffSet);
 
-            mergeQuery.AppendLine($"WHEN NOT MATCHED BY SOURCE");
-            mergeQuery.AppendLine($"AND Target.\"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2) ");
-            mergeQuery.AppendLine("THEN DELETE;");
-
-            mergeQuery.AppendLine("    );");
+            // TODO: Verify whether this is possible and fast
+            // mergeQuery.AppendLine($"WHEN NOT MATCHED BY Source");
+            // mergeQuery.AppendLine($"AND Target.\"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2)");
+            // mergeQuery.AppendLine("THEN DELETE;");
 
             Log.Out("Merging temp table with physical...");
             using var mergeCommand = CreateDbCommand(mergeQuery.ToString(), connection);
+            mergeCommand.CommandTimeout = Settings.QueryTimeout;
+
             await mergeCommand.ExecuteNonQueryAsync();
 
             return Result.Ok();
