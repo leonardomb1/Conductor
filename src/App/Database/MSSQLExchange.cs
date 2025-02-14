@@ -115,16 +115,16 @@ public class MSSQLExchange : DBExchange
 
         var createTempTableQuery = new StringBuilder();
 
-        using var dropTempTableCommand = CreateDbCommand($"DROP TABLE IF EXISTS {tempTableName}", connection);
+        using var dropTempTableCommand = CreateDbCommand($"DROP TABLE IF EXISTS \"{tempTableName}\"", connection);
         await dropTempTableCommand.ExecuteNonQueryAsync();
 
-        createTempTableQuery.AppendLine($"CREATE TABLE {tempTableName} (");
+        createTempTableQuery.AppendLine($"CREATE TABLE \"{tempTableName}\" (");
 
         foreach (DataColumn column in data.Columns)
         {
             Int32? maxStringLength = column.MaxLength;
             string sqlType = GetSqlType(column.DataType, maxStringLength);
-            createTempTableQuery.AppendLine($"    [{column.ColumnName}] {sqlType},");
+            createTempTableQuery.AppendLine($"    \"{column.ColumnName}\" {sqlType},");
         }
 
         createTempTableQuery.Length--;
@@ -144,42 +144,43 @@ public class MSSQLExchange : DBExchange
             await bulkCopy.WriteToServerAsync(data);
 
             var mergeQuery = new StringBuilder();
-            mergeQuery.AppendLine($"MERGE INTO [{schemaName}].[{tableName}] AS Target");
-            mergeQuery.AppendLine($"USING {tempTableName} AS Source");
+            mergeQuery.AppendLine($"MERGE INTO \"{schemaName}\".\"{tableName}\" AS Target");
+            mergeQuery.AppendLine($"USING \"{tempTableName}\" AS Source");
             if (extraction.IsVirtual)
             {
-                mergeQuery.AppendLine($"ON Target.[{virtualColumn}] = Source.[{virtualColumn}] ");
-                mergeQuery.AppendLine($"AND Target.[{extraction.IndexName}] = Source.[{extraction.IndexName}]");
+                mergeQuery.AppendLine($"ON Target.\"{virtualColumn}\" = Source.\"{virtualColumn}\" ");
+                mergeQuery.AppendLine($"AND Target.\"{extraction.IndexName}\" = Source.\"{extraction.IndexName}\"");
             }
             else
             {
-                mergeQuery.AppendLine($"ON Target.[{extraction.IndexName}] = Source.[{extraction.IndexName}] ");
+                mergeQuery.AppendLine($"ON Target.\"{extraction.IndexName}\" = Source.\"{extraction.IndexName}\" ");
             }
             mergeQuery.AppendLine("WHEN MATCHED THEN");
             mergeQuery.AppendLine("    UPDATE SET");
 
             var updateColumns = data.Columns.Cast<DataColumn>()
                 .Where(column => column.ColumnName != virtualColumn && column.ColumnName != extraction.IndexName)
-                .Select(column => $"Target.[{column.ColumnName}] = Source.[{column.ColumnName}]");
+                .Select(column => $"Target.\"{column.ColumnName}\" = Source.\"{column.ColumnName}\"");
             mergeQuery.AppendLine(string.Join(",\n    ", updateColumns));
 
             mergeQuery.AppendLine("WHEN NOT MATCHED THEN");
             mergeQuery.AppendLine("    INSERT (");
 
             var insertColumns = data.Columns.Cast<DataColumn>()
-                .Select(column => $"[{column.ColumnName}]");
+                .Select(column => $"\"{column.ColumnName}\"");
             mergeQuery.AppendLine(string.Join(",\n    ", insertColumns));
 
             mergeQuery.AppendLine("    ) VALUES (");
 
             var values = data.Columns.Cast<DataColumn>()
-                .Select(column => $"Source.[{column.ColumnName}]");
+                .Select(column => $"Source.\"{column.ColumnName}\"");
             mergeQuery.AppendLine(string.Join(",\n    ", values));
 
             var lookupTime = RequestTimeWithOffSet(requestTime, (double)extraction.FilterTime!, extraction.Destination!.TimeZoneOffSet);
 
             mergeQuery.AppendLine($"WHEN NOT MATCHED BY SOURCE");
-            mergeQuery.AppendLine($"AND \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2) ");
+            mergeQuery.AppendLine($"AND Target.\"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2) ");
+            mergeQuery.AppendLine("THEN DELETE;");
 
             mergeQuery.AppendLine("    );");
 
