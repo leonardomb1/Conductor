@@ -146,15 +146,13 @@ public class MSSQLExchange : DBExchange
             var mergeQuery = new StringBuilder();
             mergeQuery.AppendLine($"MERGE INTO \"{schemaName}\".\"{tableName}\" AS Target");
             mergeQuery.AppendLine($"USING \"{tempTableName}\" AS Source");
+            mergeQuery.AppendLine($"ON Target.\"{extraction.IndexName}\" = Source.\"{extraction.IndexName}\"");
+
             if (extraction.IsVirtual)
             {
-                mergeQuery.AppendLine($"ON Target.\"{virtualColumn}\" = Source.\"{virtualColumn}\" ");
-                mergeQuery.AppendLine($"AND Target.\"{extraction.IndexName}\" = Source.\"{extraction.IndexName}\"");
+                mergeQuery.AppendLine($"AND Target.\"{virtualColumn}\" = Source.\"{virtualColumn}\" ");
             }
-            else
-            {
-                mergeQuery.AppendLine($"ON Target.\"{extraction.IndexName}\" = Source.\"{extraction.IndexName}\" ");
-            }
+
             mergeQuery.AppendLine("WHEN MATCHED THEN");
             mergeQuery.AppendLine("    UPDATE SET");
 
@@ -179,17 +177,28 @@ public class MSSQLExchange : DBExchange
 
             var lookupTime = RequestTimeWithOffSet(requestTime, (double)extraction.FilterTime!, extraction.Destination!.TimeZoneOffSet);
 
-            // TODO: Verify whether this is possible and fast
-            // mergeQuery.AppendLine($"WHEN NOT MATCHED BY Source");
-            // mergeQuery.AppendLine($"AND Target.\"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2)");
-            // mergeQuery.AppendLine("THEN DELETE;");
-
             Log.Out("Merging temp table with physical...");
             using var mergeCommand = CreateDbCommand(mergeQuery.ToString(), connection);
             mergeCommand.CommandTimeout = Settings.QueryTimeout;
 
             await mergeCommand.ExecuteNonQueryAsync();
 
+            StringBuilder deleteQuery = new($"DELETE FROM \"{schemaName}\".\"{tableName}\" ");
+            deleteQuery.AppendLine($"WHERE \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2)");
+            deleteQuery.AppendLine("AND NOT EXISTS (");
+            deleteQuery.AppendLine($"SELECT 1 FROM {tempTableName} AS Source");
+            deleteQuery.AppendLine($"WHERE Source.\"{extraction.IndexName}\" = \"{schemaName}\".\"{tableName}\".\"{extraction.IndexName}\"");
+
+            if (extraction.IsVirtual)
+            {
+                deleteQuery.AppendLine($"AND Source.\"{virtualColumn}\" = \"{schemaName}\".\"{tableName}\".\"{virtualColumn}\");");
+            }
+
+            using var deleteCommand = CreateDbCommand(deleteQuery.ToString(), connection);
+            deleteCommand.CommandTimeout = Settings.QueryTimeout;
+
+            Log.Out("Deleting source lines...");
+            await deleteCommand.ExecuteNonQueryAsync();
             return Result.Ok();
         }
         catch (Exception ex)
