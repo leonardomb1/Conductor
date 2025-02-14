@@ -175,7 +175,7 @@ public class MSSQLExchange : DBExchange
             var values = data.Columns.Cast<DataColumn>()
                 .Select(column => $"Source.\"{column.ColumnName}\"");
             mergeQuery.AppendLine(string.Join(",\n    ", values));
-            mergeQuery.AppendLine("    )");
+            mergeQuery.AppendLine("    );");
 
             var lookupTime = RequestTimeWithOffSet(requestTime, (double)extraction.FilterTime!, extraction.Destination!.TimeZoneOffSet);
 
