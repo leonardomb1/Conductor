@@ -16,7 +16,7 @@ public class PostgreSQLExchange : DBExchange
 
     protected override string? QueryNonLocking() => "";
 
-    protected override string GeneratePartitionCondition(Extraction extraction, double timeZoneOffSet, string? virtualColumn = null)
+    protected override string GeneratePartitionCondition(Extraction extraction, DateTime requestTime, string? virtualColumn = null)
     {
         StringBuilder builder = new();
 
@@ -27,7 +27,7 @@ public class PostgreSQLExchange : DBExchange
 
         if (extraction.FilterTime.HasValue)
         {
-            var lookupTime = DateTime.UtcNow.AddSeconds((double)-extraction.FilterTime!).AddHours(timeZoneOffSet);
+            var lookupTime = requestTime.AddSeconds((double)-extraction.FilterTime!).AddHours(extraction.Origin!.TimeZoneOffSet);
             builder.Append($"AND \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss}'::TIMESTAMP ");
         }
 
@@ -108,7 +108,7 @@ public class PostgreSQLExchange : DBExchange
         };
     }
 
-    public override Task<Result> MergeLoad(DataTable data, Extraction extraction, DbConnection connection)
+    public override Task<Result> MergeLoad(DataTable data, Extraction extraction, DateTime requestTime, DbConnection connection)
     {
         throw new NotImplementedException();
     }

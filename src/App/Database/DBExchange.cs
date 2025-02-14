@@ -74,14 +74,19 @@ public abstract class DBExchange
 
     public abstract Task<Result> BulkLoad(DataTable data, Extraction extraction, DbConnection connection);
 
-    protected abstract string GeneratePartitionCondition(Extraction extraction, double timeZoneOffSet, string? virtualColumn = null);
+    protected abstract string GeneratePartitionCondition(Extraction extraction, DateTime requestTime, string? virtualColumn = null);
 
     protected virtual StringBuilder AddPrimaryKey(StringBuilder stringBuilder, string tableName)
     {
         return stringBuilder.Append($" CONSTRAINT IX_{tableName}_PK PRIMARY KEY (ID_DW_{tableName}),");
     }
 
-    public abstract Task<Result> MergeLoad(DataTable data, Extraction extraction, DbConnection connection);
+    public abstract Task<Result> MergeLoad(DataTable data, Extraction extraction, DateTime requestTime, DbConnection connection);
+
+    protected virtual DateTime RequestTimeWithOffSet(DateTime requestTime, double filterTime, double offSet)
+    {
+        return requestTime.AddSeconds(filterTime).AddHours(offSet);
+    }
 
     protected virtual string VirtualColumn(string tableName, string fileGroup)
     {
@@ -313,6 +318,7 @@ public abstract class DBExchange
     public virtual async Task<Result<DataTable>> SingleFetch(
         Extraction extraction,
         UInt64 current,
+        DateTime requestTime,
         bool shouldPartition,
         string? virtualizedTable = null,
         string? virtualizedIdGroup = null,
@@ -345,7 +351,7 @@ public abstract class DBExchange
             $", {metadata}" : $"{metadata}";
 
         string partitioning = extraction.IsIncremental && shouldPartition ?
-            GeneratePartitionCondition(extraction, extraction.Origin!.TimeZoneOffSet) : "";
+            GeneratePartitionCondition(extraction, requestTime) : "";
 
         string queryBase = extraction.OverrideQuery ??
             @$"SELECT {columns} FROM {extraction.Name} {QueryNonLocking()}
@@ -381,6 +387,7 @@ public abstract class DBExchange
     public virtual async Task<Result<DataTable>> SingleFetch(
         Extraction extraction,
         UInt64 current,
+        DateTime requestTime,
         bool shouldPartition,
         DbConnection connection,
         string? virtualizedTable = null,
@@ -411,7 +418,7 @@ public abstract class DBExchange
             $", {metadata}" : $"{metadata}";
 
         string partitioning = extraction.IsIncremental && shouldPartition ?
-            GeneratePartitionCondition(extraction, extraction.Origin!.TimeZoneOffSet) : "";
+            GeneratePartitionCondition(extraction, requestTime) : "";
 
         string queryBase = extraction.OverrideQuery ??
             @$"SELECT {columns} FROM {extraction.Name} {QueryNonLocking()}
@@ -441,6 +448,7 @@ public abstract class DBExchange
 
     public virtual async Task<Result<DataTable>> FetchDataTable(
         Extraction extraction,
+        DateTime requestTime,
         bool shouldPartition,
         UInt64 current,
         CancellationToken token,
@@ -454,16 +462,35 @@ public abstract class DBExchange
             var deps = await ExtractionService.GetDependencies(extraction);
             if (!deps.IsSuccessful) return deps.Error;
 
-            return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup!, token, shouldPaginate);
+            return await ParallelFetch(
+                deps.Value,
+                current,
+                requestTime,
+                shouldPartition,
+                extraction.Name,
+                extraction.VirtualIdGroup!,
+                token,
+                shouldPaginate
+            );
         }
         else
         {
-            return await SingleFetch(extraction, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup, shouldPaginate, token);
+            return await SingleFetch(
+                extraction,
+                current,
+                requestTime,
+                shouldPartition,
+                extraction.Name,
+                extraction.VirtualIdGroup,
+                shouldPaginate,
+                token
+            );
         }
     }
 
     public virtual async Task<Result<DataTable>> FetchDataTable(
         Extraction extraction,
+        DateTime requestTime,
         bool shouldPartition,
         UInt64 current,
         DbConnection connection,
@@ -476,17 +503,38 @@ public abstract class DBExchange
             var deps = await ExtractionService.GetDependencies(extraction);
             if (!deps.IsSuccessful) return deps.Error;
 
-            return await ParallelFetch(deps.Value, current, shouldPartition, extraction.Name, extraction.VirtualIdGroup!, connection, token, shouldPaginate);
+            return await ParallelFetch(
+                    deps.Value,
+                    current,
+                    requestTime,
+                    shouldPartition,
+                    extraction.Name,
+                    extraction.VirtualIdGroup!,
+                    connection,
+                    token,
+                    shouldPaginate
+                );
         }
         else
         {
-            return await SingleFetch(extraction, current, shouldPartition, connection, extraction.Name, extraction.VirtualIdGroup, shouldPaginate, token);
+            return await SingleFetch(
+                extraction,
+                current,
+                requestTime,
+                shouldPartition,
+                connection,
+                extraction.Name,
+                extraction.VirtualIdGroup,
+                shouldPaginate,
+                token
+            );
         }
     }
 
     public virtual async Task<Result<DataTable>> ParallelFetch(
         List<Extraction> extractions,
         UInt64 current,
+        DateTime requestTime,
         bool shouldPartition,
         string virtualizedTable,
         string virtualIdGroup,
@@ -505,7 +553,16 @@ public abstract class DBExchange
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
                 if (t.IsCancellationRequested) return;
-                var fetch = await SingleFetch(e, current, shouldPartition, virtualizedTable, virtualIdGroup, shouldPaginate, t);
+                var fetch = await SingleFetch(
+                        e,
+                        current,
+                        requestTime,
+                        shouldPartition,
+                        virtualizedTable,
+                        virtualIdGroup,
+                        shouldPaginate,
+                        t
+                );
                 if (!fetch.IsSuccessful)
                 {
                     Interlocked.Increment(ref errCount);
@@ -554,6 +611,7 @@ public abstract class DBExchange
     public virtual async Task<Result<DataTable>> ParallelFetch(
         List<Extraction> extractions,
         UInt64 current,
+        DateTime requestTime,
         bool shouldPartition,
         string virtualizedTable,
         string virtualIdGroup,
@@ -574,7 +632,17 @@ public abstract class DBExchange
             await Parallel.ForEachAsync(extractions, token, async (e, t) =>
             {
                 if (t.IsCancellationRequested) return;
-                var fetch = await SingleFetch(e, current, shouldPartition, connection, virtualizedTable, virtualIdGroup, shouldPaginate, t);
+                var fetch = await SingleFetch(
+                    e,
+                    current,
+                    requestTime,
+                    shouldPartition,
+                    connection,
+                    virtualizedTable,
+                    virtualIdGroup,
+                    shouldPaginate,
+                    t
+                );
                 if (!fetch.IsSuccessful)
                 {
                     Interlocked.Increment(ref errCount);

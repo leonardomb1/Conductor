@@ -111,6 +111,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
             var result = await pipeline.ChannelParallelize(
                 extractions,
                 pipeline.ProduceDBData,
+                DateTime.Now,
                 token
             );
 
@@ -167,7 +168,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         }
 
         var engine = DBExchangeFactory.Create(res.Origin.DbType);
-        var query = await engine.FetchDataTable(res, false, current, token, shouldPaginate: true);
+        var query = await engine.FetchDataTable(res, DateTime.Now, false, current, token, shouldPaginate: true);
         if (!query.IsSuccessful)
         {
             JobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);

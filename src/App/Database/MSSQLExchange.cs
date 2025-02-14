@@ -16,7 +16,7 @@ public class MSSQLExchange : DBExchange
 
     protected override string? QueryNonLocking() => "WITH(NOLOCK)";
 
-    protected override string GeneratePartitionCondition(Extraction extraction, double timeZoneOffSet, string? virtualColumn = null)
+    protected override string GeneratePartitionCondition(Extraction extraction, DateTime requestTime, string? virtualColumn = null)
     {
         StringBuilder builder = new();
 
@@ -24,7 +24,7 @@ public class MSSQLExchange : DBExchange
 
         if (extraction.FilterTime.HasValue)
         {
-            var lookupTime = DateTime.UtcNow.AddSeconds((double)-extraction.FilterTime!).AddHours(timeZoneOffSet);
+            var lookupTime = RequestTimeWithOffSet(requestTime, (double)extraction.FilterTime, extraction.Origin!.TimeZoneOffSet);
             builder.Append($"AND \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2) ");
         }
 
@@ -105,7 +105,7 @@ public class MSSQLExchange : DBExchange
         };
     }
 
-    public override async Task<Result> MergeLoad(DataTable data, Extraction extraction, DbConnection connection)
+    public override async Task<Result> MergeLoad(DataTable data, Extraction extraction, DateTime requestTime, DbConnection connection)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
@@ -175,6 +175,11 @@ public class MSSQLExchange : DBExchange
             var values = data.Columns.Cast<DataColumn>()
                 .Select(column => $"Source.[{column.ColumnName}]");
             mergeQuery.AppendLine(string.Join(",\n    ", values));
+
+            var lookupTime = RequestTimeWithOffSet(requestTime, (double)extraction.FilterTime!, extraction.Destination!.TimeZoneOffSet);
+
+            mergeQuery.AppendLine($"WHEN NOT MATCHED BY SOURCE");
+            mergeQuery.AppendLine($"AND \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2) ");
 
             mergeQuery.AppendLine("    );");
 

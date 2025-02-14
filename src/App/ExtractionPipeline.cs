@@ -52,6 +52,7 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
         UInt64 destRc,
         byte offsetMultiplier,
         Channel<(DataTable, Extraction)> channel,
+        DateTime requestTime,
         CancellationToken t
     )
     {
@@ -64,12 +65,13 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
             var attempt = DBExchange.SupportsMARS(e.Origin!.DbType)
                 ? await fetcher.FetchDataTable(
                     e,
+                    requestTime,
                     shouldPartition,
                     curr,
                     GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
                     t
                 )
-                : await fetcher.FetchDataTable(e, shouldPartition, curr, t);
+                : await fetcher.FetchDataTable(e, requestTime, shouldPartition, curr, t);
 
             if (!HandleError(attempt, t)) break;
             if (attempt.Value.Rows.Count == 0) break;
@@ -96,7 +98,8 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
 
     public async Task<MResult> ChannelParallelize(
         List<Extraction> extractions,
-        Func<List<Extraction>, Channel<(DataTable, Extraction)>, CancellationToken, Task> produceData,
+        Func<List<Extraction>, Channel<(DataTable, Extraction)>, DateTime, CancellationToken, Task> produceData,
+        DateTime requestTime,
         CancellationToken token
     )
     {
@@ -104,8 +107,8 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
 
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-        Task producer = Task.Run(async () => await produceData(extractions, channel, cts.Token), cts.Token);
-        Task consumer = Task.Run(async () => await ConsumeData(channel, cts), cts.Token);
+        Task producer = Task.Run(async () => await produceData(extractions, channel, requestTime, cts.Token), cts.Token);
+        Task consumer = Task.Run(async () => await ConsumeData(channel, requestTime, cts), cts.Token);
 
         try
         {
@@ -138,6 +141,7 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
     public async Task ProduceDBData(
         List<Extraction> extractions,
         Channel<(DataTable, Extraction)> channel,
+        DateTime requestTime,
         CancellationToken token
     )
     {
@@ -183,7 +187,7 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
                 for (byte i = 0; i < Settings.ProducerConcurrentFetches; i++)
                 {
                     byte offsetMultiplier = i;
-                    fetchTasks.Add(ProcessFetchAsync(e, fetcher, destRc, offsetMultiplier, channel, t));
+                    fetchTasks.Add(ProcessFetchAsync(e, fetcher, destRc, offsetMultiplier, channel, requestTime, t));
                 }
 
                 await Task.WhenAll(fetchTasks);
@@ -199,7 +203,7 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
         }
     }
 
-    public async Task ConsumeData(Channel<(DataTable, Extraction)> channel, CancellationTokenSource cts)
+    public async Task ConsumeData(Channel<(DataTable, Extraction)> channel, DateTime requestTime, CancellationTokenSource cts)
     {
         ParallelOptions options = Settings.ParallelRule.Value;
         options.CancellationToken = cts.Token;
@@ -265,7 +269,7 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
                     }
                     else
                     {
-                        await inserter.MergeLoad(e.data, e.metadata, con);
+                        await inserter.MergeLoad(e.data, e.metadata, requestTime, con);
                     }
 
                     await con.CloseAsync();
