@@ -177,7 +177,7 @@ public class MSSQLExchange : DBExchange
 
             var lookupTime = RequestTimeWithOffSet(requestTime, (Int32)extraction.FilterTime!, extraction.Origin!.TimeZoneOffSet);
 
-            Log.Out("Upserting source data and deleting unsynced data...");
+            Log.Out($"Upserting source data and deleting unsynced data on table {schemaName}.{tableName}...");
             using var mergeCommand = CreateDbCommand(mergeQuery.ToString(), connection);
             mergeCommand.CommandTimeout = Settings.QueryTimeout;
 
