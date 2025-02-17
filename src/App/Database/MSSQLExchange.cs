@@ -175,9 +175,9 @@ public class MSSQLExchange : DBExchange
             mergeQuery.AppendLine(string.Join(",\n    ", values));
             mergeQuery.AppendLine("    );");
 
-            var lookupTime = RequestTimeWithOffSet(requestTime, (Int32)extraction.FilterTime!, extraction.Destination!.TimeZoneOffSet);
+            var lookupTime = RequestTimeWithOffSet(requestTime, (Int32)extraction.FilterTime!, extraction.Origin!.TimeZoneOffSet);
 
-            Log.Out("Merging temp table with physical...");
+            Log.Out("Upserting source data and deleting unsynced data...");
             using var mergeCommand = CreateDbCommand(mergeQuery.ToString(), connection);
             mergeCommand.CommandTimeout = Settings.QueryTimeout;
 
