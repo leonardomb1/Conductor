@@ -24,7 +24,7 @@ public class MSSQLExchange : DBExchange
 
         if (extraction.FilterTime.HasValue)
         {
-            var lookupTime = RequestTimeWithOffSet(requestTime, (double)extraction.FilterTime, extraction.Origin!.TimeZoneOffSet);
+            var lookupTime = RequestTimeWithOffSet(requestTime, (Int32)extraction.FilterTime, extraction.Origin!.TimeZoneOffSet);
             builder.Append($"AND \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2) ");
         }
 
@@ -175,13 +175,31 @@ public class MSSQLExchange : DBExchange
             mergeQuery.AppendLine(string.Join(",\n    ", values));
             mergeQuery.AppendLine("    );");
 
-            var lookupTime = RequestTimeWithOffSet(requestTime, (double)extraction.FilterTime!, extraction.Destination!.TimeZoneOffSet);
+            var lookupTime = RequestTimeWithOffSet(requestTime, (Int32)extraction.FilterTime!, extraction.Destination!.TimeZoneOffSet);
 
             Log.Out("Merging temp table with physical...");
             using var mergeCommand = CreateDbCommand(mergeQuery.ToString(), connection);
             mergeCommand.CommandTimeout = Settings.QueryTimeout;
 
             await mergeCommand.ExecuteNonQueryAsync();
+
+            StringBuilder deleteQuery = new($"DELETE FROM \"{schemaName}\".\"{tableName}\"");
+            deleteQuery.AppendLine("WHERE NOT EXISTS (");
+            deleteQuery.AppendLine($"SELECT 1 FROM \"{tempTableName}\"");
+            deleteQuery.AppendLine($"WHERE \"{tempTableName}\".\"{extraction.IndexName}\" = \"{schemaName}\".\"{tableName}\".\"{extraction.IndexName}\"");
+
+            if (extraction.IsVirtual)
+            {
+                deleteQuery.AppendLine($"AND \"{tempTableName}\".\"{virtualColumn}\" = \"{schemaName}\".\"{tableName}\".\"{virtualColumn}\"");
+            }
+
+            deleteQuery.AppendLine(")");
+            deleteQuery.AppendLine($"AND \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2);");
+
+            using var deleteCommand = CreateDbCommand(deleteQuery.ToString(), connection);
+            deleteCommand.CommandTimeout = Settings.QueryTimeout;
+
+            await deleteCommand.ExecuteNonQueryAsync();
 
             return Result.Ok();
         }

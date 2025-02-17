@@ -83,9 +83,9 @@ public abstract class DBExchange
 
     public abstract Task<Result> MergeLoad(DataTable data, Extraction extraction, DateTime requestTime, DbConnection connection);
 
-    protected virtual DateTime RequestTimeWithOffSet(DateTime requestTime, double filterTime, double offSet)
+    protected virtual DateTimeOffset RequestTimeWithOffSet(DateTimeOffset requestTime, Int32 filterTime, Int32 offSet)
     {
-        return requestTime.AddSeconds(-filterTime).AddHours(offSet);
+        return requestTime.AddSeconds(-filterTime).ToOffset(new TimeSpan(offSet, 0, 0));
     }
 
     protected virtual string VirtualColumn(string tableName, string fileGroup)
@@ -421,9 +421,8 @@ public abstract class DBExchange
             GeneratePartitionCondition(extraction, requestTime) : "";
 
         string queryBase = extraction.OverrideQuery ??
-            @$"SELECT {columns} FROM {extraction.Name} {QueryNonLocking()}
-            {partitioning}
-            ORDER BY {extraction.IndexName} {(shouldPartition ? "DESC" : "ASC")}";
+            $"SELECT {columns} FROM \"{extraction.Name}\" {QueryNonLocking()} {partitioning}" +
+            $"ORDER BY \"{extraction.IndexName}\" {(shouldPartition ? "DESC" : "ASC")}";
 
         string query = $"{queryBase} {(shouldPaginate ? QueryPagination(current) : "")}";
 

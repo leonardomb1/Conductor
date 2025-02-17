@@ -26,7 +26,7 @@ public sealed class Destination : IDbModel, IEndpointParameterMetadataProvider
     public string ConnectionString { get; set; } = "";
 
     [Column, NotNull, JsonRequired, JsonPropertyName("destinationTimeZoneOffSet")]
-    public double TimeZoneOffSet { get; set; }
+    public Int32 TimeZoneOffSet { get; set; }
 
     public Destination() { }
 

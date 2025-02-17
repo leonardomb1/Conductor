@@ -29,7 +29,7 @@ public sealed class Origin : IDbModel, IEndpointParameterMetadataProvider
     public string ConnectionString { get; set; } = "";
 
     [Column, NotNull, JsonRequired, JsonPropertyName("originTimeZoneOffSet")]
-    public double TimeZoneOffSet { get; set; }
+    public Int32 TimeZoneOffSet { get; set; }
 
     public Origin() { }
 
