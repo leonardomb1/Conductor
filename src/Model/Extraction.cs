@@ -53,6 +53,9 @@ public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
     public bool SingleExecution { get; set; } = false;
 
     [Column, Nullable]
+    public string? FilterCondition { get; set; }
+
+    [Column, Nullable]
     public string? FilterColumn { get; set; }
 
     [Column, Nullable]

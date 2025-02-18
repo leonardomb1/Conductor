@@ -20,8 +20,6 @@ public class MSSQLExchange : DBExchange
     {
         StringBuilder builder = new();
 
-        builder.Append("WHERE 1 = 1 ");
-
         if (extraction.FilterTime.HasValue)
         {
             var lookupTime = RequestTimeWithOffSet(requestTime, (Int32)extraction.FilterTime, extraction.Origin!.TimeZoneOffSet);
