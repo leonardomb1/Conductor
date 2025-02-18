@@ -15,6 +15,7 @@ public class JobRoutine(JobService jobService, JobExtractionService jobExtractio
                 await JobTracker.DumpJobs(jobService, jobExtractionService);
                 await Task.Delay(TimeSpan.FromSeconds(Settings.LogDumpTimeSec), stoppingToken);
             }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 Log.Out($"Error while executing job routine: {ex.InnerException}", RecordType.Error, dump: true, callerMethod: "JobRoutine");
