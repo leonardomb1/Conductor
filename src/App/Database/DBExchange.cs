@@ -422,7 +422,7 @@ public abstract class DBExchange
         string partitioning = extraction.IsIncremental && shouldPartition ?
             GeneratePartitionCondition(extraction, requestTime) : "";
 
-        string condition = $"AND {extraction.FilterCondition}" ?? "";
+        string condition = $"{extraction.FilterCondition}" ?? "";
 
         string queryBase = extraction.OverrideQuery ??
             @$"SELECT {columns} FROM {extraction.Name} {QueryNonLocking()}
