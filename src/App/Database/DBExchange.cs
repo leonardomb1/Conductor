@@ -320,6 +320,7 @@ public abstract class DBExchange
         UInt64 current,
         DateTime requestTime,
         bool shouldPartition,
+        Int32? overrideFilter,
         string? virtualizedTable = null,
         string? virtualizedIdGroup = null,
         bool shouldPaginate = true,
@@ -330,6 +331,8 @@ public abstract class DBExchange
 
         using DbConnection connection = CreateConnection(extraction.Origin!.ConnectionString);
         await connection.OpenAsync(token);
+
+        extraction.FilterTime = overrideFilter ?? extraction.FilterTime;
 
         string metadata = "*";
 
@@ -392,6 +395,7 @@ public abstract class DBExchange
         DateTime requestTime,
         bool shouldPartition,
         DbConnection connection,
+        Int32? overrideFilter,
         string? virtualizedTable = null,
         string? virtualizedIdGroup = null,
         bool shouldPaginate = true,
@@ -401,6 +405,8 @@ public abstract class DBExchange
         if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
 
         string metadata = "*";
+
+        extraction.FilterTime = overrideFilter ?? extraction.FilterTime;
 
         if (extraction.IgnoreColumns != null)
         {
@@ -456,6 +462,7 @@ public abstract class DBExchange
         bool shouldPartition,
         UInt64 current,
         CancellationToken token,
+        Int32? overrideFilter = null,
         bool shouldPaginate = true
     )
     {
@@ -471,6 +478,7 @@ public abstract class DBExchange
                 current,
                 requestTime,
                 shouldPartition,
+                overrideFilter,
                 extraction.Name,
                 extraction.VirtualIdGroup!,
                 token,
@@ -484,6 +492,7 @@ public abstract class DBExchange
                 current,
                 requestTime,
                 shouldPartition,
+                overrideFilter,
                 extraction.Name,
                 extraction.VirtualIdGroup,
                 shouldPaginate,
@@ -499,6 +508,7 @@ public abstract class DBExchange
         UInt64 current,
         DbConnection connection,
         CancellationToken token,
+        Int32? overrideFilter = null,
         bool shouldPaginate = true
     )
     {
@@ -512,6 +522,7 @@ public abstract class DBExchange
                     current,
                     requestTime,
                     shouldPartition,
+                    overrideFilter,
                     extraction.Name,
                     extraction.VirtualIdGroup!,
                     connection,
@@ -527,6 +538,7 @@ public abstract class DBExchange
                 requestTime,
                 shouldPartition,
                 connection,
+                overrideFilter,
                 extraction.Name,
                 extraction.VirtualIdGroup,
                 shouldPaginate,
@@ -540,6 +552,7 @@ public abstract class DBExchange
         UInt64 current,
         DateTime requestTime,
         bool shouldPartition,
+        Int32? overrideTime,
         string virtualizedTable,
         string virtualIdGroup,
         CancellationToken token,
@@ -562,6 +575,7 @@ public abstract class DBExchange
                         current,
                         requestTime,
                         shouldPartition,
+                        overrideTime,
                         virtualizedTable,
                         virtualIdGroup,
                         shouldPaginate,
@@ -617,6 +631,7 @@ public abstract class DBExchange
         UInt64 current,
         DateTime requestTime,
         bool shouldPartition,
+        Int32? overrideTime,
         string virtualizedTable,
         string virtualIdGroup,
         DbConnection connection,
@@ -642,6 +657,7 @@ public abstract class DBExchange
                     requestTime,
                     shouldPartition,
                     connection,
+                    overrideTime,
                     virtualizedTable,
                     virtualIdGroup,
                     shouldPaginate,

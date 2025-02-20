@@ -10,7 +10,7 @@ using Conductor.Shared.Types;
 
 namespace Conductor.App;
 
-public class ExtractionPipeline() : IAsyncDisposable, IDisposable
+public class ExtractionPipeline(DateTime requestTime, Int32? overrideFilter) : IAsyncDisposable, IDisposable
 {
     private readonly ConcurrentBag<Error> pipelineErrors = [];
 
@@ -69,9 +69,10 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
                     shouldPartition,
                     curr,
                     GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
-                    t
+                    t,
+                    overrideFilter
                 )
-                : await fetcher.FetchDataTable(e, requestTime, shouldPartition, curr, t);
+                : await fetcher.FetchDataTable(e, requestTime, shouldPartition, curr, t, overrideFilter);
 
             if (!HandleError(attempt, t)) break;
             if (attempt.Value.Rows.Count == 0) break;
@@ -99,7 +100,6 @@ public class ExtractionPipeline() : IAsyncDisposable, IDisposable
     public async Task<MResult> ChannelParallelize(
         List<Extraction> extractions,
         Func<List<Extraction>, Channel<(DataTable, Extraction)>, DateTime, CancellationToken, Task> produceData,
-        DateTime requestTime,
         CancellationToken token
     )
     {

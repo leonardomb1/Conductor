@@ -51,7 +51,7 @@ public sealed class ExtractionController(ExtractionService service) : Controller
     public async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>, Accepted<Message>>> ExecuteExtraction(IQueryCollection? filters, CancellationToken token)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "scheduleId") &&
+            (f.Key == "scheduleId" || f.Key == "overrideTime") &&
             !UInt32.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
@@ -97,6 +97,8 @@ public sealed class ExtractionController(ExtractionService service) : Controller
         var extractionIds = extractions.Select(x => x.Id);
         var job = JobTracker.StartJob(extractionIds, JobType.Transfer);
 
+        Int32? overrideFilter = filters != null && filters.ContainsKey("overrideTime") ? Int32.Parse(filters["overrideTime"]!) : null;
+
         try
         {
             extractions
@@ -104,15 +106,11 @@ public sealed class ExtractionController(ExtractionService service) : Controller
                 {
                     x.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Origin!.ConnectionString, Settings.EncryptionKey);
                     x.Destination!.ConnectionString = Encryption.SymmetricDecryptAES256(x.Destination!.ConnectionString, Settings.EncryptionKey);
+                    x.FilterTime = overrideFilter ?? x.FilterTime;
                 });
 
-            await using var pipeline = new ExtractionPipeline();
-            var result = await pipeline.ChannelParallelize(
-                extractions,
-                pipeline.ProduceDBData,
-                DateTime.UtcNow,
-                token
-            );
+            await using var pipeline = new ExtractionPipeline(DateTime.UtcNow, overrideFilter);
+            var result = await pipeline.ChannelParallelize(extractions, pipeline.ProduceDBData, token);
 
             if (!result.IsSuccessful)
             {
