@@ -39,13 +39,6 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         var extractions = result.Value;
 
-        extractions
-            .ForEach(x =>
-            {
-                x.Origin!.ConnectionString = "";
-                x.Destination!.ConnectionString = "";
-            });
-
         if (!result.IsSuccessful)
         {
             return TypedResults.InternalServerError(
