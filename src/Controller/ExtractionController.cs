@@ -36,6 +36,16 @@ public sealed class ExtractionController(ExtractionService service) : Controller
 
         var result = await service.Search(filters);
 
+
+        var extractions = result.Value;
+
+        extractions
+            .ForEach(x =>
+            {
+                x.Origin!.ConnectionString = "";
+                x.Destination!.ConnectionString = "";
+            });
+
         if (!result.IsSuccessful)
         {
             return TypedResults.InternalServerError(
