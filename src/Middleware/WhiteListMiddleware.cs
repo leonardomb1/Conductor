@@ -20,12 +20,18 @@ public sealed class WhiteListMiddleware(RequestDelegate req)
             }
         }
 
-        if (!Helper.VerifyIpAddress(client, ctx))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await ctx.Response.WriteAsync("Access denied.");
-            return;
-        }
+        if (
+            !Helper.VerifyIpAddress(
+                client,
+                "HTTP Level Block",
+                async () =>
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await ctx.Response.WriteAsync("Access denied.");
+                    return;
+                }
+            )
+        ) return;
 
         await next(ctx);
     }

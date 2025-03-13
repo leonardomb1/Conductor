@@ -83,7 +83,7 @@ public class MSSQLExchange : DBExchange
             _ when type == typeof(Int64) => "BIGINT",
             _ when type == typeof(Int32) => "INT",
             _ when type == typeof(Int16) => "SMALLINT",
-            _ when type == typeof(string) => length < 0 ? $"VARCHAR({length})" : "VARCHAR(MAX)",
+            _ when type == typeof(string) => length > 0 ? $"VARCHAR({length})" : "VARCHAR(MAX)",
             _ when type == typeof(bool) => "BIT",
             _ when type == typeof(DateTime) => "DATETIME",
             _ when type == typeof(double) => "FLOAT",

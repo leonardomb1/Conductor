@@ -36,7 +36,7 @@ public static class Helper
         );
     }
 
-    public static bool VerifyIpAddress(IPAddress address, HttpContext ctx)
+    public static bool VerifyIpAddress(IPAddress address, string block, Action? callback = null)
     {
         byte validations = 0;
         for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)
@@ -47,33 +47,14 @@ public static class Helper
         if (validations == Settings.AllowedIpsRange.Value.Length)
         {
             Log.Out(
-                $"Blocking IP Address {address} from connecting to the server using HTTP level blockage.",
-                RecordType.Warning,
-                callerMethod: "Kestrel"
+                $"Blocking IP Address {address} from connecting to the server, using {block}.",
+                RecordType.Warning
             );
+
+            callback?.Invoke();
             return false;
         }
 
         return true;
-    }
-
-    public static void FilterIpAddress(IPAddress address, ConnectionContext ctx)
-    {
-        byte validations = 0;
-        for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)
-        {
-            if (!Settings.AllowedIpsRange.Value[i].Contains(address)) validations++;
-        }
-
-        if (validations == Settings.AllowedIpsRange.Value.Length)
-        {
-            Log.Out(
-                $"Blocking IP Address {address} from connecting to the server using socket layer blockage.",
-                RecordType.Warning,
-                callerMethod: "Kestrel"
-            );
-            ctx.Abort();
-            return;
-        }
     }
 }

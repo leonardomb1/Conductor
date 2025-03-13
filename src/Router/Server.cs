@@ -38,7 +38,13 @@ public sealed class Server : IAsyncDisposable
                     {
                         IPAddress RemoteIpAddress = (ctx.RemoteEndPoint as IPEndPoint)!.Address;
 
-                        Helper.FilterIpAddress(RemoteIpAddress, ctx);
+                        if (
+                            !Helper.VerifyIpAddress(
+                                RemoteIpAddress,
+                                "Socket Level Block",
+                                () => ctx.Abort()
+                            )
+                        ) return;
 
                         await next(ctx);
                     });
