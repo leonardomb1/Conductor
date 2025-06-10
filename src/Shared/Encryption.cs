@@ -2,8 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Conductor.Shared.Config;
-using Conductor.Shared.Types;
+using Conductor.Types;
 
 namespace Conductor.Shared;
 

@@ -1,9 +1,6 @@
-using System.Buffers.Text;
 using System.Text;
-using System.Text.Unicode;
-using Conductor.Service;
+using Conductor.Repository;
 using Conductor.Shared;
-using Conductor.Shared.Config;
 
 namespace Conductor.Middleware
 {
@@ -42,8 +39,8 @@ namespace Conductor.Middleware
 
             if (keyValue[0] == "Basic")
             {
-                using UserService service = new(new Data.LdbContext());
-                if (keyValue[1] == null)
+                UserRepository repository = new(new EfContext());
+                if (keyValue[1] is null)
                 {
                     ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
                     await ctx.Response.WriteAsync("Access denied.");
@@ -53,7 +50,7 @@ namespace Conductor.Middleware
                 byte[] decode = Convert.FromBase64String(keyValue[1]);
                 string[] userData = Encoding.UTF8.GetString(decode).Split(":");
 
-                var userLookup = await service.SearchUserCredential(userData[0]);
+                var userLookup = await repository.SearchUserCredential(userData[0]);
                 if (!userLookup.IsSuccessful)
                 {
                     ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;

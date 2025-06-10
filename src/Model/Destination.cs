@@ -1,38 +1,24 @@
-using EFTable = System.ComponentModel.DataAnnotations.Schema.TableAttribute;
-using LdbTable = LinqToDB.Mapping.TableAttribute;
-using System.Text.Json.Serialization;
-using LinqToDB.Mapping;
 using System.ComponentModel.DataAnnotations;
-using Microsoft.AspNetCore.Http.Metadata;
-using System.Reflection;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Conductor.Model;
 
-[LdbTable(tableName), EFTable(tableName)]
-public sealed class Destination : IDbModel, IEndpointParameterMetadataProvider
+[Table("DESTINATIONS")]
+public sealed class Destination : IDbModel
 {
-    private const string tableName = "DESTINATIONS";
-
-    [PrimaryKey, Identity]
     [Key]
     public UInt32 Id { get; set; }
 
-    [Column, NotNull, JsonRequired, JsonPropertyName("destinationName")]
+    [Column, JsonRequired, JsonPropertyName("destinationName")]
     public string Name { get; set; } = "";
 
-    [Column, NotNull, JsonRequired, JsonPropertyName("destinationDbType")]
+    [Column, JsonRequired, JsonPropertyName("destinationDbType")]
     public string DbType { get; set; } = "";
 
-    [Column, NotNull, JsonRequired, JsonPropertyName("destinationConStr")]
+    [Column, JsonRequired, JsonPropertyName("destinationConStr")]
     public string ConnectionString { get; set; } = "";
 
-    [Column, NotNull, JsonRequired, JsonPropertyName("destinationTimeZoneOffSet")]
-    public double TimeZoneOffSet { get; set; }
-
-    public Destination() { }
-
-    public static void PopulateMetadata(ParameterInfo parameter, EndpointBuilder builder)
-    {
-        builder.Metadata.Add(new AcceptsMetadata(["application/json"], typeof(Destination)));
-    }
+    [Column, JsonRequired, JsonPropertyName("destinationTimeZoneOffSet")]
+    public Int32 TimeZoneOffSet { get; set; }
 }

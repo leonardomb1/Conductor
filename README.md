@@ -5,15 +5,6 @@
 
 <h3 align="center">Conductor</h3>
 
-<div align="center">
-
-[![Status](https://img.shields.io/badge/status-active-success.svg)]()
-[![GitHub Issues](https://img.shields.io/github/issues/leonardomb1/Conductor.svg)](https://github.com/leonardomb1/Conductor/issues)
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr/leonardomb1/Conductor.svg)](https://github.com/leonardomb1/Conductor/pulls)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
-
-</div>
-
 ---
 
 <p align="center"> Conductor is a C# project designed for efficient data engineering workflows, enabling seamless orchestration between databases and RESTful JSON endpoints. This project focuses on high-performance data extraction, transformation, and loading (ETL) processes using parallelization and channel-based producer-consumer patterns. Conductor aims to streamline data extraction and management by integrating asynchronous parallel processing to handle large-scale data efficiently. 

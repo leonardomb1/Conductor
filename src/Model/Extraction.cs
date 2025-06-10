@@ -1,120 +1,110 @@
-using EFTable = System.ComponentModel.DataAnnotations.Schema.TableAttribute;
-using Association = LinqToDB.Mapping.AssociationAttribute;
-using LdbTable = LinqToDB.Mapping.TableAttribute;
-using Column = LinqToDB.Mapping.ColumnAttribute;
 using System.Text.Json.Serialization;
-using LinqToDB.Mapping;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using Microsoft.AspNetCore.Http.Metadata;
-using System.Reflection;
 
 namespace Conductor.Model;
 
-[LdbTable(tableName), EFTable(tableName)]
-public sealed class Extraction : IDbModel, IEndpointParameterMetadataProvider
+[Table("EXTRACTIONS")]
+public sealed class Extraction : IDbModel
 {
-    private const string tableName = "EXTRACTIONS";
-
-    [PrimaryKey, Identity]
     [Key]
     public UInt32 Id { get; set; }
 
-    [Column, NotNull, JsonRequired, JsonPropertyName("extractionName")]
+    [Column, Required, JsonRequired, JsonPropertyName("extractionName")]
     public string Name { get; set; } = "";
 
-    [Column, Nullable]
+    [Column]
     public UInt32? ScheduleId { get; set; }
 
-    [Column, NotNull, JsonRequired]
+    [Column, Required, JsonRequired]
     public UInt32 OriginId { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public UInt32? DestinationId { get; set; }
 
-    [Column, NotNull, JsonRequired]
-    public string IndexName { get; set; } = "";
+    [Column]
+    public string? IndexName { get; set; }
 
-    [Column, NotNull, JsonRequired]
-    public bool IsIncremental { get; set; }
+    [Column]
+    public bool IsIncremental { get; set; } = false;
 
-    [Column, NotNull, JsonRequired]
-    public bool IsVirtual { get; set; }
+    [Column]
+    public bool IsVirtual { get; set; } = false;
 
-    [Column, Nullable]
+    [Column]
     public string? VirtualId { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? VirtualIdGroup { get; set; }
 
-    [Column, Nullable]
-    public bool? IsVirtualTemplate { get; set; }
+    [Column]
+    public bool? IsVirtualTemplate { get; set; } = false;
 
-    [Column, NotNull, JsonRequired]
-    public bool BeforeExecutionDeletes { get; set; }
+    [Column]
+    public bool SingleExecution { get; set; } = false;
 
-    [Column, NotNull, JsonRequired]
-    public bool SingleExecution { get; set; }
+    [Column]
+    public string? FilterCondition { get; set; }
 
-    [Column, Nullable]
-    [AllowedValues("Columnar", "Relational")]
-    public string? TableStructure { get; set; }
-
-    [Column, Nullable]
+    [Column]
     public string? FilterColumn { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public Int32? FilterTime { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? OverrideQuery { get; set; }
 
-    [Column, Nullable, JsonPropertyName("extractionAlias")]
+    [Column, JsonPropertyName("extractionAlias")]
     public string? Alias { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? Dependencies { get; set; }
 
-    [Column, Nullable]
+    [Column]
+    public string? IgnoreColumns { get; set; }
+
+    [Column]
     public string? HttpMethod { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? HeaderStructure { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? EndpointFullName { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? BodyStructure { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? OffsetAttr { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? OffsetLimitAttr { get; set; }
 
-    [Column, Nullable]
+    [Column]
     public string? PageAttr { get; set; }
 
-    [Column, Nullable]
+    [Column]
+    public string? PaginationType { get; set; }
+
+    [Column]
     public string? TotalPageAttr { get; set; }
 
-    [Association(ThisKey = nameof(ScheduleId), OtherKey = nameof(Schedule.Id)), Nullable]
+    [Column, JsonRequired]
+    public string? SourceType { get; set; }
+
     [ForeignKey(nameof(ScheduleId))]
     public Schedule? Schedule { get; set; }
 
-    [Association(ThisKey = nameof(DestinationId), OtherKey = nameof(Destination.Id)), Nullable]
     [ForeignKey(nameof(DestinationId))]
     public Destination? Destination { get; set; }
 
-    [Association(ThisKey = nameof(OriginId), OtherKey = nameof(Origin.Id)), Nullable]
     [ForeignKey(nameof(OriginId))]
     public Origin? Origin { get; set; }
-
-    public Extraction() { }
-
-    public static void PopulateMetadata(ParameterInfo parameter, EndpointBuilder builder)
-    {
-        builder.Metadata.Add(new AcceptsMetadata(["application/json"], typeof(Extraction)));
-    }
 }
+
+public record SimpleExtractionDto(
+    UInt32 Id,
+    string Name
+);

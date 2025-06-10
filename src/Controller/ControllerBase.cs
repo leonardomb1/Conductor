@@ -1,31 +1,29 @@
-using System.Runtime.CompilerServices;
 using System.Text;
-using Conductor.Logging;
 using Conductor.Model;
-using Conductor.Service;
+using Conductor.Repository;
 using Conductor.Shared;
-using Conductor.Shared.Config;
-using Conductor.Shared.Types;
-using Microsoft.AspNetCore.Http.HttpResults;
+using Conductor.Types;
+using Serilog;
 using static Microsoft.AspNetCore.Http.StatusCodes;
 
 namespace Conductor.Controller;
 
-public abstract class ControllerBase<TModel>(IService<TModel> service) where TModel : IDbModel
+public abstract class ControllerBase<TModel>(IRepository<TModel> repository) where TModel : IDbModel
 {
-    protected Message<Error> ErrorMessage(string msg, Error? err = null, [CallerMemberName] string? method = null)
+    protected Message<Error> ErrorMessage(Error? err = null)
     {
         Message<Error> errMsg = new(
                 Status500InternalServerError,
-                msg,
+                "An internal error has occured while trying to proccess the request.",
                 values: [err],
                 err: true
         );
 
-        Log.Out(
-            $"An error occurred while processing a request:\nMessage: {err?.ExceptionMessage}, Faulted Method: {err?.FaultedMethod}, Trace: {err?.StackTrace}",
-            callerMethod: method,
-            logType: RecordType.Error
+        Log.Error(
+            $@"An error occurred while processing a request:
+                Message: {err?.ExceptionMessage}
+                Faulted Method: {err?.FaultedMethod}
+                Trace: {err?.StackTrace}"
         );
 
         if (!Settings.DevelopmentMode)
@@ -37,11 +35,11 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         return errMsg;
     }
 
-    protected Message<Error> ErrorMessage(string msg, List<Error> err, [CallerMemberName] string? method = null)
+    protected Message<Error> ErrorMessage(List<Error> err)
     {
         Message<Error> errMsg = new(
                 Status500InternalServerError,
-                msg,
+                "An internal error has occured while trying to proccess the request.",
                 values: err,
                 err: true
         );
@@ -50,14 +48,13 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
 
         for (Int32 i = 0; i < err.Count; i++)
         {
-            builder.Append($"Error {i}:\nMessage: {err[i].ExceptionMessage}, Faulted Method: {err[i].FaultedMethod}, Trace: {err[i].StackTrace}\n");
+            builder.Append(@$"Error {i}:
+                Message: {err[i].ExceptionMessage}
+                Faulted Method: {err[i].FaultedMethod}
+                Trace: {err[i].StackTrace}");
         }
 
-        Log.Out(
-            builder.ToString(),
-            callerMethod: method,
-            logType: RecordType.Error
-        );
+        Log.Error(builder.ToString());
 
         if (!Settings.DevelopmentMode)
         {
@@ -68,91 +65,83 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
         return errMsg;
     }
 
-    public virtual async Task<Results<Ok<Message<TModel>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
+    public virtual async Task<IResult> Get(IQueryCollection? filters)
     {
-
-        if (filters?.Count > Settings.MaxQueryParams)
-        {
-            return TypedResults.BadRequest(
-                new Message(Status400BadRequest, "Query limit has been hit.", true)
-            );
-        }
-
-        var result = await service.Search(filters);
+        var result = await repository.Search(filters);
 
         if (!result.IsSuccessful)
         {
-            return TypedResults.InternalServerError(
-                ErrorMessage("Failed to fetch data from Db.", result.Error)
+            return Results.InternalServerError(
+                ErrorMessage(result.Error)
             );
         }
 
-        return TypedResults.Ok(
-            new Message<TModel>(Status200OK, "Data fetch successful.", result.Value)
+        return Results.Ok(
+            new Message<TModel>(Status200OK, "OK", result.Value)
         );
     }
 
-    public virtual async Task<Results<Ok<Message>, Ok<Message<TModel>>, InternalServerError<Message<Error>>, BadRequest<Message>>> GetById(string stringId)
+    public virtual async Task<IResult> GetById(string stringId)
     {
         if (!UInt32.TryParse(stringId, out UInt32 id))
         {
-            return TypedResults.BadRequest(
+            return Results.BadRequest(
                 new Message(Status400BadRequest, "This is an invalid parameter type.")
             );
         }
 
-        var result = await service.Search(id);
+        var result = await repository.Search(id);
 
         if (!result.IsSuccessful)
         {
-            return TypedResults.InternalServerError(
-                ErrorMessage("Failed to fetch data from Db.", result.Error)
+            return Results.InternalServerError(
+                ErrorMessage(result.Error)
             );
         }
 
         if (result.Value is null)
         {
-            return TypedResults.Ok(
-            new Message(Status200OK, "Result set is empty.")
+            return Results.Ok(
+            new Message(Status200OK, "Requested resource was not found.")
         );
         }
 
-        return TypedResults.Ok(
-            new Message<TModel>(Status200OK, "Data fetch successful.", [result.Value])
+        return Results.Ok(
+            new Message<TModel>(Status200OK, "OK", [result.Value])
         );
     }
 
-    public virtual async Task<Results<Created<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Post(Stream body)
+    public virtual async Task<IResult> Post(Stream body)
     {
         var deserialize = await Converter.TryDeserializeJson<TModel>(body);
 
         if (!deserialize.IsSuccessful)
         {
-            return TypedResults.BadRequest(
+            return Results.BadRequest(
                 new Message(Status400BadRequest, $"This is an invalid JSON format for this operation: {deserialize.Error.ExceptionMessage}")
             );
         }
 
-        var result = await service.Create(deserialize.Value);
+        var result = await repository.Create(deserialize.Value);
 
         if (!result.IsSuccessful)
         {
-            return TypedResults.InternalServerError(
-                ErrorMessage("Failed to execute insert into db.", result.Error)
+            return Results.InternalServerError(
+                ErrorMessage(result.Error)
             );
         }
 
-        return TypedResults.Created(
-            "",
-            new Message(Status201Created, "Created successfully.")
+        return Results.Created(
+            $"/{result.Value}",
+            new Message(Status201Created, $"Resource available at /{result.Value}")
         );
     }
 
-    public virtual async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Put(string stringId, Stream body)
+    public virtual async Task<IResult> Put(string stringId, Stream body)
     {
         if (!UInt32.TryParse(stringId, out UInt32 id))
         {
-            return TypedResults.BadRequest(
+            return Results.BadRequest(
                 new Message(Status400BadRequest, "This is an invalid parameter type.", true)
             );
         }
@@ -161,45 +150,41 @@ public abstract class ControllerBase<TModel>(IService<TModel> service) where TMo
 
         if (!deserialize.IsSuccessful)
         {
-            return TypedResults.BadRequest(
+            return Results.BadRequest(
                 new Message(Status400BadRequest, "This is an invalid JSON format for this operation.", true)
             );
         }
 
-        var result = await service.Update(deserialize.Value, id);
+        var result = await repository.Update(deserialize.Value, id);
 
         if (!result.IsSuccessful)
         {
-            return TypedResults.InternalServerError(
-                ErrorMessage("Failed to execute update for the selected id.", result.Error)
+            return Results.InternalServerError(
+                ErrorMessage(result.Error)
             );
         }
 
-        return TypedResults.Ok(
-            new Message(Status200OK, "Updated Successfully.")
-        );
+        return Results.NoContent();
     }
 
-    public virtual async Task<Results<Ok<Message>, BadRequest<Message>, InternalServerError<Message<Error>>>> Delete(string stringId)
+    public virtual async Task<IResult> Delete(string stringId)
     {
         if (!UInt32.TryParse(stringId, out UInt32 id))
         {
-            return TypedResults.BadRequest(
+            return Results.BadRequest(
                 new Message(Status400BadRequest, "This is an invalid parameter type.", true)
             );
         }
 
-        var result = await service.Delete(id);
+        var result = await repository.Delete(id);
 
         if (!result.IsSuccessful)
         {
-            return TypedResults.InternalServerError(
-                ErrorMessage("Failed to delete specified registry in db.", result.Error)
+            return Results.InternalServerError(
+                ErrorMessage(result.Error)
             );
         }
 
-        return TypedResults.Ok(
-            new Message(Status200OK, "Deleted Successfully.")
-        );
+        return Results.NoContent();
     }
 }

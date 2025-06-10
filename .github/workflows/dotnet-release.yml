@@ -29,7 +29,7 @@ jobs:
       run: dotnet restore
 
     - name: Publish for ${{ matrix.platform }}
-      run: dotnet publish -c Release -r ${{ matrix.platform }} -o out/${{ matrix.platform }}
+      run: dotnet publish -c Release -r ${{ matrix.platform }} --self-contained false -o out/${{ matrix.platform }}
 
     - name: Create Archive
       run: |

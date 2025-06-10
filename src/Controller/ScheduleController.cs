@@ -1,14 +1,13 @@
 using Conductor.Model;
-using Conductor.Service;
-using Conductor.Shared.Types;
-using Microsoft.AspNetCore.Http.HttpResults;
+using Conductor.Repository;
+using Conductor.Types;
 using static Microsoft.AspNetCore.Http.StatusCodes;
 
 namespace Conductor.Controller;
 
-public sealed class ScheduleController(ScheduleService service) : ControllerBase<Schedule>(service)
+public sealed class ScheduleController(ScheduleRepository repository) : ControllerBase<Schedule>(repository)
 {
-    public override async Task<Results<Ok<Message<Schedule>>, InternalServerError<Message<Error>>, BadRequest<Message>>> Get(IQueryCollection? filters)
+    public override async Task<IResult> Get(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "value") &&
@@ -16,22 +15,47 @@ public sealed class ScheduleController(ScheduleService service) : ControllerBase
 
         if (invalidFilters?.Count > 0)
         {
-            return TypedResults.BadRequest(
+            return Results.BadRequest(
                 new Message(Status400BadRequest, "Invalid query parameters.", true)
             );
         }
 
-        var result = await service.Search(filters);
+        var result = await repository.Search(filters);
 
         if (!result.IsSuccessful)
         {
-            return TypedResults.InternalServerError(
-                ErrorMessage("Failed to fetch data from Db.", result.Error)
+            return Results.InternalServerError(
+                ErrorMessage(result.Error)
             );
         }
 
-        return TypedResults.Ok(
-            new Message<Schedule>(Status200OK, "Data fetch successful.", result.Value)
+        return Results.Ok(
+            new Message<Schedule>(Status200OK, "OK", result.Value)
         );
+    }
+
+    public static RouteGroupBuilder Map(RouteGroupBuilder api)
+    {
+        var group = api.MapGroup("/schedules")
+            .WithTags("Schedules");
+
+        group.MapGet("/", async (ScheduleController controller, HttpRequest request) => await controller.Get(request.Query))
+            .WithName("GetSchedules");
+
+        group.MapGet("/{id}", async (ScheduleController controller, string id) => await controller.GetById(id))
+            .WithName("GetScheduleById");
+
+        group.MapPost("/", async (ScheduleController controller, HttpRequest request) => await controller.Post(request.Body))
+            .Accepts<Schedule>("application/json")
+            .WithName("PostSchedule");
+
+        group.MapPut("/{id}", async (ScheduleController controller, HttpRequest request, string id) => await controller.Put(id, request.Body))
+            .Accepts<Schedule>("application/json")
+            .WithName("PutSchedule");
+
+        group.MapDelete("/{id}", async (ScheduleController controller, string id) => await controller.Delete(id))
+            .WithName("DeleteSchedule");
+
+        return group;
     }
 }

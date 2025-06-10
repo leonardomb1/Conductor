@@ -1,8 +1,7 @@
+using System.Data;
 using System.Net;
-using Conductor.Logging;
-using Conductor.Shared.Config;
-using Conductor.Shared.Types;
-using Microsoft.AspNetCore.Connections;
+using System.Text;
+using Serilog;
 
 namespace Conductor.Shared;
 
@@ -36,44 +35,36 @@ public static class Helper
         );
     }
 
-    public static bool VerifyIpAddress(IPAddress address, HttpContext ctx)
+    public static Int64 CalculateBytesUsed(DataTable data)
     {
-        byte validations = 0;
-        for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)
+        Int64 bytes = 0;
+        foreach (DataRow row in data.Rows)
         {
-            if (!Settings.AllowedIpsRange.Value[i].Contains(address)) validations++;
+            foreach (DataColumn col in data.Columns)
+            {
+                if (row[col] is null || row[col] == DBNull.Value) continue;
+                bytes += GetTypeByteSize(row[col], col.DataType);
+            }
         }
-
-        if (validations == Settings.AllowedIpsRange.Value.Length)
-        {
-            Log.Out(
-                $"Blocking IP Address {address} from connecting to the server using HTTP level blockage.",
-                RecordType.Warning,
-                callerMethod: "Kestrel"
-            );
-            return false;
-        }
-
-        return true;
+        return bytes;
     }
 
-    public static void FilterIpAddress(IPAddress address, ConnectionContext ctx)
+    public static Int64 GetTypeByteSize(object value, Type type)
     {
-        byte validations = 0;
-        for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)
+        return type switch
         {
-            if (!Settings.AllowedIpsRange.Value[i].Contains(address)) validations++;
-        }
-
-        if (validations == Settings.AllowedIpsRange.Value.Length)
-        {
-            Log.Out(
-                $"Blocking IP Address {address} from connecting to the server using socket layer blockage.",
-                RecordType.Warning,
-                callerMethod: "Kestrel"
-            );
-            ctx.Abort();
-            return;
-        }
+            _ when type == typeof(string) => Encoding.UTF8.GetByteCount((string)value),
+            _ when type == typeof(byte[]) => ((byte[])value).LongLength,
+            _ when type == typeof(DateTime) => sizeof(long),
+            _ when type == typeof(bool) => sizeof(bool),
+            _ when type == typeof(int) => sizeof(int),
+            _ when type == typeof(long) => sizeof(long),
+            _ when type == typeof(decimal) => sizeof(decimal),
+            _ when type == typeof(double) => sizeof(double),
+            _ when type == typeof(float) => sizeof(float),
+            _ when type == typeof(short) => sizeof(short),
+            _ when type == typeof(byte) => sizeof(byte),
+            _ => value.ToString()?.Length * sizeof(char) ?? 0
+        };
     }
 }

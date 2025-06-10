@@ -2,14 +2,16 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Conductor.Controller;
-using Conductor.Data;
 using Conductor.Logging;
 using Conductor.Middleware;
-using Conductor.Service;
+using Conductor.Repository;
 using Conductor.Shared;
-using Conductor.Shared.Config;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Serilog;
 using static Microsoft.AspNetCore.Http.HttpMethods;
 
 namespace Conductor.Router;
@@ -22,7 +24,14 @@ public sealed class Server : IAsyncDisposable
 
     public Server()
     {
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .WriteTo.Console()
+            .Enrich.FromLogContext()
+            .CreateLogger();
+
         var builder = WebApplication.CreateBuilder();
+        builder.Host.UseSerilog();
 
         builder.Environment.ApplicationName = ProgramInfo.ProgramName;
 
@@ -38,7 +47,19 @@ public sealed class Server : IAsyncDisposable
                     {
                         IPAddress RemoteIpAddress = (ctx.RemoteEndPoint as IPEndPoint)!.Address;
 
-                        Helper.FilterIpAddress(RemoteIpAddress, ctx);
+                        byte validations = 0;
+
+                        for (byte i = 0; i < Settings.AllowedIpsRange.Value.Length; i++)
+                        {
+                            if (!Settings.AllowedIpsRange.Value[i].Contains(RemoteIpAddress)) validations++;
+                        }
+
+                        if (validations == Settings.AllowedIpsRange.Value.Length)
+                        {
+                            Log.Warning($"Blocking IP Address {RemoteIpAddress} from connecting to the server.");
+                            ctx.Abort();
+                            return;
+                        }
 
                         await next(ctx);
                     });
@@ -104,72 +125,96 @@ public sealed class Server : IAsyncDisposable
             });
         }
 
+        builder.Services.AddHttpClient();
+
         /// Scoped Services
-        builder.Services.AddScoped<LdbContext>();
-        builder.Services.AddScoped<RecordService>();
-        builder.Services.AddScoped<DestinationService>();
-        builder.Services.AddScoped<OriginService>();
-        builder.Services.AddScoped<UserService>();
-        builder.Services.AddScoped<ExtractionService>();
-        builder.Services.AddScoped<ScheduleService>();
+        builder.Services.AddScoped<EfContext>();
+        builder.Services.AddScoped<DestinationRepository>();
+        builder.Services.AddScoped<OriginRepository>();
+        builder.Services.AddScoped<UserRepository>();
+        builder.Services.AddScoped<ExtractionRepository>();
+        builder.Services.AddScoped<ScheduleRepository>();
+        builder.Services.AddScoped<JobRepository>();
+        builder.Services.AddScoped<JobExtractionRepository>();
 
         /// Controllers
-        builder.Services.AddScoped<RecordController>();
         builder.Services.AddScoped<DestinationController>();
         builder.Services.AddScoped<OriginController>();
         builder.Services.AddScoped<UserController>();
         builder.Services.AddScoped<ExtractionController>();
         builder.Services.AddScoped<ScheduleController>();
+        builder.Services.AddScoped<JobController>();
 
-        /// Custom logging
-        builder.Logging.ClearProviders();
-        builder.Logging.SetMinimumLevel(LogLevel.None);
         builder.Services.AddHostedService(provider =>
         {
-            var ctx = new LdbContext();
-            var logger = new RecordService(ctx);
+            var ctx = new EfContext();
+            var service = new JobRepository(ctx);
+            var relatedService = new JobExtractionRepository(ctx);
 
-            return new LoggingRoutine(logger);
+            return new JobRoutine(service, relatedService);
         });
 
-        Log.Out($"Starting {ProgramInfo.ProgramName} API Server...", callerMethod: "Server");
+        string runningEnvironment = Environment.GetEnvironmentVariable("DOCKER_ENVIRONMENT") is null ? "CLI" : "Docker";
+        string runningArch = Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit";
+
+        Log.Information(
+            $"Starting {ProgramInfo.ProgramName} API Server {ProgramInfo.ProgramVersion} ({runningEnvironment} on {Environment.OSVersion} {runningArch}) at {Environment.MachineName}."
+        );
+
+        builder.Services.AddOpenTelemetry()
+            .WithMetrics(metricsBuilder =>
+            {
+                metricsBuilder
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName))
+                    .AddPrometheusExporter();
+            });
+
         app = builder.Build();
 
         /// Add Middleware and configuration
-        app.UseMiddleware<LoggingMiddleware>();
-        if (Settings.VerifyHttp) app.UseMiddleware<WhiteListMiddleware>();
         if (Settings.RequireAuthentication) app.UseMiddleware<AuthenticationMiddleware>();
         if (Settings.DevelopmentMode)
         {
             app.MapOpenApi()
                 .CacheOutput();
+
             app.UseSwaggerUI(options =>
             {
                 options.SwaggerEndpoint("/openapi/v1.json", "Conductor API v1");
                 options.EnableFilter();
-                options.RoutePrefix = "api/swagger";
+                options.RoutePrefix = "api/v1/swagger";
                 options.DocumentTitle = $"{ProgramInfo.ProgramName} API Docs";
             });
         }
         app.UseResponseCompression();
 
         /// Base API Route
-        var api = app.MapGroup("/api");
+        var api = app.MapGroup("/api/v1");
 
-        RecordRoute.Add(api);
-        DestinationRoute.Add(api);
-        OriginRoute.Add(api);
-        UserRoute.Add(api);
-        ScheduleRoute.Add(api);
-        LoginRoute.Add(api);
-        ExtractionRoute.Add(api);
-        HealthRoute.Add(api);
+        api.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now })).WithName("HealthCheck");
+        api.MapPrometheusScrapingEndpoint("/metrics");
+
+        DestinationController.Map(api);
+        OriginController.Map(api);
+        UserController.Map(api);
+        UserController.MapAuth(api);
+        ScheduleController.Map(api);
+        ExtractionController.Map(api);
+        JobController.Map(api);
     }
 
     public void Run()
     {
-        Log.Out($"Server is listening at port: {Settings.PortNumber}.", callerMethod: "Server");
-        app.Run();
+        try
+        {
+            app.Run();
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+        }
     }
 
     public async ValueTask DisposeAsync()

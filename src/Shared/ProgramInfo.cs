@@ -2,7 +2,7 @@ namespace Conductor.Shared;
 
 public static class ProgramInfo
 {
-    public const string ProgramVersion = "0.0.2";
+    public const string ProgramVersion = "0.0.3";
 
     public const string ProgramName = "Conductor";
 

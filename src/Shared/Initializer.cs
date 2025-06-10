@@ -1,12 +1,8 @@
 using System.Reflection;
-using System.Threading.Tasks;
-using Conductor.Data;
-using Conductor.Logging;
+using Conductor.Repository;
 using Conductor.Router;
-using Conductor.Shared.Config;
-using LinqToDB;
-using LinqToDB.Data;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 namespace Conductor.Shared;
 
@@ -27,12 +23,12 @@ public static class Initializer
                 .ToDictionary(parts => parts[0].Trim(), parts => parts.Length > 1 ? parts[1].Trim() : "");
 
             var properties = typeof(Settings).GetProperties(BindingFlags.Public | BindingFlags.Static)
-                .Where(prop => prop.GetCustomAttribute<ConfigKeyAttribute>() != null);
+                .Where(prop => prop.GetCustomAttribute<ConfigKeyAttribute>() is not null);
 
             foreach (var property in properties)
             {
                 var attribute = property.GetCustomAttribute<ConfigKeyAttribute>();
-                if (attribute != null && envVariables.TryGetValue(attribute.Key, out var value))
+                if (attribute is not null && envVariables.TryGetValue(attribute.Key, out var value))
                 {
                     if (property.CanWrite)
                     {
@@ -65,12 +61,12 @@ public static class Initializer
         try
         {
             var properties = typeof(Settings).GetProperties(BindingFlags.Public | BindingFlags.Static)
-                .Where(prop => prop.GetCustomAttribute<ConfigKeyAttribute>() != null);
+                .Where(prop => prop.GetCustomAttribute<ConfigKeyAttribute>() is not null);
 
             foreach (var property in properties)
             {
                 var attribute = property.GetCustomAttribute<ConfigKeyAttribute>();
-                if (attribute != null)
+                if (attribute is not null)
                 {
                     var value = Environment.GetEnvironmentVariable(attribute.Key);
 
@@ -109,8 +105,6 @@ public static class Initializer
             Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
         }
 
-        DataConnection.DefaultSettings = new ConnectionSettings();
-
         Server server = new();
         server.Run();
     }
@@ -118,9 +112,9 @@ public static class Initializer
     private static async Task Migration(Action<string> say)
     {
         using var db = new EfContext();
-        if (Settings.DbType != ProviderName.PostgreSQL)
+        if (Settings.DbType != "PostgreSQL")
         {
-            Log.Out("Only PostgreSQL is supported for migrations, defaulting to Regular DB Creation...", dump: false);
+            Log.Warning("Only PostgreSQL is supported for migrations, defaulting to Regular DB Creation...");
             db.Database.EnsureCreated();
             return;
         }
@@ -133,7 +127,7 @@ public static class Initializer
 
     public static void StartWithDotEnv(string? envFilePath)
     {
-        if (envFilePath == null)
+        if (envFilePath is null)
         {
             Console.WriteLine("No .env file path was provided.");
             Environment.Exit(1);
@@ -150,7 +144,7 @@ public static class Initializer
 
     public static void Migrate(string? envFilePath)
     {
-        if (envFilePath == null)
+        if (envFilePath is null)
         {
             Console.WriteLine("No .env file path was provided.");
             Environment.Exit(1);
@@ -162,19 +156,19 @@ public static class Initializer
     public static void MigrateAndInitialize()
     {
         InitializeFromEnvVar();
-        Migration((s) => Log.Out(s)).Wait();
+        Migration(Log.Information).Wait();
         ServerStartup();
     }
 
     public static void MigrateAndInitialize(string? envFilePath)
     {
-        if (envFilePath == null)
+        if (envFilePath is null)
         {
             Console.WriteLine("No .env file path was provided.");
             Environment.Exit(1);
         }
         InitializeFromFile(envFilePath);
-        Migration((s) => Log.Out(s)).Wait();
+        Migration(Log.Information).Wait();
         ServerStartup();
     }
 }

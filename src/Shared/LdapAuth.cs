@@ -1,13 +1,12 @@
 using System.Text;
-using Conductor.Shared.Config;
-using Conductor.Shared.Types;
+using Conductor.Types;
 using Novell.Directory.Ldap;
 
 namespace Conductor.Shared;
 
 public static class LdapAuth
 {
-    public static Result<bool> AuthenticateUser(string username, string password)
+    public static async Task<Result<bool>> AuthenticateUser(string username, string password)
     {
         try
         {
@@ -29,8 +28,8 @@ public static class LdapAuth
             using var connection = new LdapConnection(connectionOptions);
             connection.SecureSocketLayer = Settings.LdapSsl;
 
-            connection.Connect(Settings.LdapServer, Settings.LdapPort);
-            connection.Bind($"{username}@{Settings.LdapDomain}.com", password);
+            await connection.ConnectAsync(Settings.LdapServer, Settings.LdapPort);
+            await connection.BindAsync($"{username}@{Settings.LdapDomain}.com", password);
 
             string[] groups = Settings.LdapGroups.Split("|");
             StringBuilder stringBuilder = new();
@@ -45,7 +44,7 @@ public static class LdapAuth
             stringBuilder.Append("))");
 
 
-            var results = connection.Search(
+            var results = await connection.SearchAsync(
                 Settings.LdapBaseDn,
                 LdapConnection.ScopeSub,
                 stringBuilder.ToString(),
@@ -53,7 +52,7 @@ public static class LdapAuth
                 false
             );
 
-            if (!results.HasMore())
+            if (!await results.HasMoreAsync())
             {
                 return false;
             }
