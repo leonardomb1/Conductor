@@ -5,6 +5,7 @@ using Conductor.Controller;
 using Conductor.Logging;
 using Conductor.Middleware;
 using Conductor.Repository;
+using Conductor.Service.Script;
 using Conductor.Shared;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -126,6 +127,7 @@ public sealed class Server : IAsyncDisposable
         }
 
         builder.Services.AddHttpClient();
+        builder.Services.AddSingleton<IScriptEngine, RoslynScriptEngine>();
 
         /// Scoped Services
         builder.Services.AddScoped<EfContext>();

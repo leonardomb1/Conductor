@@ -7,6 +7,7 @@ using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Service.Database;
 using Conductor.Service.Http;
+using Conductor.Service.Script;
 using Conductor.Shared;
 using Conductor.Types;
 using CsvHelper;
@@ -14,7 +15,7 @@ using Serilog;
 
 namespace Conductor.Service;
 
-public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory, Int32? overrideFilter) : IAsyncDisposable, IDisposable
+public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory, Int32? overrideFilter, IScriptEngine? scriptEngine = null) : IAsyncDisposable, IDisposable
 {
     private readonly ConcurrentBag<Error> pipelineErrors = [];
 
@@ -211,6 +212,59 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         catch (Exception ex)
         {
             pipelineErrors.Add(new Error($"HTTP producer thread error: {ex.Message}", ex.StackTrace));
+        }
+        finally
+        {
+            channel.Writer.Complete();
+        }
+    }
+
+    public async Task ProduceScriptData(
+        List<Extraction> extractions,
+        Channel<(DataTable, Extraction)> channel,
+        DateTime requestTime,
+        CancellationToken token
+    )
+    {
+        if (scriptEngine == null)
+        {
+            pipelineErrors.Add(new Error("Script engine not configured"));
+            channel.Writer.Complete();
+            return;
+        }
+
+        ParallelOptions options = Settings.ParallelRule.Value;
+        options.CancellationToken = token;
+
+        if (token.IsCancellationRequested) return;
+
+        try
+        {
+            await Parallel.ForEachAsync(extractions, options, async (extraction, t) =>
+            {
+                if (t.IsCancellationRequested || !extraction.IsScriptBased) return;
+
+                // Create script context - you can inject any services here
+                var scriptContext = new ScriptContext
+                {
+                    Extraction = extraction,
+                    RequestTime = requestTime,
+                    OverrideFilter = overrideFilter,
+                };
+
+                var result = await scriptEngine.ExecuteAsync(extraction.Script!, scriptContext, t);
+                if (!result.IsSuccessful)
+                {
+                    pipelineErrors.Add(result.Error!);
+                    return;
+                }
+
+                await channel.Writer.WriteAsync((result.Value, extraction), t);
+            });
+        }
+        catch (Exception ex)
+        {
+            pipelineErrors.Add(new Error($"Script producer thread error: {ex.Message}", ex.StackTrace));
         }
         finally
         {

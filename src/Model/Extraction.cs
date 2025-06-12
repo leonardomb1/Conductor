@@ -91,8 +91,11 @@ public sealed class Extraction : IDbModel
     [Column]
     public string? TotalPageAttr { get; set; }
 
-    [Column, JsonRequired]
-    public string? SourceType { get; set; }
+    [Column]
+    public string? Script { get; set; }
+
+    [NotMapped]
+    public bool IsScriptBased => !string.IsNullOrEmpty(Script);
 
     [ForeignKey(nameof(ScheduleId))]
     public Schedule? Schedule { get; set; }
