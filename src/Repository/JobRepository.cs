@@ -1,3 +1,4 @@
+using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Types;
 using Microsoft.EntityFrameworkCore;
@@ -69,6 +70,54 @@ public class JobRepository(EfContext context) : IRepository<Job>
             }
 
             return await select.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
+    public async Task<Result<List<JobDto>>> GetActiveJobs()
+    {
+        try
+        {
+            if (JobTracker.Jobs.Value.IsEmpty)
+            {
+                return new List<JobDto>();
+            }
+
+            var activeJobs = JobTracker.GetActiveJobs();
+            
+            var extractionIds = activeJobs
+                .SelectMany(j => j.JobExtractions.Select(je => je.ExtractionId))
+                .Distinct()
+                .ToList();
+
+            var extractions = await context.Extractions
+                .Where(e => extractionIds.Contains(e.Id))
+                .Select(e => new { e.Id, e.Name })
+                .ToListAsync();
+
+            var result = activeJobs
+                .SelectMany(j => j.JobExtractions.Select(je => new { Job = j, JobExtraction = je }))
+                .Join(extractions,
+                    je => je.JobExtraction.ExtractionId,
+                    e => e.Id,
+                    (je, e) => new JobDto(
+                        e.Name,
+                        je.Job.JobGuid,
+                        je.Job.JobType.ToString(),
+                        je.Job.Status.ToString(),
+                        je.Job.StartTime,
+                        je.Job.EndTime,
+                        ((je.Job.EndTime ?? DateTime.Now) - je.Job.StartTime).TotalMilliseconds,
+                        je.Job.JobExtractions.Sum(x => x.BytesAccumulated) / (1024f * 1024f)
+                    )
+                )
+                .OrderByDescending(j => j.StartTime)
+                .ToList();
+
+            return result;
         }
         catch (Exception ex)
         {
