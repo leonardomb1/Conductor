@@ -8,7 +8,6 @@ using Conductor.Service.Database;
 using Conductor.Service.Http;
 using Conductor.Shared;
 using Conductor.Types;
-using Google.Protobuf.WellKnownTypes;
 using static Microsoft.AspNetCore.Http.StatusCodes;
 
 namespace Conductor.Controller;
@@ -123,7 +122,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
                 useHttp
                     ? (ex, ch, rt, ct, sc) => pipeline.ProduceHttpData(ex, ch, ct)
                     : pipeline.ProduceDBData;
-            Func<Channel<(DataTable, Extraction)>, DateTime, CancellationTokenSource, Task> consumer = pipeline.ConsumeDataToDB;
+            Func<Channel<(DataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToDB;
 
             var result = await pipeline.ChannelParallelize(
                 extractions,
@@ -221,7 +220,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
                 useHttp
                     ? (ex, ch, rt, ct, sc) => pipeline.ProduceHttpData(ex, ch, ct)
                     : pipeline.ProduceDBData;
-            Func<Channel<(DataTable, Extraction)>, DateTime, CancellationTokenSource, Task> consumer = pipeline.ConsumeDataToCsv;
+            Func<Channel<(DataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToCsv;
 
             var result = await pipeline.ChannelParallelize(
                 extractions,
@@ -342,37 +341,97 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
         var group = api.MapGroup("/extractions")
             .WithTags("Extractions");
 
-        group.MapGet("/", async (ExtractionController controller, HttpRequest request) => await controller.Get(request.Query))
-            .WithName("GetExtractions");
+        group.MapGet("/", async (ExtractionController controller, HttpRequest request) =>
+            await controller.Get(request.Query))
+            .WithName("GetExtractions")
+            .WithSummary("Fetches a list of extractions.")
+            .WithDescription("""
+                Retrieves a list of extraction records. 
+                Optional query parameters: `scheduleId` (uint), `take` (uint).
+                Returns 400 if query parameters are invalid.
+                """)
+            .Produces<Message<Extraction>>(Status200OK, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
-        group.MapGet("/{id}", async (ExtractionController controller, string id) => await controller.GetById(id))
-            .WithName("GetExtractionById");
+        group.MapGet("/{id}", async (ExtractionController controller, string id) =>
+            await controller.GetById(id))
+            .WithName("GetExtractionById")
+            .WithSummary("Fetches an extraction by ID.")
+            .WithDescription("Retrieves a single extraction record by numeric ID.")
+            .Produces<Message<Extraction>>(Status200OK, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
-        group.MapPost("/", async (ExtractionController controller, HttpRequest request) => await controller.Post(request.Body))
+        group.MapPost("/", async (ExtractionController controller, HttpRequest request) =>
+            await controller.Post(request.Body))
             .Accepts<Extraction>("application/json")
-            .WithName("PostExtraction");
+            .WithName("PostExtraction")
+            .WithSummary("Creates a new extraction.")
+            .WithDescription("Creates a new extraction entry from the provided JSON body.")
+            .Produces<Message>(Status201Created, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
-        group.MapPut("/{id}", async (ExtractionController controller, HttpRequest request, string id) => await controller.Put(id, request.Body))
+        group.MapPut("/{id}", async (ExtractionController controller, HttpRequest request, string id) =>
+            await controller.Put(id, request.Body))
             .Accepts<Extraction>("application/json")
-            .WithName("PutExtraction");
+            .WithName("PutExtraction")
+            .WithSummary("Updates an extraction.")
+            .WithDescription("Updates an existing extraction identified by the given ID.")
+            .Produces(Status204NoContent)
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+
+        group.MapDelete("/{id}", async (ExtractionController controller, string id) =>
+            await controller.Delete(id))
+            .WithName("DeleteExtraction")
+            .WithSummary("Deletes an extraction.")
+            .WithDescription("Deletes the extraction with the specified ID.")
+            .Produces(Status204NoContent)
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         group.MapPost("/transfer", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
-        {
-            return await controller.ExecuteTrasfer(request.Query, token);
-        }).WithName("ExecuteTransfer");
+            await controller.ExecuteTrasfer(request.Query, token))
+            .WithName("ExecuteTransfer")
+            .WithSummary("Executes a transfer extraction job.")
+            .WithDescription("""
+                Starts a transfer job for one or more extractions.
+                Query params: `scheduleId` (uint), `overrideTime` (optional uint).
+                Requires valid origin and destination configurations. Skips already running extractions.
+                """)
+            .Produces<Message>(Status200OK, "application/json")
+            .Produces<Message>(Status202Accepted, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         group.MapPost("/pull", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
-        {
-            return await controller.ExecutePull(request.Query, token);
-        }).WithName("ExecutePull");
+            await controller.ExecutePull(request.Query, token))
+            .WithName("ExecutePull")
+            .WithSummary("Executes a pull extraction job.")
+            .WithDescription("""
+                Starts a pull job to export data to CSV from the origin system.
+                Query params: `scheduleId` (uint), `overrideTime` (optional uint).
+                Skips extractions already running. Requires origin to be properly configured.
+                """)
+            .Produces<Message>(Status200OK, "application/json")
+            .Produces<Message>(Status202Accepted, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         group.MapGet("/fetch", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
-        {
-            return await controller.FetchData(request.Query, token);
-        }).WithName("FetchData");
-
-        group.MapDelete("/{id}", async (ExtractionController controller, string id) => await controller.Delete(id))
-            .WithName("DeleteExtraction");
+            await controller.FetchData(request.Query, token))
+            .WithName("FetchData")
+            .WithSummary("Fetches preview data from an origin.")
+            .WithDescription("""
+                Fetches a preview of the data from the specified origin for a single extraction.
+                Automatically decrypts connection strings. Supports `page` query parameter for pagination.
+                Returns a dictionary of rows with column names and values.
+                """)
+            .Produces<Message<Dictionary<string, object>>>(Status200OK, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         return group;
     }

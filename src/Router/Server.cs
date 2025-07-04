@@ -26,7 +26,7 @@ public sealed class Server : IAsyncDisposable
     public Server()
     {
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
+            .MinimumLevel.Debug()
             .WriteTo.Console()
             .Enrich.FromLogContext()
             .CreateLogger();
@@ -164,6 +164,14 @@ public sealed class Server : IAsyncDisposable
         );
 
         builder.Services.AddOpenTelemetry()
+            .WithTracing(tracerProviderBuilder =>
+            {
+                tracerProviderBuilder
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddSource("Conductor")
+                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName));
+            })
             .WithMetrics(metricsBuilder =>
             {
                 metricsBuilder
@@ -171,7 +179,7 @@ public sealed class Server : IAsyncDisposable
                     .AddHttpClientInstrumentation()
                     .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName))
                     .AddPrometheusExporter();
-            });
+            });         
 
         app = builder.Build();
 
@@ -186,14 +194,14 @@ public sealed class Server : IAsyncDisposable
             {
                 options.SwaggerEndpoint("/openapi/v1.json", "Conductor API v1");
                 options.EnableFilter();
-                options.RoutePrefix = "api/v1/swagger";
+                options.RoutePrefix = "api/swagger";
                 options.DocumentTitle = $"{ProgramInfo.ProgramName} API Docs";
             });
         }
         app.UseResponseCompression();
 
         /// Base API Route
-        var api = app.MapGroup("/api/v1");
+        var api = app.MapGroup("/api");
 
         api.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now })).WithName("HealthCheck");
         api.MapPrometheusScrapingEndpoint("/metrics");

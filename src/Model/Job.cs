@@ -21,19 +21,7 @@ public sealed class Job : IDbModel
     [Column]
     public DateTime? EndTime { get; set; }
 
-    [Column]
-    public Int64 BytesAccumulated
-    {
-        get => Interlocked.Read(ref bytesAdded);
-        set => Interlocked.Exchange(ref bytesAdded, value);
-    }
-
     public List<JobExtraction> JobExtractions { get; set; } = [];
-
-    [NotMapped]
-    private Int64 bytesAdded;
-
-    public void AddTransferedBytes(Int64 bytes) => Interlocked.Add(ref bytesAdded, bytes);
 }
 
 public enum JobStatus

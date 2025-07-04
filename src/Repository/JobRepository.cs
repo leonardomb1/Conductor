@@ -15,21 +15,33 @@ public class JobRepository(EfContext context) : IRepository<Job>
     {
         try
         {
-            var select = (from j in context.Jobs
-                          join je in context.JobExtractions on j.JobGuid equals je.JobGuid
-                          join e in context.Extractions on je.ExtractionId equals e.Id
-                          orderby j.StartTime descending
-                          select new JobDto(
-                                e.Name,
-                                je.Job.JobGuid,
-                                je.Job.JobType.ToString(),
-                                je.Job.Status.ToString(),
-                                je.Job.StartTime,
-                                je.Job.EndTime,
-                                (je.Job.EndTime - je.Job.StartTime)!.Value.TotalMilliseconds,
-                                je.Job.BytesAccumulated
-                            )
-                        ).AsQueryable();
+            var select = (
+                from j in context.Jobs
+                join je in context.JobExtractions on j.JobGuid equals je.JobGuid
+                join e in context.Extractions on je.ExtractionId equals e.Id
+                group new { je, e } by new
+                {
+                    j.JobGuid,
+                    j.JobType,
+                    j.Status,
+                    j.StartTime,
+                    j.EndTime
+                } into jobGroup
+                let firstExtraction = jobGroup.First()
+                select new JobDto(
+                    firstExtraction.e.Name,
+                    jobGroup.Key.JobGuid,
+                    jobGroup.Key.JobType.ToString(),
+                    jobGroup.Key.Status.ToString(),
+                    jobGroup.Key.StartTime,
+                    jobGroup.Key.EndTime,
+                    jobGroup.Key.EndTime.HasValue
+                        ? (jobGroup.Key.EndTime.Value - jobGroup.Key.StartTime).TotalMilliseconds
+                        : 0,
+                    jobGroup.Sum(x => x.je.BytesAccumulated) / (1024f * 1024f)
+                )
+            ).AsQueryable();
+
 
             if (filters is not null)
             {

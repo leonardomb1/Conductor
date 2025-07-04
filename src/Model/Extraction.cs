@@ -41,9 +41,6 @@ public sealed class Extraction : IDbModel
     public bool? IsVirtualTemplate { get; set; } = false;
 
     [Column]
-    public bool SingleExecution { get; set; } = false;
-
-    [Column]
     public string? FilterCondition { get; set; }
 
     [Column]
@@ -90,6 +87,9 @@ public sealed class Extraction : IDbModel
 
     [Column]
     public string? TotalPageAttr { get; set; }
+
+    [Column]
+    public string? SourceType { get; set; }
 
     [Column]
     public string? Script { get; set; }

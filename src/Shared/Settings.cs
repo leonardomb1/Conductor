@@ -45,8 +45,6 @@ public static class Settings
         WriteIndented = true
     });
 
-    public static string ConnectionName => $"{ProgramInfo.ProgramName}.{DbType}";
-
     [ConfigKey("JOB_ROUTINE_DUMP_TIME_MS")]
     public static UInt32 JobRoutineDumpTime { get; set; }
 
@@ -137,9 +135,6 @@ public static class Settings
     [ConfigKey("RESPONSE_CACHING_LIMIT_MB")]
     public static Int32 ResponseCachingLimit { get; set; }
 
-    [ConfigKey("PRODUCER_CONCURRENT_FETCHES")]
-    public static UInt32 ProducerConcurrentFetches { get; set; }
-
     [ConfigKey("PIPELINE_BACKOFF_BASE_MS")]
     public static Int32 PipelineBackoff { get; set; }
 
@@ -157,9 +152,6 @@ public static class Settings
 
     [ConfigKey("ENCRYPT_INDICATOR_END")]
     public static string EncryptIndicatorEnd { get; set; } = "";
-
-    [ConfigKey("VIRTUAL_TABLE_ID_MAX_LENGHT")]
-    public static UInt16 VirtualTableIdMaxLenght { get; set; }
 
     [ConfigKey("DEVELOPMENT_MODE")]
     public static bool DevelopmentMode { get; set; }

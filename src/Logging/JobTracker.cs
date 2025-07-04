@@ -24,9 +24,9 @@ public static class JobTracker
         return Jobs.Value.TryAdd(job.JobGuid, job) ? job : null;
     }
 
-    public static void UpdateJob(Guid JobGuid, JobStatus status)
+    public static void UpdateJob(Guid jobGuid, JobStatus status)
     {
-        if (Jobs.Value.TryGetValue(JobGuid, out var job))
+        if (Jobs.Value.TryGetValue(jobGuid, out var job))
         {
             job.Status = status;
             job.EndTime = DateTime.Now;
@@ -36,16 +36,19 @@ public static class JobTracker
     public static Job? GetJobByExtractionId(UInt32 extractionId)
     {
         return Jobs.Value.Values.FirstOrDefault(job =>
-            job.JobExtractions.Any(je => je.ExtractionId == extractionId) &&
-            job.Status == JobStatus.Running);
+            job.Status == JobStatus.Running &&
+            job.JobExtractions.Any(je => je.ExtractionId == extractionId));
     }
 
-    public static void UpdateTransferedBytes(Guid JobGuid, Int64 bytes)
+    public static void UpdateTransferedBytes(UInt32 extractionId, Int64 bytes)
     {
-        if (Jobs.Value.TryGetValue(JobGuid, out var job))
-        {
-            job.AddTransferedBytes(bytes);
-        }
+        var job = GetJobByExtractionId(extractionId);
+        if (job is null) return;
+
+        var jobExtraction = job.JobExtractions.FirstOrDefault(je => je.ExtractionId == extractionId);
+        if (jobExtraction is null) return;
+
+        jobExtraction.AddTransferedBytes(bytes);
     }
 
     public static IEnumerable<Job> GetActiveJobs() =>

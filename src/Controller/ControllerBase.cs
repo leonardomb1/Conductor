@@ -15,7 +15,7 @@ public abstract class ControllerBase<TModel>(IRepository<TModel> repository) whe
         Message<Error> errMsg = new(
                 Status500InternalServerError,
                 "An internal error has occured while trying to proccess the request.",
-                values: [err],
+                values: err is null ? [] : [err],
                 err: true
         );
 

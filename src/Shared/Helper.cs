@@ -1,7 +1,6 @@
 using System.Data;
-using System.Net;
 using System.Text;
-using Serilog;
+using Conductor.Logging;
 
 namespace Conductor.Shared;
 
@@ -47,6 +46,16 @@ public static class Helper
             }
         }
         return bytes;
+    }
+
+    public static void GetAndSetByteUsageForExtraction(DataTable data, UInt32 id)
+    {
+        Int64 byteSize = CalculateBytesUsed(data);
+        var job = JobTracker.GetJobByExtractionId(id);
+        if (job is not null) 
+        {
+            JobTracker.UpdateTransferedBytes(id, byteSize);
+        }
     }
 
     public static Int64 GetTypeByteSize(object value, Type type)

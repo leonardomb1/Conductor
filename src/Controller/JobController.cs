@@ -111,13 +111,42 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
             .WithTags("Extractions");
 
         group.MapGet("/active", (JobController controller) => controller.GetActiveJobs())
-            .WithName("GetActiveJobs");
+            .WithName("GetActiveJobs")
+            .WithSummary("Retrieves active in-memory jobs.")
+            .WithDescription("""
+                Returns currently running in-memory jobs, including their associated extraction names, durations, status, and accumulated data.
+                If no jobs are active, returns an empty response message.
+                """)
+            .Produces<Message<JobDto>>(Status200OK, "application/json")
+            .Produces<Message>(Status200OK, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         group.MapGet("/search", (JobController controller, HttpRequest request) => controller.GetJobs(request.Query))
-            .WithName("SearchJobs");
+            .WithName("SearchJobs")
+            .WithSummary("Searches past jobs using query parameters.")
+            .WithDescription("""
+                Retrieves a filtered list of past job records.
+                Accepts the following optional query parameters:
+                - `relativeStart` (int)
+                - `relativeEnd` (int)
+                - `take` (uint)
+                - `mbs` (float)
+
+                If any of these parameters are present with invalid formats, a 400 Bad Request is returned.
+                """)
+            .Produces<Message<JobDto>>(Status200OK, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         group.MapDelete("/", async (JobController controller, HttpRequest request) => await controller.Clear())
-            .WithName("ClearJobs");
+            .WithName("ClearJobs")
+            .WithSummary("Clears all job and related job-extraction records.")
+            .WithDescription("""
+                Deletes all jobs from both the primary jobs table and related job extraction records.
+                Useful for resetting the system's job state in bulk.
+                """)
+            .Produces(Status204NoContent)
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         return group;
     }
