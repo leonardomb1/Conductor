@@ -6,7 +6,7 @@ using static Microsoft.AspNetCore.Http.StatusCodes;
 
 namespace Conductor.Controller;
 
-public sealed class JobController(JobRepository jobRepository, JobExtractionRepository jobExtractionRepository, ExtractionRepository extractionRepository) : ControllerBase<Job>(jobRepository)
+public sealed class JobController(JobRepository jobRepository, JobExtractionRepository jobExtractionRepository) : ControllerBase<Job>(jobRepository)
 {
     public async Task<IResult> GetJobs(IQueryCollection? filters)
     {
@@ -42,45 +42,24 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
 
     public async Task<IResult> GetActiveJobs()
     {
-        if (JobTracker.Jobs.Value.IsEmpty)
+        var activeJobs = await jobRepository.GetActiveJobs();
+
+        if (!activeJobs.IsSuccessful)
+        {
+            return Results.InternalServerError(
+                ErrorMessage(activeJobs.Error)
+            );
+        }
+
+        if (activeJobs.Value is null || activeJobs.Value.Count == 0)
         {
             return Results.Ok(
                 new Message(Status200OK, "No active jobs.")
             );
         }
 
-        var extractionFetch = await extractionRepository.GetNames();
-        if (!extractionFetch.IsSuccessful)
-        {
-            return Results.InternalServerError(
-                ErrorMessage(extractionFetch.Error)
-            );
-        }
-
-        var activeJobs = JobTracker.GetActiveJobs();
-        var jobsWithExtractions = activeJobs
-        .SelectMany(j => j.JobExtractions.Select(je => new { Job = j, je.ExtractionId }));
-
-        var result = jobsWithExtractions
-            .Join(extractionFetch.Value,
-                je => je.ExtractionId,
-                e => e.Id,
-                (je, e) => new JobDto(
-                    e.Name,
-                    je.Job.JobGuid,
-                    je.Job.JobType.ToString(),
-                    je.Job.Status.ToString(),
-                    je.Job.StartTime,
-                    je.Job.EndTime,
-                    ((je.Job.EndTime ?? DateTime.Now) - je.Job.StartTime)!.TotalMilliseconds,
-                    je.Job.JobExtractions
-                )
-            )
-            .OrderByDescending(j => j.StartTime)
-            .ToList();
-
         return Results.Ok(
-            new Message<JobDto>(Status200OK, "OK", result)
+            new Message<JobDto>(Status200OK, "OK", activeJobs.Value)
         );
     }
 
