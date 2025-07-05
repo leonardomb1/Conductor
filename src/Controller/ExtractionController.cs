@@ -352,9 +352,19 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             .WithName("GetExtractions")
             .WithSummary("Fetches a list of extractions.")
             .WithDescription("""
-                Retrieves a list of extraction records. 
-                Optional query parameters: `scheduleId` (uint), `take` (uint).
-                Returns 400 if query parameters are invalid.
+                Retrieves a list of extraction records with comprehensive filtering options.
+                
+                Supported query parameters:
+                - `name` (string): Filter by exact extraction name
+                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `schedule` (string): Filter by exact schedule name
+                - `scheduleId` (uint): Filter by schedule ID
+                - `origin` (string): Filter by exact origin name
+                - `destination` (string): Filter by exact destination name
+                - `take` (uint): Limit the number of results returned
+                
+                Results are ordered by ID in descending order and include related Schedule, Origin, and Destination entities.
+                Returns 400 if `scheduleId` or `take` parameters are not valid unsigned integers.
                 """)
             .Produces<Message<Extraction>>(Status200OK, "application/json")
             .Produces<Message>(Status400BadRequest, "application/json")
@@ -364,7 +374,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             await controller.GetById(id))
             .WithName("GetExtractionById")
             .WithSummary("Fetches an extraction by ID.")
-            .WithDescription("Retrieves a single extraction record by numeric ID.")
+            .WithDescription("Retrieves a single extraction record by numeric ID, including related Schedule, Origin, and Destination entities.")
             .Produces<Message<Extraction>>(Status200OK, "application/json")
             .Produces<Message>(Status400BadRequest, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
@@ -403,9 +413,25 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             .WithName("ExecuteTransfer")
             .WithSummary("Executes a transfer extraction job.")
             .WithDescription("""
-                Starts a transfer job for one or more extractions.
-                Query params: `scheduleId` (uint), `overrideTime` (optional uint).
-                Requires valid origin and destination configurations. Skips already running extractions.
+                Starts a transfer job for one or more extractions based on the same filtering criteria as the GET endpoint.
+                
+                Supported query parameters for filtering:
+                - `name` (string): Filter by exact extraction name
+                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `schedule` (string): Filter by exact schedule name  
+                - `scheduleId` (uint): Filter by schedule ID
+                - `origin` (string): Filter by exact origin name
+                - `destination` (string): Filter by exact destination name
+                - `take` (uint): Limit the number of extractions to process
+                - `overrideTime` (uint): Override the default filter time for the extraction
+                
+                Requirements:
+                - All selected extractions must have a destination defined
+                - All origins must have a valid connection string and database type
+                - Automatically skips extractions that are already running
+                - Connection strings are automatically decrypted during processing
+                
+                Returns 202 if the request is already running, 200 on successful completion.
                 """)
             .Produces<Message>(Status200OK, "application/json")
             .Produces<Message>(Status202Accepted, "application/json")
@@ -417,9 +443,24 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             .WithName("ExecutePull")
             .WithSummary("Executes a pull extraction job.")
             .WithDescription("""
-                Starts a pull job to export data to CSV from the origin system.
-                Query params: `scheduleId` (uint), `overrideTime` (optional uint).
-                Skips extractions already running. Requires origin to be properly configured.
+                Starts a pull job to export data to CSV from the origin system based on the same filtering criteria as the GET endpoint.
+                
+                Supported query parameters for filtering:
+                - `name` (string): Filter by exact extraction name
+                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `schedule` (string): Filter by exact schedule name
+                - `scheduleId` (uint): Filter by schedule ID
+                - `origin` (string): Filter by exact origin name
+                - `destination` (string): Filter by exact destination name
+                - `take` (uint): Limit the number of extractions to process
+                - `overrideTime` (uint): Override the default filter time for the extraction
+                
+                Requirements:
+                - All origins must have a valid connection string and database type
+                - Automatically skips extractions that are already running
+                - Connection strings are automatically decrypted during processing
+                
+                Returns 202 if the request is already running, 200 on successful completion.
                 """)
             .Produces<Message>(Status200OK, "application/json")
             .Produces<Message>(Status202Accepted, "application/json")
@@ -431,9 +472,26 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             .WithName("FetchData")
             .WithSummary("Fetches preview data from an origin.")
             .WithDescription("""
-                Fetches a preview of the data from the specified origin for a single extraction.
-                Automatically decrypts connection strings. Supports `page` query parameter for pagination.
-                Returns a dictionary of rows with column names and values.
+                Fetches a preview of the data from the specified origin for extractions based on the same filtering criteria as the GET endpoint.
+                
+                Supported query parameters for filtering:
+                - `name` (string): Filter by exact extraction name
+                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `schedule` (string): Filter by exact schedule name
+                - `scheduleId` (uint): Filter by schedule ID
+                - `origin` (string): Filter by exact origin name
+                - `destination` (string): Filter by exact destination name
+                - `take` (uint): Limit the number of extractions to consider
+                - `page` (uint): Page number for pagination of results
+                
+                Functionality:
+                - Uses the first extraction found after applying filters
+                - Automatically decrypts connection strings
+                - Supports both HTTP and database origins
+                - Returns paginated results as dictionaries with column names and values
+                - Tracks byte usage for the extraction
+                
+                Returns 200 with data rows or a message if no resource found.
                 """)
             .Produces<Message<Dictionary<string, object>>>(Status200OK, "application/json")
             .Produces<Message>(Status400BadRequest, "application/json")
