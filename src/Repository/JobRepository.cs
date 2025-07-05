@@ -16,11 +16,11 @@ public class JobRepository(EfContext context) : IRepository<Job>
     {
         try
         {
-            var select = (
+            var jobGroupsQuery =
                 from j in context.Jobs
                 join je in context.JobExtractions on j.JobGuid equals je.JobGuid
                 join e in context.Extractions on je.ExtractionId equals e.Id
-                group new { je, e } by new
+                group new { j, je, e } by new
                 {
                     j.JobGuid,
                     j.JobType,
@@ -28,54 +28,57 @@ public class JobRepository(EfContext context) : IRepository<Job>
                     j.StartTime,
                     j.EndTime
                 } into jobGroup
-                let firstExtraction = jobGroup.First()
-                select new JobDto(
-                    firstExtraction.e.Name,
-                    jobGroup.Key.JobGuid,
-                    jobGroup.Key.JobType.ToString(),
-                    jobGroup.Key.Status.ToString(),
-                    jobGroup.Key.StartTime,
-                    jobGroup.Key.EndTime,
-                    jobGroup.Key.EndTime.HasValue
-                        ? (jobGroup.Key.EndTime.Value - jobGroup.Key.StartTime).TotalMilliseconds
-                        : 0,
-                    jobGroup.Sum(x => x.je.BytesAccumulated) / (1024f * 1024f)
-                )
-            ).AsQueryable();
-
+                select new
+                {
+                    Job = jobGroup.Key,
+                    SumBytes = jobGroup.Sum(x => x.je.BytesAccumulated),
+                    Extractions = jobGroup.Select(x => x.e.Name).ToList()
+                };
 
             if (filters is not null)
             {
                 foreach (var filter in filters)
                 {
-                    string key = filter.Key.ToString();
-                    string value = filter.Value.ToString();
+                    string key = filter.Key;
+                    string value = filter.Value!;
 
-                    select = key switch
+                    jobGroupsQuery = key switch
                     {
-                        "relativeStart" when Int32.TryParse(value, out var time) => select.Where(
-                                j => j.StartTime >= DateTime.Now.AddSeconds(-time)
-                            ),
-                        "relativeEnd" when Int32.TryParse(value, out var time) => select.Where(
-                                j => j.EndTime >= DateTime.Now.AddSeconds(-time)
-                            ),
-                        "name" => select.Where(j => j.Name == value),
-                        "status" => select.Where(j => j.Status == value),
-                        "type" => select.Where(j => j.JobType == value),
-                        "mbs" when float.TryParse(value, out var mbs) => select.Where(j => j.Bytes > mbs),
-                        "take" when UInt32.TryParse(value, out UInt32 count) => select.Take((Int32)count),
-                        _ => select
+                        "relativeStart" when Int32.TryParse(value, out var time)
+                            => jobGroupsQuery.Where(g => g.Job.StartTime >= DateTime.Now.AddSeconds(-time)),
+                        "relativeEnd" when Int32.TryParse(value, out var time)
+                            => jobGroupsQuery.Where(g => g.Job.EndTime >= DateTime.Now.AddSeconds(-time)),
+                        "status" => jobGroupsQuery.Where(g => g.Job.Status.ToString() == value),
+                        "type" => jobGroupsQuery.Where(g => g.Job.JobType.ToString() == value),
+                        _ => jobGroupsQuery
                     };
                 }
             }
 
-            return await select.ToListAsync();
+            var jobGroups = await jobGroupsQuery.ToListAsync();
+
+            var jobDtos = jobGroups
+                .Select(g => new JobDto(
+                    g.Extractions.FirstOrDefault() ?? string.Empty,
+                    g.Job.JobGuid,
+                    g.Job.JobType.ToString(),
+                    g.Job.Status.ToString(),
+                    g.Job.StartTime,
+                    g.Job.EndTime,
+                    g.Job.EndTime.HasValue
+                        ? (g.Job.EndTime.Value - g.Job.StartTime).TotalMilliseconds
+                        : 0,
+                    g.SumBytes / (1024f * 1024f)
+                )).ToList();
+
+            return jobDtos;
         }
         catch (Exception ex)
         {
             return new Error(ex.Message, ex.StackTrace);
         }
     }
+
 
     public async Task<Result<List<JobDto>>> GetActiveJobs()
     {
@@ -87,7 +90,7 @@ public class JobRepository(EfContext context) : IRepository<Job>
             }
 
             var activeJobs = JobTracker.GetActiveJobs();
-            
+
             var extractionIds = activeJobs
                 .SelectMany(j => j.JobExtractions.Select(je => je.ExtractionId))
                 .Distinct()

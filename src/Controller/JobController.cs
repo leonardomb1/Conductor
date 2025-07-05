@@ -1,4 +1,3 @@
-using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Repository;
 using Conductor.Types;

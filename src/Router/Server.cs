@@ -25,7 +25,7 @@ public sealed class Server : IAsyncDisposable
     public Server()
     {
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Debug()
+            .MinimumLevel.Information()
             .WriteTo.Console()
             .Enrich.FromLogContext()
             .CreateLogger();
@@ -190,8 +190,10 @@ public sealed class Server : IAsyncDisposable
                 metricsBuilder
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName))
-                    .AddPrometheusExporter();
+                    .AddRuntimeInstrumentation()
+                    .AddProcessInstrumentation()
+                    .AddPrometheusExporter()
+                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName));
             });
 
         app = builder.Build();
