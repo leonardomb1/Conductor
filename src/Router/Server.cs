@@ -13,7 +13,6 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Serilog;
-using static Microsoft.AspNetCore.Http.HttpMethods;
 
 namespace Conductor.Router;
 
@@ -80,8 +79,22 @@ public sealed class Server : IAsyncDisposable
             {
                 options.AddDefaultPolicy(policy =>
                 {
-                    policy.WithOrigins([.. Settings.AllowedCorsSet.Value]);
-                    policy.WithMethods([Get, Post, Put, Delete]);
+                    policy.WithOrigins([.. Settings.AllowedCorsSet.Value])
+                        .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH")
+                        .WithHeaders("Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin")
+                        .AllowCredentials();
+                });
+            });
+        }
+        else
+        {
+            builder.Services.AddCors(options =>
+            {
+                options.AddDefaultPolicy(policy =>
+                {
+                    policy.AllowAnyOrigin()
+                        .AllowAnyMethod()
+                        .AllowAnyHeader();
                 });
             });
         }
@@ -179,9 +192,18 @@ public sealed class Server : IAsyncDisposable
                     .AddHttpClientInstrumentation()
                     .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName))
                     .AddPrometheusExporter();
-            });         
+            });
 
         app = builder.Build();
+
+        if (Settings.VerifyCors)
+        {
+            app.UseCors();
+        }
+        else
+        {
+            app.UseCors(policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+        }
 
         /// Add Middleware and configuration
         if (Settings.RequireAuthentication) app.UseMiddleware<AuthenticationMiddleware>();
