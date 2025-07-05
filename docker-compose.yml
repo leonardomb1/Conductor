@@ -68,6 +68,8 @@ services:
       QUERY_TIMEOUT_SEC: ${QUERY_TIMEOUT_SEC}
       CSV_OUTPUT_PATH: ${CSV_OUTPUT_PATH}
       JOB_ROUTINE_DUMP_TIME_MS: ${JOB_ROUTINE_DUMP_TIME_MS}
+    volumes:
+      - ${HOST_EXPORT_PATH}:${CSV_OUTPUT_PATH}
     depends_on:
       database:
         condition: service_healthy
