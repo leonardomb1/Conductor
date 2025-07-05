@@ -1,4 +1,5 @@
 using Conductor.Model;
+using Conductor.Shared;
 using Conductor.Types;
 using Microsoft.EntityFrameworkCore;
 
@@ -54,6 +55,9 @@ public class DestinationRepository(EfContext context) : IRepository<Destination>
 
     public async Task<Result<UInt32>> Create(Destination destination)
     {
+        if (destination.ConnectionString is not null && destination.ConnectionString != "")
+            destination.ConnectionString = Encryption.SymmetricEncryptAES256(destination.ConnectionString!, Settings.EncryptionKey);
+
         try
         {
             await context.Destinations.AddAsync(destination);
@@ -76,9 +80,11 @@ public class DestinationRepository(EfContext context) : IRepository<Destination>
             if (existingSystem is null)
                 return new Error($"Destination with id: {id} was not found", null);
 
-            existingSystem = destination;
+            if (destination.ConnectionString is not null && destination.ConnectionString != "")
+                destination.ConnectionString = Encryption.SymmetricEncryptAES256(destination.ConnectionString!, Settings.EncryptionKey);
 
-            context.Destinations.Update(existingSystem);
+            context.Entry(existingSystem).CurrentValues.SetValues(destination);
+
             await context.SaveChangesAsync();
 
             return Result.Ok();

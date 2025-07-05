@@ -105,10 +105,10 @@ public sealed class UserRepository(EfContext context) : IRepository<User>
             if (existingUser is null)
                 return new Error($"User with id: {id} was not found", null);
 
-            existingUser.Name = user.Name;
-            existingUser.Password = Encryption.SymmetricEncryptAES256(user.Password!, Settings.EncryptionKey);
+            user.Password = Encryption.SymmetricEncryptAES256(user.Password!, Settings.EncryptionKey);
 
-            context.Users.Update(existingUser);
+            context.Entry(existingUser).CurrentValues.SetValues(user);
+
             await context.SaveChangesAsync();
 
             return Result.Ok();

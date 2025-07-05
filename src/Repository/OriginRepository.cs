@@ -80,7 +80,10 @@ public class OriginRepository(EfContext context) : IRepository<Origin>
             if (existingSystem is null)
                 return new Error($"Origin with id: {id} was not found", null);
 
-            existingSystem = system;
+            if (system.ConnectionString is not null && system.ConnectionString != "")
+                system.ConnectionString = Encryption.SymmetricEncryptAES256(system.ConnectionString!, Settings.EncryptionKey);
+
+            context.Entry(existingSystem).CurrentValues.SetValues(system);
 
             context.Origins.Update(existingSystem);
             await context.SaveChangesAsync();
