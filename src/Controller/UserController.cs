@@ -35,7 +35,7 @@ public sealed class UserController(UserRepository repository) : ControllerBase<U
 
         string jwt = Encryption.GenerateJwt(ip, deserialize.Value.Name, Settings.EncryptionKey);
 
-        return Results.Ok(jwt);
+        return Results.Text(jwt, "text/plain");
     }
 
     public async Task<IResult> LoginWithLdap(Stream body, string ip)
@@ -67,7 +67,7 @@ public sealed class UserController(UserRepository repository) : ControllerBase<U
 
         string jwt = Encryption.GenerateJwt(ip, deserialize.Value.Name, Settings.EncryptionKey);
 
-        return Results.Ok(jwt);
+        return Results.Text(jwt, "text/plain");
     }
 
     public static RouteGroupBuilder Map(RouteGroupBuilder api)
@@ -134,7 +134,7 @@ public sealed class UserController(UserRepository repository) : ControllerBase<U
             .WithSummary("Authenticate with local credentials.")
             .WithDescription("Authenticates the user using username/password stored in the local database. Returns a JWT token if successful.")
             .Accepts<User>("application/json")
-            .Produces<string>(Status200OK, "application/json") // JWT Token
+            .Produces<string>(Status200OK, "text/plain") // JWT Token as plain text
             .Produces<Message>(Status400BadRequest, "application/json")
             .Produces(Status401Unauthorized)
             .Produces<Message<Error>>(Status500InternalServerError, "application/json")
@@ -146,7 +146,7 @@ public sealed class UserController(UserRepository repository) : ControllerBase<U
             .WithSummary("Authenticate with LDAP credentials.")
             .WithDescription("Authenticates the user against an LDAP provider using the provided username and password. Returns a JWT token if authentication is successful.")
             .Accepts<User>("application/json")
-            .Produces<string>(Status200OK, "application/json") // JWT Token
+            .Produces<string>(Status200OK, "text/plain") // JWT Token as plain text
             .Produces(Status401Unauthorized)
             .Produces<Message>(Status400BadRequest, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json")
