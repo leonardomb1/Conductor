@@ -16,6 +16,15 @@ namespace Conductor.Middleware
                 return;
             }
 
+            if (Settings.DevelopmentMode)
+            {
+                if (ctx.Request.Path.ToString().Contains("swagger") || ctx.Request.Path.ToString().Contains("openapi"))
+                {
+                    await next(ctx);
+                    return;
+                }
+            }
+
             if (!ctx.Request.Headers.TryGetValue("Authorization", out var authorization))
             {
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;

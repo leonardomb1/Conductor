@@ -299,6 +299,8 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
                 return Results.InternalServerError(ErrorMessage(dataTableResult.Error));
             }
 
+            Helper.GetAndSetByteUsageForExtraction(dataTableResult.Value, res.Id);
+
             List<Dictionary<string, object>> rows = [.. dataTableResult.Value.Rows.Cast<DataRow>().Select(row =>
                 dataTableResult.Value.Columns.Cast<DataColumn>().ToDictionary(
                     col => col.ColumnName,
@@ -315,6 +317,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
                 res.Origin!.ConnectionString!,
                 Settings.EncryptionKey
             );
+
             var engine = DBExchangeFactory.Create(res.Origin!.DbType!);
             var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, current, token, shouldPaginate: true);
             if (!query.IsSuccessful)
@@ -322,13 +325,16 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
                 JobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
                 return Results.InternalServerError(ErrorMessage(fetch.Error));
             }
-            using var dataTable = query.Value;
-            List<Dictionary<string, object>> rows = [.. dataTable.Rows.Cast<DataRow>().Select(row =>
-                dataTable.Columns.Cast<DataColumn>().ToDictionary(
+
+            Helper.GetAndSetByteUsageForExtraction(query.Value, res.Id);
+
+            List<Dictionary<string, object>> rows = [.. query.Value.Rows.Cast<DataRow>().Select(row =>
+                query.Value.Columns.Cast<DataColumn>().ToDictionary(
                     col => col.ColumnName,
                     col => row[col]
                 )
             )];
+
             JobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
             return Results.Ok(
                 new Message<Dictionary<string, object>>(Status200OK, "OK", rows, page: page == 0 ? 1 : page)
