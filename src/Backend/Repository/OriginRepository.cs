@@ -86,6 +86,7 @@ public class OriginRepository(EfContext context) : IRepository<Origin>
             context.Entry(existingSystem).CurrentValues.SetValues(system);
 
             context.Origins.Update(existingSystem);
+            context.Entry(existingSystem).Property(x => x.Id).IsModified = false;
             await context.SaveChangesAsync();
 
             return Result.Ok();

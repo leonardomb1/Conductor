@@ -108,7 +108,7 @@ public sealed class UserRepository(EfContext context) : IRepository<User>
             user.Password = Encryption.SymmetricEncryptAES256(user.Password!, Settings.EncryptionKey);
 
             context.Entry(existingUser).CurrentValues.SetValues(user);
-
+            context.Entry(existingUser).Property(x => x.Id).IsModified = false;
             await context.SaveChangesAsync();
 
             return Result.Ok();
