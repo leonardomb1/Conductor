@@ -1,4 +1,6 @@
 using System.Net;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Conductor.Controller;
@@ -78,7 +80,10 @@ public sealed class Server : IAsyncDisposable
 
                 if (Settings.UseHttps)
                 {
-                    options.UseHttps(Settings.CertificatePath, Settings.CertificatePassword);
+                    options.UseHttps(httpsOptions =>
+                    {
+                        httpsOptions.ServerCertificate = X509Certificate2.CreateFromPemFile(Settings.CertificatePath, Settings.CertificatePassword);
+                    });
                 }
             });
             options.AddServerHeader = false;
