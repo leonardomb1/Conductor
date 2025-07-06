@@ -45,9 +45,6 @@ public static class Settings
         WriteIndented = true
     });
 
-    [ConfigKey("JOB_ROUTINE_DUMP_TIME_MS")]
-    public static UInt32 JobRoutineDumpTime { get; set; }
-
     [ConfigKey("LOGGING_LEVEL_DEBUG")]
     public static bool LogLevelDebug { get; set; }
 
