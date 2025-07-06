@@ -78,7 +78,6 @@ public sealed class ScheduleRepository(EfContext context) : IRepository<Schedule
                 return new Error($"Schedule with id: {id} was not found", null);
 
             context.Entry(existingSchedule).CurrentValues.SetValues(existingSchedule);
-            context.Entry(existingSchedule).Property(x => x.Id).IsModified = false;
             await context.SaveChangesAsync();
 
             return Result.Ok();

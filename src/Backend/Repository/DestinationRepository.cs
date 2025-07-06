@@ -84,7 +84,6 @@ public class DestinationRepository(EfContext context) : IRepository<Destination>
                 destination.ConnectionString = Encryption.SymmetricEncryptAES256(destination.ConnectionString!, Settings.EncryptionKey);
 
             context.Entry(existingSystem).CurrentValues.SetValues(destination);
-            context.Entry(existingSystem).Property(x => x.Id).IsModified = false;
 
             await context.SaveChangesAsync();
 
