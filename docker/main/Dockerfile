@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
 
 WORKDIR /app
-COPY ../../src/* ./
+COPY ../../src/Backend/* ./
 RUN dotnet publish -c Release -r linux-musl-x64 -o .
 
 FROM alpine:latest

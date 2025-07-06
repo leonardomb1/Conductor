@@ -18,7 +18,7 @@ RUN wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh && \
 
 WORKDIR /app
 
-COPY ../../src/ ./src/
+COPY ../../src/Backend/ ./src/
 COPY ../../*.sln ./
 
 RUN cp /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime && \
