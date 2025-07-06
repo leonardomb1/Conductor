@@ -54,15 +54,19 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
     {
         try
         {
-            var select = context.Extractions
-                .Select(e => new SimpleExtractionDto(e.Id, e.Name));
+            var query = context.Extractions
+                .Select(e => new { e.Id, e.Name });
 
             if (ids is not null && ids.Count > 0)
             {
-                select = select.Where(e => ids.Contains(e.Id));
+                query = query.Where(e => ids.Contains(e.Id));
             }
 
-            return await select.ToListAsync();
+            var results = await query.ToListAsync();
+
+            var dtos = results.Select(e => new SimpleExtractionDto(e.Id, e.Name)).ToList();
+
+            return dtos;
         }
         catch (Exception ex)
         {
