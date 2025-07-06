@@ -103,14 +103,7 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
         var dependenciesList = await service.Search(dependencies);
         if (!dependenciesList.IsSuccessful) return dependenciesList.Error;
 
-        dependenciesList.Value
-            .ForEach(x =>
-            {
-                if (x.Origin is not null)
-                    x.Origin.ConnectionString = Encryption.SymmetricDecryptAES256(x.Origin.ConnectionString!, Settings.EncryptionKey);
-                if (x.Destination is not null)
-                    x.Destination.ConnectionString = Encryption.SymmetricDecryptAES256(x.Destination.ConnectionString, Settings.EncryptionKey);
-            });
+        Helper.DecryptConnectionStrings(dependenciesList.Value);
 
         return dependenciesList.Value;
     }
