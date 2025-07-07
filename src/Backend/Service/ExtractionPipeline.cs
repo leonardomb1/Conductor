@@ -182,8 +182,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         catch (Exception ex)
         {
             stopwatch.Stop();
-            logger.Error(ex, "Extraction pipeline failed after {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
-            throw;
+            logger.Error(ex, "Extraction pipeline flow was interrupted and failed after {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
         }
         finally
         {
@@ -194,36 +193,26 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                 try
                 {
                     await connection.CloseAsync();
-                }
-                catch (Exception ex)
-                {
-                    logger.Warning(ex, "Error closing database connection during cleanup");
-                    pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
-                }
-
-                try
-                {
                     await connection.DisposeAsync();
                 }
                 catch (Exception ex)
                 {
-                    logger.Warning(ex, "Error disposing database connection during cleanup");
+                    logger.Error(ex, "Error closing and disposing database connections during cleanup");
                     pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
+                }
+            }
+
+            if (!pipelineErrors.IsEmpty)
+            {
+                logger.Warning("Pipeline completed with {ErrorCount} errors", pipelineErrors.Count);
+                if (Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
+                {
+                    _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]));
                 }
             }
         }
 
-        var result = pipelineErrors.IsEmpty ? MResult.Ok() : pipelineErrors.ToList();
-        if (!pipelineErrors.IsEmpty)
-        {
-            logger.Warning("Pipeline completed with {ErrorCount} errors", pipelineErrors.Count);
-            if (Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
-            {
-                _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]));
-            }
-        }
-
-        return result;
+        return pipelineErrors.IsEmpty ? MResult.Ok() : pipelineErrors.ToList();
     }
 
     private static async Task<Result<UInt64>> ProduceDataCheck(Extraction e, CancellationToken t)
