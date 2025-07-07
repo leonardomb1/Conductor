@@ -1,9 +1,11 @@
 using System.Data;
 using System.Text;
+using System.Text.Json;
 using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Types;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 
 namespace Conductor.Shared;
 
@@ -49,6 +51,46 @@ public static class Helper
             }
         }
         return bytes;
+    }
+
+    public static async Task SendErrorNotification(IHttpClientFactory clientFactory, Error[] errors)
+    {
+        using HttpClient client = clientFactory.CreateClient();
+
+        try
+        {
+            var card = new
+            {
+                @type = "MessageCard",
+                @context = "http://schema.org/extensions",
+                summary = "Pipeline Errors",
+                themeColor = "FF0000",
+                title = "Pipeline Event Run",
+                text = "An event has been run and pipeline errors were detected.",
+                sections = new[]
+                {
+                    new {
+                        facts = errors.Select(e => new {
+                            name = e.ExceptionMessage ?? "Error",
+                            value = e.StackTrace ?? "No details"
+                        }).ToArray()
+                    }
+                }
+            };
+
+            string json = JsonSerializer.Serialize(card);
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, Settings.WebhookUri)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+
+            await client.SendAsync(request);
+        }
+        finally
+        {
+            client.Dispose();
+        }
     }
 
     public static void GetAndSetByteUsageForExtraction(DataTable data, UInt32 id, IJobTracker jobTracker)

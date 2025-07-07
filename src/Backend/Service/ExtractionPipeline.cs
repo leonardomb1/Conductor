@@ -213,37 +213,8 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
                 if (!pipelineErrors.IsEmpty && Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
                 {
-                    using HttpClient client = factory.CreateClient();
-
-                    var card = new
-                    {
-                        @type = "MessageCard",
-                        @context = "http://schema.org/extensions",
-                        summary = "Pipeline Errors",
-                        themeColor = "FF0000",
-                        title = "Pipeline Event Run",
-                        text = "An event has been run and pipeline errors were detected.",
-                        sections = new[]
-                        {
-                            new {
-                                facts = pipelineErrors.Select(e => new {
-                                    name = e.ExceptionMessage ?? "Error",
-                                    value = e.StackTrace ?? "No details"
-                                }).ToArray()
-                            }
-                        }
-                    };
-
-                    string json = JsonSerializer.Serialize(card);
-
-                    using var request = new HttpRequestMessage(HttpMethod.Post, Settings.WebhookUri)
-                    {
-                        Content = new StringContent(json, Encoding.UTF8, "application/json")
-                    };
-
-                    await client.SendAsync(request);
+                    _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]));
                 }
-
             }
         }
 
