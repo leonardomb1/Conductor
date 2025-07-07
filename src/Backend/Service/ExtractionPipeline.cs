@@ -210,11 +210,11 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                     logger.Warning(ex, "Error disposing database connection during cleanup");
                     pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
                 }
-
-                if (!pipelineErrors.IsEmpty && Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
-                {
-                    _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]));
-                }
+            }
+            
+            if (!pipelineErrors.IsEmpty && Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
+            {
+                _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]));
             }
         }
 
