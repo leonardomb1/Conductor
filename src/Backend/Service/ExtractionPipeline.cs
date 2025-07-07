@@ -211,17 +211,16 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                     pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
                 }
             }
-            
-            if (!pipelineErrors.IsEmpty && Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
-            {
-                _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]));
-            }
         }
 
         var result = pipelineErrors.IsEmpty ? MResult.Ok() : pipelineErrors.ToList();
         if (!pipelineErrors.IsEmpty)
         {
             logger.Warning("Pipeline completed with {ErrorCount} errors", pipelineErrors.Count);
+            if (Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
+            {
+                _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]));
+            }
         }
 
         return result;
