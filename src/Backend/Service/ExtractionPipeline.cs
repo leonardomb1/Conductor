@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 using Conductor.Logging;
 using Conductor.Model;
@@ -11,6 +13,7 @@ using Conductor.Service.Script;
 using Conductor.Shared;
 using Conductor.Types;
 using CsvHelper;
+using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using ILogger = Serilog.ILogger;
 
@@ -130,7 +133,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
         try
         {
-            memory.Position = 0; // Reset position for reading
+            memory.Position = 0;
             using var fileStream = new FileStream(filePath, FileMode.Append, FileAccess.Write);
             await memory.CopyToAsync(fileStream);
             logger.Information("Successfully wrote CSV file: {FilePath} ({Size:N0} bytes)", filePath, memory.Length);
@@ -206,6 +209,26 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                 {
                     logger.Warning(ex, "Error disposing database connection during cleanup");
                     pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
+                }
+
+                if (!pipelineErrors.IsEmpty && Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
+                {
+                    using HttpClient client = factory.CreateClient();
+                    using MemoryStream stream = new();
+
+                    await JsonSerializer.SerializeAsync(stream, pipelineErrors);
+
+                    stream.Position = 0;
+
+                    using StreamReader reader = new(stream, Encoding.UTF8);
+                    string json = await reader.ReadToEndAsync();
+
+                    using HttpRequestMessage request = new(HttpMethod.Post, Settings.WebhookUri)
+                    {
+                        Content = new StringContent(json)
+                    };
+
+                    await client.SendAsync(request);
                 }
             }
         }

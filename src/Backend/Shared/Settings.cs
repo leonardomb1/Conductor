@@ -48,6 +48,12 @@ public static class Settings
     [ConfigKey("LOGGING_LEVEL_DEBUG")]
     public static bool LogLevelDebug { get; set; }
 
+    [ConfigKey("SEND_WEBHOOK_ON_ERROR")]
+    public static bool SendWebhookOnError { get; set; }
+
+    [ConfigKey("WEBHOOK_URI")]
+    public static string WebhookUri { get; set; } = "";
+
     [ConfigKey("ADMIN_LOGIN")]
     public static string AdminLogin { get; set; } = "";
 
