@@ -34,6 +34,8 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
                         "schedule" => select.Where(e => e.Schedule != null && e.Schedule.Name == value),
                         "scheduleId" when uint.TryParse(value, out uint schId) =>
                             select.Where(e => e.ScheduleId == schId),
+                        "originId" when uint.TryParse(value, out uint originId) =>
+                            select.Where(e => e.OriginId == originId),
                         "origin" => select.Where(e => e.Origin != null && e.Origin.Name == value),
                         "destination" => select.Where(e => e.Destination != null && e.Destination.Name == value),
                         "take" when uint.TryParse(value, out uint count) => select.Take((int)count),

@@ -18,7 +18,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
     public override async Task<IResult> Get(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "scheduleId" || f.Key == "take") &&
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "originId") &&
             !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
@@ -47,7 +47,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
     public async Task<IResult> ExecuteTrasfer(IQueryCollection? filters, CancellationToken token)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "scheduleId" || f.Key == "overrideTime") &&
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "originId") &&
             !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
@@ -143,7 +143,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
     public async Task<IResult> ExecutePull(IQueryCollection? filters, CancellationToken token)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "scheduleId" || f.Key == "overrideTime") &&
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "originId") &&
             !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
