@@ -302,7 +302,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             var engine = DBExchangeFactory.Create(res.Origin!.DbType!);
             using DbConnection con = engine.CreateConnection(conStr);
 
-            var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, con, token, limit: Settings.ConsumerFetchMax, shouldPaginate: true);
+            var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, con, token, limit: Settings.FetcherLineMax, shouldPaginate: true);
             if (!query.IsSuccessful)
             {
                 await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
