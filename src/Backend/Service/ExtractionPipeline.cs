@@ -464,24 +464,17 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                 var fetcher = DBExchangeFactory.Create(e.Origin.DbType);
                 var extractionRowCount = 0;
 
-                UInt64 currentLineCount = 0;
+                UInt64 currentOffset = 0;
+
                 while (!t.IsCancellationRequested)
                 {
-                    var remainingrows = Settings.ProducerLineMax - currentLineCount;
-                    if (remainingrows <= 0)
-                    {
-                        extractionLogger.Information("Reached maximum rows limit ({Maxrows}) for extraction {ExtractionId}",
-                            Settings.ProducerLineMax, e.Id);
-                        break;
-                    }
-
                     var attempt =
                         DBExchange.SupportsMARS(e.Origin.DbType)
                         ? await fetcher.FetchDataTable(
                             e,
                             requestTime,
                             shouldPartition,
-                            currentLineCount,
+                            currentOffset,
                             GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
                             t,
                             overrideFilter
@@ -490,7 +483,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                             e,
                             requestTime,
                             shouldPartition,
-                            currentLineCount,
+                            currentOffset,
                             t,
                             overrideFilter
                         );
@@ -509,28 +502,21 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                     }
 
                     extractionRowCount += attempt.Value.Rows.Count;
-                    currentLineCount += (UInt64)attempt.Value.Rows.Count;
+                    currentOffset += (UInt64)attempt.Value.Rows.Count;
                     Interlocked.Add(ref totalRowsProduced, attempt.Value.Rows.Count);
 
-                    extractionLogger.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (batch {Currentrows}/{Maxrows})",
-                        attempt.Value.Rows.Count, e.Id, currentLineCount, Settings.ProducerLineMax);
+                    extractionLogger.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched})",
+                        attempt.Value.Rows.Count, e.Id, currentOffset);
 
                     Helper.GetAndSetByteUsageForExtraction(attempt.Value, e.Id, jobTracker);
 
                     await channel.Writer.WriteAsync((attempt.Value, e), t);
-
-                    if (currentLineCount >= Settings.ProducerLineMax)
-                    {
-                        extractionLogger.Information("Reached maximum rows limit ({Maxrows}) for extraction {ExtractionId}",
-                            Settings.ProducerLineMax, e.Id);
-                        break;
-                    }
                 }
 
                 if (extractionRowCount > 0)
                 {
-                    extractionLogger.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows (limited to {Maxrows})",
-                        e.Id, extractionRowCount, Settings.ProducerLineMax);
+                    extractionLogger.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows",
+                        e.Id, extractionRowCount);
                 }
 
                 Interlocked.Increment(ref completedCount);
