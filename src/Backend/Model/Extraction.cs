@@ -1,6 +1,6 @@
-using System.Text.Json.Serialization;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Conductor.Model;
 
@@ -8,19 +8,19 @@ namespace Conductor.Model;
 public sealed class Extraction : IDbModel
 {
     [Key]
-    public UInt32 Id { get; set; }
+    public uint Id { get; set; }
 
     [Column, Required, JsonRequired, JsonPropertyName("extractionName")]
     public string Name { get; set; } = "";
 
     [Column]
-    public UInt32? ScheduleId { get; set; }
+    public uint? ScheduleId { get; set; }
 
     [Column]
-    public UInt32? OriginId { get; set; }
+    public uint? OriginId { get; set; }
 
     [Column]
-    public UInt32? DestinationId { get; set; }
+    public uint? DestinationId { get; set; }
 
     [Column]
     public string? IndexName { get; set; }
@@ -47,7 +47,7 @@ public sealed class Extraction : IDbModel
     public string? FilterColumn { get; set; }
 
     [Column]
-    public Int32? FilterTime { get; set; }
+    public int? FilterTime { get; set; }
 
     [Column]
     public string? OverrideQuery { get; set; }
@@ -108,12 +108,12 @@ public sealed class Extraction : IDbModel
 }
 
 public record SimpleExtractionDto(
-    UInt32 Id,
+    uint Id,
     string Name
 );
 
 public record ExtractionAggregatedDto(
-    UInt32 ExtractionId,
+    uint ExtractionId,
     string ExtractionName,
     int TotalJobs,
     float TotalSizeMB,

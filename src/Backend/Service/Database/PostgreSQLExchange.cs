@@ -11,8 +11,8 @@ namespace Conductor.Service.Database;
 
 public class PostgreSQLExchange : DBExchange
 {
-    protected override string? QueryPagination(UInt64 current) =>
-        $"OFFSET {current} LIMIT {Settings.ProducerLineMax}";
+    protected override string? QueryPagination(ulong rows, ulong limit) =>
+        $"OFFSET {rows} LIMIT {limit}";
 
     protected override string? QueryNonLocking() => "";
 
@@ -81,13 +81,13 @@ public class PostgreSQLExchange : DBExchange
         return new NpgsqlCommand(query, (NpgsqlConnection)connection);
     }
 
-    protected override string GetSqlType(Type type, Int32? length = -1)
+    protected override string GetSqlType(Type type, int? length = -1)
     {
         return type switch
         {
-            _ when type == typeof(Int64) => "BIGINT",
-            _ when type == typeof(Int32) => "INTEGER",
-            _ when type == typeof(Int16) => "SMALLINT",
+            _ when type == typeof(long) => "BIGINT",
+            _ when type == typeof(int) => "INTEGER",
+            _ when type == typeof(short) => "SMALLINT",
             _ when type == typeof(string) => length > 0 ? (length > 10485760 ? "TEXT" : $"VARCHAR({length})") : "TEXT",
             _ when type == typeof(bool) => "BOOLEAN",
             _ when type == typeof(DateTime) => "TIMESTAMPTZ",
@@ -95,9 +95,9 @@ public class PostgreSQLExchange : DBExchange
             _ when type == typeof(decimal) => "NUMERIC(18,2)",
             _ when type == typeof(byte) => "SMALLINT",
             _ when type == typeof(sbyte) => "SMALLINT",
-            _ when type == typeof(UInt16) => "INTEGER",
-            _ when type == typeof(UInt32) => "BIGINT",
-            _ when type == typeof(UInt64) => "NUMERIC",
+            _ when type == typeof(ushort) => "INTEGER",
+            _ when type == typeof(uint) => "BIGINT",
+            _ when type == typeof(ulong) => "NUMERIC",
             _ when type == typeof(float) => "REAL",
             _ when type == typeof(char) => "CHAR(1)",
             _ when type == typeof(Guid) => "UUID",

@@ -37,7 +37,7 @@ public sealed class ScheduleRepository(EfContext context) : IRepository<Schedule
         }
     }
 
-    public async Task<Result<Schedule?>> Search(UInt32 id)
+    public async Task<Result<Schedule?>> Search(uint id)
     {
         try
         {
@@ -53,7 +53,7 @@ public sealed class ScheduleRepository(EfContext context) : IRepository<Schedule
         }
     }
 
-    public async Task<Result<UInt32>> Create(Schedule schedule)
+    public async Task<Result<uint>> Create(Schedule schedule)
     {
         try
         {
@@ -67,7 +67,7 @@ public sealed class ScheduleRepository(EfContext context) : IRepository<Schedule
         }
     }
 
-    public async Task<Result> Update(Schedule schedule, UInt32 id)
+    public async Task<Result> Update(Schedule schedule, uint id)
     {
         try
         {
@@ -88,7 +88,7 @@ public sealed class ScheduleRepository(EfContext context) : IRepository<Schedule
         }
     }
 
-    public async Task<Result> Delete(UInt32 id)
+    public async Task<Result> Delete(uint id)
     {
         try
         {

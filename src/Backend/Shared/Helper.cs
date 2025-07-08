@@ -39,9 +39,9 @@ public static class Helper
         );
     }
 
-    public static Int64 CalculateBytesUsed(DataTable data)
+    public static long CalculateBytesUsed(DataTable data)
     {
-        Int64 bytes = 0;
+        long bytes = 0;
         foreach (DataRow row in data.Rows)
         {
             foreach (DataColumn col in data.Columns)
@@ -93,9 +93,9 @@ public static class Helper
         }
     }
 
-    public static void GetAndSetByteUsageForExtraction(DataTable data, UInt32 id, IJobTracker jobTracker)
+    public static void GetAndSetByteUsageForExtraction(DataTable data, uint id, IJobTracker jobTracker)
     {
-        Int64 byteSize = CalculateBytesUsed(data);
+        long byteSize = CalculateBytesUsed(data);
         var job = jobTracker.GetJobByExtractionId(id);
         if (job is not null)
         {
@@ -103,7 +103,7 @@ public static class Helper
         }
     }
 
-    public static Int64 GetTypeByteSize(object value, Type type)
+    public static long GetTypeByteSize(object value, Type type)
     {
         return type switch
         {
@@ -132,8 +132,8 @@ public static class Helper
         if (string.IsNullOrEmpty(keyToUse))
             throw new InvalidOperationException("Encryption key is required for decrypting connection strings");
 
-        var decryptedOriginIds = new HashSet<UInt32>();
-        var decryptedDestinationIds = new HashSet<UInt32>();
+        var decryptedOriginIds = new HashSet<uint>();
+        var decryptedDestinationIds = new HashSet<uint>();
 
         foreach (var extraction in extractions)
         {

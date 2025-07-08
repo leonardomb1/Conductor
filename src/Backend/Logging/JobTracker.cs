@@ -7,10 +7,10 @@ namespace Conductor.Logging;
 
 public interface IJobTracker
 {
-    Job? StartJob(IEnumerable<UInt32> extractionIds, JobType jobType);
+    Job? StartJob(IEnumerable<uint> extractionIds, JobType jobType);
     Task UpdateJob(Guid jobGuid, JobStatus status);
-    Job? GetJobByExtractionId(UInt32 extractionId);
-    void UpdateTransferedBytes(UInt32 extractionId, Int64 bytes);
+    Job? GetJobByExtractionId(uint extractionId);
+    void UpdateTransferedBytes(uint extractionId, long bytes);
     IEnumerable<Job> GetActiveJobs();
 }
 
@@ -18,7 +18,7 @@ public class JobTracker(IServiceScopeFactory serviceScopeFactory) : IJobTracker
 {
     private readonly ConcurrentDictionary<Guid, Job> jobs = new();
 
-    public Job? StartJob(IEnumerable<UInt32> extractionIds, JobType jobType)
+    public Job? StartJob(IEnumerable<uint> extractionIds, JobType jobType)
     {
         var job = new Job()
         {
@@ -65,14 +65,14 @@ public class JobTracker(IServiceScopeFactory serviceScopeFactory) : IJobTracker
         }
     }
 
-    public Job? GetJobByExtractionId(UInt32 extractionId)
+    public Job? GetJobByExtractionId(uint extractionId)
     {
         return jobs.Values.FirstOrDefault(job =>
             job.Status == JobStatus.Running &&
             job.JobExtractions.Any(je => je.ExtractionId == extractionId));
     }
 
-    public void UpdateTransferedBytes(UInt32 extractionId, Int64 bytes)
+    public void UpdateTransferedBytes(uint extractionId, long bytes)
     {
         var job = GetJobByExtractionId(extractionId);
         if (job is null) return;

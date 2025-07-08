@@ -11,8 +11,8 @@ namespace Conductor.Service.Database;
 
 public class MSSQLExchange : DBExchange
 {
-    protected override string? QueryPagination(UInt64 current) =>
-        $"OFFSET {current} ROWS FETCH NEXT {Settings.ProducerLineMax} ROWS ONLY";
+    protected override string? QueryPagination(ulong rows, ulong limit) =>
+        $"OFFSET {rows} ROWS FETCH NEXT {limit} ROWS ONLY";
 
     protected override string? QueryNonLocking() => "WITH(NOLOCK)";
 
@@ -22,7 +22,7 @@ public class MSSQLExchange : DBExchange
 
         if (extraction.FilterTime.HasValue)
         {
-            var lookupTime = RequestTimeWithOffSet(requestTime, (Int32)extraction.FilterTime, extraction.Origin!.TimeZoneOffSet!.Value);
+            var lookupTime = RequestTimeWithOffSet(requestTime, (int)extraction.FilterTime, extraction.Origin!.TimeZoneOffSet!.Value);
             builder.Append($"AND \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2) ");
         }
 
@@ -76,13 +76,13 @@ public class MSSQLExchange : DBExchange
         return new SqlCommand(query, (SqlConnection)connection);
     }
 
-    protected override string GetSqlType(Type type, Int32? length = -1)
+    protected override string GetSqlType(Type type, int? length = -1)
     {
         return type switch
         {
-            _ when type == typeof(Int64) => "BIGINT",
-            _ when type == typeof(Int32) => "INT",
-            _ when type == typeof(Int16) => "SMALLINT",
+            _ when type == typeof(long) => "BIGINT",
+            _ when type == typeof(int) => "INT",
+            _ when type == typeof(short) => "SMALLINT",
             _ when type == typeof(string) => length > 0 && length < 8000 ? $"VARCHAR({length})" : "VARCHAR(MAX)",
             _ when type == typeof(bool) => "BIT",
             _ when type == typeof(DateTime) => "DATETIME",
@@ -90,9 +90,9 @@ public class MSSQLExchange : DBExchange
             _ when type == typeof(decimal) => "DECIMAL(18,2)",
             _ when type == typeof(byte) => "TINYINT",
             _ when type == typeof(sbyte) => "TINYINT",
-            _ when type == typeof(UInt16) => "SMALLINT",
-            _ when type == typeof(UInt32) => "INT",
-            _ when type == typeof(UInt64) => "BIGINT",
+            _ when type == typeof(ushort) => "SMALLINT",
+            _ when type == typeof(uint) => "INT",
+            _ when type == typeof(ulong) => "BIGINT",
             _ when type == typeof(float) => "REAL",
             _ when type == typeof(char) => "NCHAR(1)",
             _ when type == typeof(Guid) => "UNIQUEIDENTIFIER",
@@ -120,7 +120,7 @@ public class MSSQLExchange : DBExchange
 
         foreach (DataColumn column in data.Columns)
         {
-            Int32? maxStringLength = column.MaxLength;
+            int? maxStringLength = column.MaxLength;
             string sqlType = GetSqlType(column.DataType, maxStringLength);
             createTempTableQuery.AppendLine($"    \"{column.ColumnName}\" {sqlType},");
         }
@@ -172,7 +172,7 @@ public class MSSQLExchange : DBExchange
             mergeQuery.AppendLine(string.Join(",\n    ", values));
             mergeQuery.AppendLine("    );");
 
-            var lookupTime = RequestTimeWithOffSet(requestTime, (Int32)extraction.FilterTime!, extraction.Origin!.TimeZoneOffSet!.Value);
+            var lookupTime = RequestTimeWithOffSet(requestTime, (int)extraction.FilterTime!, extraction.Origin!.TimeZoneOffSet!.Value);
 
             Log.Information($"Upserting source data and deleting unsynced data on table {schemaName}.{tableName}...");
             using var mergeCommand = CreateDbCommand(mergeQuery.ToString(), connection);

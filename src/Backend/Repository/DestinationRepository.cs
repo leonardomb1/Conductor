@@ -37,7 +37,7 @@ public class DestinationRepository(EfContext context) : IRepository<Destination>
         }
     }
 
-    public async Task<Result<Destination?>> Search(UInt32 id)
+    public async Task<Result<Destination?>> Search(uint id)
     {
         try
         {
@@ -53,7 +53,7 @@ public class DestinationRepository(EfContext context) : IRepository<Destination>
         }
     }
 
-    public async Task<Result<UInt32>> Create(Destination destination)
+    public async Task<Result<uint>> Create(Destination destination)
     {
         if (destination.ConnectionString is not null && destination.ConnectionString != "")
             destination.ConnectionString = Encryption.SymmetricEncryptAES256(destination.ConnectionString!, Settings.EncryptionKey);
@@ -70,7 +70,7 @@ public class DestinationRepository(EfContext context) : IRepository<Destination>
         }
     }
 
-    public async Task<Result> Update(Destination destination, UInt32 id)
+    public async Task<Result> Update(Destination destination, uint id)
     {
         try
         {
@@ -95,7 +95,7 @@ public class DestinationRepository(EfContext context) : IRepository<Destination>
         }
     }
 
-    public async Task<Result> Delete(UInt32 id)
+    public async Task<Result> Delete(uint id)
     {
         try
         {

@@ -8,7 +8,7 @@ namespace Conductor.Model;
 public sealed class Destination : IDbModel
 {
     [Key]
-    public UInt32 Id { get; set; }
+    public uint Id { get; set; }
 
     [Column, JsonRequired, JsonPropertyName("destinationName")]
     public string Name { get; set; } = "";
@@ -20,5 +20,5 @@ public sealed class Destination : IDbModel
     public string ConnectionString { get; set; } = "";
 
     [Column, JsonRequired, JsonPropertyName("destinationTimeZoneOffSet")]
-    public Int32 TimeZoneOffSet { get; set; }
+    public int TimeZoneOffSet { get; set; }
 }

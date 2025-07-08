@@ -19,7 +19,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "take") &&
-            !UInt32.TryParse(f.Value, out _)).ToList();
+            !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
         {
@@ -48,7 +48,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "overrideTime") &&
-            !UInt32.TryParse(f.Value, out _)).ToList();
+            !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
         {
@@ -98,7 +98,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
         var extractionIds = extractions.Select(x => x.Id);
         var job = jobTracker.StartJob(extractionIds, JobType.Transfer);
 
-        Int32? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? Int32.Parse(filters["overrideTime"]!) : null;
+        int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
         extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
 
         try
@@ -144,7 +144,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "overrideTime") &&
-            !UInt32.TryParse(f.Value, out _)).ToList();
+            !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
         {
@@ -187,7 +187,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
         var extractionIds = extractions.Select(x => x.Id);
         var job = jobTracker.StartJob(extractionIds, JobType.Transfer);
 
-        Int32? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? Int32.Parse(filters["overrideTime"]!) : null;
+        int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
         extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
 
         try
@@ -255,8 +255,8 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
         var extractionIds = extractions.Select(x => x.Id);
         var job = jobTracker.StartJob(extractionIds, JobType.Fetch);
 
-        UInt64 currentRowCount = 0;
-        if (UInt16.TryParse(filters?["page"] ?? "0", out UInt16 page))
+        ulong currentRowCount = 0;
+        if (ushort.TryParse(filters?["page"] ?? "0", out ushort page))
         {
             currentRowCount = page == 1 ? 0 : page * Settings.FetcherLineMax;
         }
@@ -302,7 +302,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             var engine = DBExchangeFactory.Create(res.Origin!.DbType!);
             using DbConnection con = engine.CreateConnection(conStr);
 
-            var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, con, token, shouldPaginate: true);
+            var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, con, token, limit: Settings.ConsumerFetchMax, shouldPaginate: true);
             if (!query.IsSuccessful)
             {
                 await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);

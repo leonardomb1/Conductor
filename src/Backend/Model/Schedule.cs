@@ -1,6 +1,6 @@
-using System.Text.Json.Serialization;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Conductor.Model;
 
@@ -8,7 +8,7 @@ namespace Conductor.Model;
 public sealed class Schedule : IDbModel
 {
     [Key]
-    public UInt32 Id { get; set; }
+    public uint Id { get; set; }
 
     [Column, JsonRequired, JsonPropertyName("scheduleName")]
     public string Name { get; set; } = "";
@@ -17,5 +17,5 @@ public sealed class Schedule : IDbModel
     public bool Status { get; set; }
 
     [Column, JsonRequired]
-    public Int32 Value { get; set; }
+    public int Value { get; set; }
 }

@@ -11,10 +11,12 @@ namespace Conductor.Service.Database;
 
 public class MySQLExchange : DBExchange
 {
-    protected override string? QueryPagination(UInt64 current) =>
-        $"LIMIT {Settings.ProducerLineMax} OFFSET {current}";
+    protected override string? QueryPagination(ulong rows, ulong limit) =>
+        $"LIMIT {limit} OFFSET {rows}";
 
     protected override string? QueryNonLocking() => "LOCK IN SHARE MODE";
+
+
 
     protected override string GeneratePartitionCondition(Extraction extraction, DateTime requestTime, string? virtualColumn = null)
     {
@@ -78,13 +80,13 @@ public class MySQLExchange : DBExchange
         return new MySqlCommand(query, (MySqlConnection)connection);
     }
 
-    protected override string GetSqlType(Type type, Int32? length = -1)
+    protected override string GetSqlType(Type type, int? length = -1)
     {
         return type switch
         {
-            _ when type == typeof(Int64) => "BIGINT",
-            _ when type == typeof(Int32) => "INT",
-            _ when type == typeof(Int16) => "SMALLINT",
+            _ when type == typeof(long) => "BIGINT",
+            _ when type == typeof(int) => "INT",
+            _ when type == typeof(short) => "SMALLINT",
             _ when type == typeof(string) => length > 0 ? $"VARCHAR({length})" : "TEXT",
             _ when type == typeof(bool) => "TINYINT(1)",
             _ when type == typeof(DateTime) => "DATETIME",
@@ -92,9 +94,9 @@ public class MySQLExchange : DBExchange
             _ when type == typeof(decimal) => "DECIMAL(18,2)",
             _ when type == typeof(byte) => "TINYINT UNSIGNED",
             _ when type == typeof(sbyte) => "TINYINT",
-            _ when type == typeof(UInt16) => "SMALLINT UNSIGNED",
-            _ when type == typeof(UInt32) => "INT UNSIGNED",
-            _ when type == typeof(UInt64) => "BIGINT UNSIGNED",
+            _ when type == typeof(ushort) => "SMALLINT UNSIGNED",
+            _ when type == typeof(uint) => "INT UNSIGNED",
+            _ when type == typeof(ulong) => "BIGINT UNSIGNED",
             _ when type == typeof(float) => "FLOAT",
             _ when type == typeof(char) => "CHAR(1)",
             _ when type == typeof(Guid) => "CHAR(36)",

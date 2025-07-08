@@ -67,31 +67,31 @@ public static class Settings
     public static string CsvOutputPath { get; set; } = "";
 
     [ConfigKey("MAX_CONCURRENT_CONNECTIONS")]
-    public static UInt16 MaxConcurrentConnections { get; set; }
+    public static ushort MaxConcurrentConnections { get; set; }
 
     [ConfigKey("MAX_CONSUMER_FETCH")]
-    public static UInt16 ConsumerFetchMax { get; set; }
+    public static ushort ConsumerFetchMax { get; set; }
 
     [ConfigKey("MAX_PRODUCER_LINECOUNT")]
-    public static UInt64 ProducerLineMax { get; set; }
+    public static ulong ProducerLineMax { get; set; }
 
     [ConfigKey("MAX_FETCHING_LINECOUNT")]
-    public static UInt64 FetcherLineMax { get; set; }
+    public static ulong FetcherLineMax { get; set; }
 
     [ConfigKey("SESSION_TIME_SEC")]
-    public static UInt32 SessionTime { get; set; }
+    public static uint SessionTime { get; set; }
 
     [ConfigKey("QUERY_TIMEOUT_SEC")]
-    public static Int32 QueryTimeout { get; set; }
+    public static int QueryTimeout { get; set; }
 
     [ConfigKey("MAX_PIPELINE_ATTEMPT")]
     public static byte PipelineAttemptMax { get; set; }
 
     [ConfigKey("PORT_NUMBER")]
-    public static Int32 PortNumber { get; set; }
+    public static int PortNumber { get; set; }
 
     [ConfigKey("LDAP_PORT")]
-    public static Int32 LdapPort { get; set; }
+    public static int LdapPort { get; set; }
 
     [ConfigKey("CONNECTION_STRING")]
     public static string ConnectionString { get; set; } = "";
@@ -142,13 +142,13 @@ public static class Settings
     public static bool RequireAuthentication { get; set; }
 
     [ConfigKey("CONNECTION_TIMEOUT_MIN")]
-    public static Int32 ConnectionTimeout { get; set; }
+    public static int ConnectionTimeout { get; set; }
 
     [ConfigKey("RESPONSE_CACHING_LIMIT_MB")]
-    public static Int32 ResponseCachingLimit { get; set; }
+    public static int ResponseCachingLimit { get; set; }
 
     [ConfigKey("PIPELINE_BACKOFF_BASE_MS")]
-    public static Int32 PipelineBackoff { get; set; }
+    public static int PipelineBackoff { get; set; }
 
     [ConfigKey("SPLITTER_CHAR")]
     public static string SplitterChar { get; set; } = "";

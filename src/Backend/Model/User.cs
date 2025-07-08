@@ -1,6 +1,6 @@
-using System.Text.Json.Serialization;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace Conductor.Model;
 
@@ -8,7 +8,7 @@ namespace Conductor.Model;
 public sealed class User : IDbModel
 {
     [Key]
-    public UInt32 Id { get; set; }
+    public uint Id { get; set; }
 
     [Column, JsonRequired, JsonPropertyName("username")]
     public string Name { get; set; } = "";

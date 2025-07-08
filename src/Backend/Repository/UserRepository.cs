@@ -43,7 +43,7 @@ public sealed class UserRepository(EfContext context) : IRepository<User>
         }
     }
 
-    public async Task<Result<User?>> Search(UInt32 id)
+    public async Task<Result<User?>> Search(uint id)
     {
         try
         {
@@ -81,7 +81,7 @@ public sealed class UserRepository(EfContext context) : IRepository<User>
         }
     }
 
-    public async Task<Result<UInt32>> Create(User user)
+    public async Task<Result<uint>> Create(User user)
     {
         user.Password = Encryption.SymmetricEncryptAES256(user.Password!, Settings.EncryptionKey);
 
@@ -97,7 +97,7 @@ public sealed class UserRepository(EfContext context) : IRepository<User>
         }
     }
 
-    public async Task<Result> Update(User user, UInt32 id)
+    public async Task<Result> Update(User user, uint id)
     {
         try
         {
@@ -119,7 +119,7 @@ public sealed class UserRepository(EfContext context) : IRepository<User>
         }
     }
 
-    public async Task<Result> Delete(UInt32 id)
+    public async Task<Result> Delete(uint id)
     {
         try
         {

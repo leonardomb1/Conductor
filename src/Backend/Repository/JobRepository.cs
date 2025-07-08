@@ -30,9 +30,9 @@ public class JobRepository(EfContext context) : IRepository<Job>
                     string value = filter.Value!;
                     jobExtractionsQuery = key switch
                     {
-                        "relativeStart" when Int32.TryParse(value, out var time)
+                        "relativeStart" when int.TryParse(value, out var time)
                             => jobExtractionsQuery.Where(x => x.j.StartTime >= DateTime.Now.AddSeconds(-time)),
-                        "relativeEnd" when Int32.TryParse(value, out var time)
+                        "relativeEnd" when int.TryParse(value, out var time)
                             => jobExtractionsQuery.Where(x => x.j.EndTime >= DateTime.Now.AddSeconds(-time)),
                         "status" => jobExtractionsQuery.Where(x => x.j.Status.ToString() == value),
                         "type" => jobExtractionsQuery.Where(x => x.j.JobType.ToString() == value),
@@ -84,9 +84,9 @@ public class JobRepository(EfContext context) : IRepository<Job>
                     string value = filter.Value!;
                     extractionQuery = key switch
                     {
-                        "relativeStart" when Int32.TryParse(value, out var time)
+                        "relativeStart" when int.TryParse(value, out var time)
                             => extractionQuery.Where(x => x.j.StartTime >= DateTime.Now.AddSeconds(-time)),
-                        "relativeEnd" when Int32.TryParse(value, out var time)
+                        "relativeEnd" when int.TryParse(value, out var time)
                             => extractionQuery.Where(x => x.j.EndTime >= DateTime.Now.AddSeconds(-time)),
                         "status" => extractionQuery.Where(x => x.j.Status.ToString() == value),
                         "type" => extractionQuery.Where(x => x.j.JobType.ToString() == value),
@@ -121,12 +121,12 @@ public class JobRepository(EfContext context) : IRepository<Job>
         }
     }
 
-    public Task<Result<Job?>> Search(UInt32 id)
+    public Task<Result<Job?>> Search(uint id)
     {
         throw new NotImplementedException();
     }
 
-    public async Task<Result<Int32>> Count()
+    public async Task<Result<int>> Count()
     {
         try
         {
@@ -169,7 +169,7 @@ public class JobRepository(EfContext context) : IRepository<Job>
         }
     }
 
-    public Task<Result> Delete(UInt32 id)
+    public Task<Result> Delete(uint id)
     {
         throw new NotImplementedException();
     }
@@ -188,12 +188,12 @@ public class JobRepository(EfContext context) : IRepository<Job>
         }
     }
 
-    public Task<Result<UInt32>> Create(Job job)
+    public Task<Result<uint>> Create(Job job)
     {
         throw new NotImplementedException();
     }
 
-    public Task<Result> Update(Job job, UInt32 id)
+    public Task<Result> Update(Job job, uint id)
     {
         throw new NotImplementedException();
     }

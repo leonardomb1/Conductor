@@ -46,7 +46,7 @@ public abstract class ControllerBase<TModel>(IRepository<TModel> repository) whe
 
         StringBuilder builder = new("Some errors have occurred while processing a long running request: ");
 
-        for (Int32 i = 0; i < err.Count; i++)
+        for (int i = 0; i < err.Count; i++)
         {
             builder.Append(@$"Error {i}:
                 Message: {err[i].ExceptionMessage}
@@ -83,7 +83,7 @@ public abstract class ControllerBase<TModel>(IRepository<TModel> repository) whe
 
     public virtual async Task<IResult> GetById(string stringId)
     {
-        if (!UInt32.TryParse(stringId, out UInt32 id))
+        if (!uint.TryParse(stringId, out uint id))
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "This is an invalid parameter type.")
@@ -139,7 +139,7 @@ public abstract class ControllerBase<TModel>(IRepository<TModel> repository) whe
 
     public virtual async Task<IResult> Put(string stringId, Stream body)
     {
-        if (!UInt32.TryParse(stringId, out UInt32 id))
+        if (!uint.TryParse(stringId, out uint id))
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "This is an invalid parameter type.", true)
@@ -169,7 +169,7 @@ public abstract class ControllerBase<TModel>(IRepository<TModel> repository) whe
 
     public virtual async Task<IResult> Delete(string stringId)
     {
-        if (!UInt32.TryParse(stringId, out UInt32 id))
+        if (!uint.TryParse(stringId, out uint id))
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "This is an invalid parameter type.", true)

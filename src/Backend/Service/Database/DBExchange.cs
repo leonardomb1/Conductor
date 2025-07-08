@@ -18,13 +18,13 @@ public abstract class DBExchange
 
     protected abstract string? QueryNonLocking();
 
-    protected abstract string? QueryPagination(UInt64 current);
+    protected abstract string? QueryPagination(ulong rows, ulong limit);
 
     protected abstract DbCommand CreateDbCommand(string query, DbConnection connection);
 
     public abstract DbConnection CreateConnection(string conStr);
 
-    protected abstract string GetSqlType(Type dataType, Int32? lenght);
+    protected abstract string GetSqlType(Type dataType, int? lenght);
 
     protected abstract StringBuilder AddSurrogateKey(StringBuilder stringBuilder, string index, string tableName, string? virtualIdGroup = null);
 
@@ -44,10 +44,9 @@ public abstract class DBExchange
     {
         return stringBuilder.Append($" CONSTRAINT IX_{tableName}_PK PRIMARY KEY (ID_DW_{tableName}),");
     }
-
     public abstract Task<Result> MergeLoad(DataTable data, Extraction extraction, DateTime requestTime, DbConnection connection);
 
-    protected virtual DateTimeOffset RequestTimeWithOffSet(DateTimeOffset requestTime, Int32 filterTime, Int32 offSet)
+    protected virtual DateTimeOffset RequestTimeWithOffSet(DateTimeOffset requestTime, int filterTime, int offSet)
     {
         return requestTime.AddSeconds(-filterTime).ToOffset(new TimeSpan(offSet, 0, 0));
     }
@@ -82,7 +81,7 @@ public abstract class DBExchange
         }
     }
 
-    public virtual async Task<Result<UInt64>> CountTableRows(Extraction extraction, DbConnection connection)
+    public virtual async Task<Result<ulong>> CountTableRows(Extraction extraction, DbConnection connection)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
@@ -159,14 +158,15 @@ public abstract class DBExchange
 
     public virtual async Task<Result<DataTable>> SelectData(
         Extraction extraction,
-        UInt64 current,
+        ulong currentRowCount,
         DateTime requestTime,
         bool shouldPartition,
         DbConnection connection,
-        Int32? overrideFilter,
+        int? overrideFilter,
         string? virtualizedTable = null,
         string? virtualizedIdGroup = null,
         bool shouldPaginate = true,
+        ulong limit = 0,
         CancellationToken token = default
     )
     {
@@ -203,13 +203,14 @@ public abstract class DBExchange
             WHERE 1 = 1 {condition} {partitioning}
             ORDER BY {extraction.IndexName} {(shouldPartition ? "DESC" : "ASC")}";
 
-        string query = $"{queryBase} {(shouldPaginate ? QueryPagination(current) : "")}";
+        string query = $"{queryBase} {(shouldPaginate ? QueryPagination(currentRowCount, limit) : "")}";
 
         using DbCommand command = CreateDbCommand(query, connection);
         command.CommandTimeout = Settings.QueryTimeout;
 
         try
         {
+            if (connection.State == ConnectionState.Closed) await connection.OpenAsync(token);
             using var fetched = new DataTable();
             var select = await command.ExecuteReaderAsync(token);
             fetched.Load(select);
@@ -228,10 +229,11 @@ public abstract class DBExchange
         Extraction extraction,
         DateTime requestTime,
         bool shouldPartition,
-        UInt64 currentRowCount,
+        ulong currentRowCount,
         DbConnection connection,
         CancellationToken token,
-        Int32? overrideFilter = null,
+        int? overrideFilter = null,
+        ulong limit = 0,
         bool shouldPaginate = true
     )
     {
@@ -254,6 +256,7 @@ public abstract class DBExchange
                     extraction.Name,
                     extraction.VirtualIdGroup!,
                     token,
+                    limit,
                     shouldPaginate
                 );
         }
@@ -269,6 +272,7 @@ public abstract class DBExchange
                 extraction.Name,
                 extraction.VirtualIdGroup,
                 shouldPaginate,
+                limit,
                 token
             );
         }
@@ -277,13 +281,14 @@ public abstract class DBExchange
     public virtual async Task<Result<DataTable>> ParallelSelect(
         List<Extraction> extractions,
         DbConnection connection,
-        UInt64 currentRowCount,
+        ulong currentRowCount,
         DateTime requestTime,
         bool shouldPartition,
-        Int32? overrideTime,
+        int? overrideTime,
         string virtualizedTable,
         string virtualIdGroup,
         CancellationToken token,
+        ulong limit = 0,
         bool shouldPaginate = true
     )
     {
@@ -311,6 +316,7 @@ public abstract class DBExchange
                     virtualizedTable,
                     virtualIdGroup,
                     shouldPaginate,
+                    limit,
                     token
                 );
 
@@ -320,7 +326,7 @@ public abstract class DBExchange
                     return;
                 }
 
-                for (Int32 i = 0; i < fetch.Value.Columns.Count; i++)
+                for (int i = 0; i < fetch.Value.Columns.Count; i++)
                 {
                     fetch.Value.Columns[i].AllowDBNull = true;
                 }
@@ -375,7 +381,7 @@ public abstract class DBExchange
 
         foreach (DataColumn column in table.Columns)
         {
-            Int32? maxStringLength = column.MaxLength;
+            int? maxStringLength = column.MaxLength;
             string SqlType = GetSqlType(column.DataType, maxStringLength);
             queryBuilder.AppendLine($"    \"{column.ColumnName}\" {SqlType},");
         }

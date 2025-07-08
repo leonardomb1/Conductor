@@ -14,8 +14,8 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
         var invalidFilters = filters?.Where(f =>
             (f.Key == "relativeStart" || f.Key == "relativeEnd" || f.Key == "take" || f.Key == "mbs") &&
                 (
-                    !Int32.TryParse(f.Value, out _) ||
-                    !UInt32.TryParse(f.Value, out _) ||
+                    !int.TryParse(f.Value, out _) ||
+                    !uint.TryParse(f.Value, out _) ||
                     !float.TryParse(f.Value, out _)
                 )
             ).ToList();
@@ -46,8 +46,8 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
         var invalidFilters = filters?.Where(f =>
             (f.Key == "relativeStart" || f.Key == "relativeEnd" || f.Key == "take" || f.Key == "mbs") &&
                 (
-                    !Int32.TryParse(f.Value, out _) ||
-                    !UInt32.TryParse(f.Value, out _) ||
+                    !int.TryParse(f.Value, out _) ||
+                    !uint.TryParse(f.Value, out _) ||
                     !float.TryParse(f.Value, out _)
                 )
             ).ToList();

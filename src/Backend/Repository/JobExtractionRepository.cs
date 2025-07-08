@@ -10,12 +10,12 @@ public class JobExtractionRepository(EfContext context) : IRepository<JobExtract
         throw new NotImplementedException();
     }
 
-    public Task<Result<JobExtraction?>> Search(UInt32 id)
+    public Task<Result<JobExtraction?>> Search(uint id)
     {
         throw new NotImplementedException();
     }
 
-    public Task<Result<Int32>> Count()
+    public Task<Result<int>> Count()
     {
         throw new NotImplementedException();
     }
@@ -48,17 +48,17 @@ public class JobExtractionRepository(EfContext context) : IRepository<JobExtract
         }
     }
 
-    public Task<Result> Delete(UInt32 id)
+    public Task<Result> Delete(uint id)
     {
         throw new NotImplementedException();
     }
 
-    public Task<Result<UInt32>> Create(JobExtraction jobExtraction)
+    public Task<Result<uint>> Create(JobExtraction jobExtraction)
     {
         throw new NotImplementedException();
     }
 
-    public Task<Result> Update(JobExtraction jobExtraction, UInt32 id)
+    public Task<Result> Update(JobExtraction jobExtraction, uint id)
     {
         throw new NotImplementedException();
     }

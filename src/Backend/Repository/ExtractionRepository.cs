@@ -32,11 +32,11 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
                         "name" => select.Where(e => e.Name == value),
                         "contains" => select.Where(e => arrayVal.Any(s => e.Name.Contains(s))),
                         "schedule" => select.Where(e => e.Schedule != null && e.Schedule.Name == value),
-                        "scheduleId" when UInt32.TryParse(value, out UInt32 schId) =>
+                        "scheduleId" when uint.TryParse(value, out uint schId) =>
                             select.Where(e => e.ScheduleId == schId),
                         "origin" => select.Where(e => e.Origin != null && e.Origin.Name == value),
                         "destination" => select.Where(e => e.Destination != null && e.Destination.Name == value),
-                        "take" when UInt32.TryParse(value, out UInt32 count) => select.Take((Int32)count),
+                        "take" when uint.TryParse(value, out uint count) => select.Take((int)count),
                         _ => select
                     };
                 }
@@ -50,7 +50,7 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
         }
     }
 
-    public async Task<Result<List<SimpleExtractionDto>>> GetNames(List<UInt32>? ids = null)
+    public async Task<Result<List<SimpleExtractionDto>>> GetNames(List<uint>? ids = null)
     {
         try
         {
@@ -112,7 +112,7 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
         return dependenciesList.Value;
     }
 
-    public async Task<Result<Extraction?>> Search(UInt32 id)
+    public async Task<Result<Extraction?>> Search(uint id)
     {
         try
         {
@@ -129,7 +129,7 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
         }
     }
 
-    public async Task<Result<UInt32>> Create(Extraction extraction)
+    public async Task<Result<uint>> Create(Extraction extraction)
     {
         try
         {
@@ -143,7 +143,7 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
         }
     }
 
-    public async Task<Result> Update(Extraction extraction, UInt32 id)
+    public async Task<Result> Update(Extraction extraction, uint id)
     {
         try
         {
@@ -164,7 +164,7 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
         }
     }
 
-    public async Task<Result> Delete(UInt32 id)
+    public async Task<Result> Delete(uint id)
     {
         try
         {

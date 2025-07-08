@@ -19,7 +19,7 @@ using ILogger = Serilog.ILogger;
 
 namespace Conductor.Service;
 
-public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory, IJobTracker jobTracker, Int32? overrideFilter, IScriptEngine? scriptEngine = null) : IAsyncDisposable, IDisposable
+public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory, IJobTracker jobTracker, int? overrideFilter, IScriptEngine? scriptEngine = null) : IAsyncDisposable, IDisposable
 {
     private readonly ConcurrentBag<Error> pipelineErrors = [];
     private readonly ConcurrentDictionary<string, DbConnection> connectionPool = new();
@@ -215,7 +215,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         return pipelineErrors.IsEmpty ? Result.Ok() : Result.Err(pipelineErrors.ToList());
     }
 
-    private static async Task<Result<UInt64>> ProduceDataCheck(Extraction e, CancellationToken t)
+    private static async Task<Result<ulong>> ProduceDataCheck(Extraction e, CancellationToken t)
     {
         var logger = Log.ForContext<ExtractionPipeline>();
         logger.Debug("Performing data check for extraction {ExtractionId} ({ExtractionName})", e.Id, e.Name);
@@ -235,7 +235,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
             return err!;
         }
 
-        UInt64 destinationRowCount = 0;
+        ulong destinationRowCount = 0;
         if (exists.Value)
         {
             logger.Debug("Table exists for extraction {ExtractionId}", e.Id);
@@ -464,7 +464,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                 var fetcher = DBExchangeFactory.Create(e.Origin.DbType);
                 var extractionRowCount = 0;
 
-                UInt64 currentOffset = 0;
+                ulong currentOffset = 0;
 
                 while (!t.IsCancellationRequested)
                 {
@@ -475,7 +475,8 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                         currentOffset,
                         GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
                         t,
-                        overrideFilter
+                        overrideFilter,
+                        Settings.ProducerLineMax
                     );
 
                     if (!attempt.IsSuccessful)
@@ -492,7 +493,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                     }
 
                     extractionRowCount += attempt.Value.Rows.Count;
-                    currentOffset += (UInt64)attempt.Value.Rows.Count;
+                    currentOffset += (ulong)attempt.Value.Rows.Count;
                     Interlocked.Add(ref totalRowsProduced, attempt.Value.Rows.Count);
 
                     extractionLogger.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched})",
@@ -547,7 +548,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
                 var fetchedData = new List<(DataTable data, Extraction metadata)>(Settings.ConsumerFetchMax);
 
-                for (UInt16 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable data, Extraction metadata) item); i++)
+                for (ushort i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable data, Extraction metadata) item); i++)
                 {
                     fetchedData.Add(item);
                 }
@@ -649,7 +650,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
                 var fetchedData = new List<(DataTable data, Extraction metadata)>(Settings.ConsumerFetchMax);
 
-                for (UInt16 i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable data, Extraction metadata) item); i++)
+                for (ushort i = 0; i < Settings.ConsumerFetchMax && channel.Reader.TryRead(out (DataTable data, Extraction metadata) item); i++)
                 {
                     fetchedData.Add(item);
                 }

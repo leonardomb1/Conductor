@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -63,7 +64,7 @@ public static class Encryption
         string hashString = Sha256(input);
 
         byte[] hashBytes = new byte[32];
-        for (Int32 i = 0; i < hashBytes.Length; i++)
+        for (int i = 0; i < hashBytes.Length; i++)
         {
             hashBytes[i] = Convert.ToByte(hashString.Substring(i * 2, 2), 16);
         }
@@ -74,7 +75,7 @@ public static class Encryption
     {
         StringBuilder builder = new();
 
-        for (Int32 i = 0; i < bytes.Length; i++)
+        for (int i = 0; i < bytes.Length; i++)
         {
             builder.Append(bytes[i].ToString("x2"));
         }

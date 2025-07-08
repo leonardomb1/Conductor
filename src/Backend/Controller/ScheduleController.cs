@@ -11,7 +11,7 @@ public sealed class ScheduleController(ScheduleRepository repository) : Controll
     {
         var invalidFilters = filters?.Where(f =>
             (f.Key == "value") &&
-            !Int32.TryParse(f.Value, out _)).ToList();
+            !int.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
         {

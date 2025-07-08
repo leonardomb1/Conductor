@@ -37,7 +37,7 @@ public class OriginRepository(EfContext context) : IRepository<Origin>
         }
     }
 
-    public async Task<Result<Origin?>> Search(UInt32 id)
+    public async Task<Result<Origin?>> Search(uint id)
     {
         try
         {
@@ -53,7 +53,7 @@ public class OriginRepository(EfContext context) : IRepository<Origin>
         }
     }
 
-    public async Task<Result<UInt32>> Create(Origin system)
+    public async Task<Result<uint>> Create(Origin system)
     {
         if (system.ConnectionString is not null && system.ConnectionString != "")
             system.ConnectionString = Encryption.SymmetricEncryptAES256(system.ConnectionString!, Settings.EncryptionKey);
@@ -70,7 +70,7 @@ public class OriginRepository(EfContext context) : IRepository<Origin>
         }
     }
 
-    public async Task<Result> Update(Origin system, UInt32 id)
+    public async Task<Result> Update(Origin system, uint id)
     {
         try
         {
@@ -96,7 +96,7 @@ public class OriginRepository(EfContext context) : IRepository<Origin>
         }
     }
 
-    public async Task<Result> Delete(UInt32 id)
+    public async Task<Result> Delete(uint id)
     {
         try
         {
