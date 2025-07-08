@@ -3,77 +3,68 @@ namespace Conductor.Types;
 public readonly struct Result<T>
 {
     private readonly bool success;
-    public readonly T Value;
-    public readonly Error Error;
+    private readonly T value;
+    private readonly Error singleError;
+    private readonly Error[] multipleErrors;
 
-    private Result(T value, Error error, bool isSuccess)
+    private Result(T val, Error err, Error[] errs, bool ok)
     {
-        Value = value;
-        Error = error;
-        success = isSuccess;
+        value = val;
+        singleError = err;
+        multipleErrors = errs;
+        success = ok;
     }
 
     public bool IsSuccessful => success;
+    public T Value => value;
+    public Error Error => singleError;
+    public ReadOnlySpan<Error> Errors => multipleErrors ?? (singleError != null ? new[] { singleError } : Array.Empty<Error>());
+    public bool HasMultipleErrors => multipleErrors != null;
 
-    public static Result<T> Ok(T value) => new(value, null!, true);
+    public static Result<T> Ok(T value) => new(value, null!, null!, true);
+    public static Result<T> Err(Error error) => new(default!, error, null!, false);
+    public static Result<T> Err(params Error[] errors) => new(default!, null!, errors, false);
+    public static Result<T> Err(IEnumerable<Error> errors) => new(default!, null!, errors.ToArray(), false);
 
-    public static Result<T> Err(Error error) => new(default!, error, false);
+    public static implicit operator Result<T>(T value) => Ok(value);
+    public static implicit operator Result<T>(Error error) => Err(error);
+    public static implicit operator Result<T>(Error[] errors) => Err(errors);
 
-    public static implicit operator Result<T>(T value) => new(value, null!, true);
-    public static implicit operator Result<T>(Error error) => new(default!, error, false);
+    public R Match<R>(Func<T, R> onSuccess, Func<Error, R> onError)
+        => success ? onSuccess(value) : onError(singleError ?? multipleErrors[0]);
 
-    public R Match<R>(
-        Func<T, R> onSuccess,
-        Func<Error, R> onError
-    ) => success ? onSuccess(Value) : onError(Error);
+    public R Match<R>(Func<T, R> onSuccess, Func<ReadOnlySpan<Error>, R> onErrors)
+        => success ? onSuccess(value) : onErrors(Errors);
 }
 
 public readonly struct Result
 {
     private readonly bool success;
-    public readonly Error Error;
+    private readonly Error singleError;
+    private readonly Error[] multipleErrors;
 
-    private Result(Error error, bool isSuccess)
+    private Result(Error err, Error[] errs, bool ok)
     {
-        Error = error;
-        success = isSuccess;
+        singleError = err;
+        multipleErrors = errs;
+        success = ok;
     }
 
     public bool IsSuccessful => success;
+    public Error Error => singleError;
+    public ReadOnlySpan<Error> Errors => multipleErrors ?? (singleError != null ? new[] { singleError } : Array.Empty<Error>());
+    public bool HasMultipleErrors => multipleErrors != null;
+    public static Result Ok() => new(null!, null!, true);
+    public static Result Err(Error error) => new(error, null!, false);
+    public static Result Err(params Error[] errors) => new(null!, errors, false);
+    public static Result Err(IEnumerable<Error> errors) => new(null!, [.. errors], false);
 
-    public static Result Ok() => new(null!, true);
+    public static implicit operator Result(Error error) => Err(error);
+    public static implicit operator Result(Error[] errors) => Err(errors);
 
-    public static Result Err(Error error) => new(error, false);
+    public R Match<R>(Func<R> onSuccess, Func<Error, R> onError)
+        => success ? onSuccess() : onError(singleError ?? multipleErrors[0]);
 
-    public static implicit operator Result(Error error) => new(error, false);
-
-    public R Match<R>(
-        Func<R> onSuccess,
-        Func<Error, R> onError
-    ) => success ? onSuccess() : onError(Error);
-}
-
-public readonly struct MResult
-{
-    private readonly bool success;
-    public readonly List<Error> Error;
-
-    private MResult(List<Error> error, bool isSuccess)
-    {
-        Error = error;
-        success = isSuccess;
-    }
-
-    public bool IsSuccessful => success;
-
-    public static MResult Ok() => new(null!, true);
-
-    public static MResult Err(List<Error> error) => new(error, false);
-
-    public static implicit operator MResult(List<Error> error) => new(error, false);
-
-    public R Match<R>(
-        Func<R> onSuccess,
-        Func<List<Error>, R> onError
-    ) => success ? onSuccess() : onError(Error);
+    public R Match<R>(Func<R> onSuccess, Func<ReadOnlySpan<Error>, R> onErrors)
+        => success ? onSuccess() : onErrors(Errors);
 }

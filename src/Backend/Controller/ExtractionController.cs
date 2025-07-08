@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Threading.Channels;
 using Conductor.Logging;
 using Conductor.Model;
@@ -236,7 +237,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             return Results.InternalServerError(ErrorMessage(fetch.Error));
         }
 
-        if (fetch.Value.Any(e => e.Origin!.ConnectionString is null || e.Origin.DbType is null))
+        if (fetch.Value.Any(e => e.Origin is null || e.Origin!.ConnectionString is null || e.Origin.DbType is null))
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "All used origins need to have a Connection String and DbType.", true)
@@ -254,10 +255,10 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
         var extractionIds = extractions.Select(x => x.Id);
         var job = jobTracker.StartJob(extractionIds, JobType.Fetch);
 
-        UInt64 current = 0;
+        UInt64 currentRowCount = 0;
         if (UInt16.TryParse(filters?["page"] ?? "0", out UInt16 page))
         {
-            current = page == 1 ? 0 : page * Settings.FetcherLineMax;
+            currentRowCount = page == 1 ? 0 : page * Settings.FetcherLineMax;
         }
 
         if ((res.SourceType?.ToLowerInvariant() ?? "db") == "http")
@@ -293,13 +294,15 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
         }
         else
         {
-            res.Origin!.ConnectionString = Encryption.SymmetricDecryptAES256(
+            string conStr = Encryption.SymmetricDecryptAES256(
                 res.Origin!.ConnectionString!,
                 Settings.EncryptionKey
             );
 
             var engine = DBExchangeFactory.Create(res.Origin!.DbType!);
-            var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, current, token, shouldPaginate: true);
+            using DbConnection con = engine.CreateConnection(conStr);
+
+            var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, con, token, shouldPaginate: true);
             if (!query.IsSuccessful)
             {
                 await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);

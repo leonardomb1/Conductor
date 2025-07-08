@@ -146,7 +146,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         }
     }
 
-    public async Task<MResult> ChannelParallelize(
+    public async Task<Result> ChannelParallelize(
         List<Extraction> extractions,
         Func<List<Extraction>, Channel<(DataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> produceData,
         Func<Channel<(DataTable, Extraction)>, DateTime, CancellationToken, Task> consumeData,
@@ -212,7 +212,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
             }
         }
 
-        return pipelineErrors.IsEmpty ? MResult.Ok() : pipelineErrors.ToList();
+        return pipelineErrors.IsEmpty ? Result.Ok() : Result.Err(pipelineErrors.ToList());
     }
 
     private static async Task<Result<UInt64>> ProduceDataCheck(Extraction e, CancellationToken t)
@@ -468,25 +468,15 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
                 while (!t.IsCancellationRequested)
                 {
-                    var attempt =
-                        DBExchange.SupportsMARS(e.Origin.DbType)
-                        ? await fetcher.FetchDataTable(
-                            e,
-                            requestTime,
-                            shouldPartition,
-                            currentOffset,
-                            GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
-                            t,
-                            overrideFilter
-                        )
-                        : await fetcher.FetchDataTable(
-                            e,
-                            requestTime,
-                            shouldPartition,
-                            currentOffset,
-                            t,
-                            overrideFilter
-                        );
+                    Result<DataTable> attempt = await fetcher.FetchDataTable(
+                        e,
+                        requestTime,
+                        shouldPartition,
+                        currentOffset,
+                        GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
+                        t,
+                        overrideFilter
+                    );
 
                     if (!attempt.IsSuccessful)
                     {
