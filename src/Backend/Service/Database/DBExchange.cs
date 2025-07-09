@@ -210,7 +210,6 @@ public abstract class DBExchange
 
         try
         {
-            if (connection.State == ConnectionState.Closed) await connection.OpenAsync(token);
             using var fetched = new DataTable();
             var select = await command.ExecuteReaderAsync(token);
             fetched.Load(select);
