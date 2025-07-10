@@ -24,7 +24,8 @@ public sealed class ExtractionPipeline(DateTime requestTime, IHttpClientFactory 
 {
     private readonly ConcurrentBag<Error> pipelineErrors = [];
     private readonly ConcurrentDictionary<string, PooledConnection> connectionPool = new(StringComparer.Ordinal);
-    private readonly ILogger logger = Log.ForContext<ExtractionPipeline>();
+    private readonly ILogger logger = Log.ForContext<ExtractionPipeline>() 
+    ?? throw new InvalidOperationException("Serilog logger not configured");
     private readonly DateTime requestTime = requestTime;
     private readonly IHttpClientFactory factory = factory ?? throw new ArgumentNullException(nameof(factory));
     private readonly IJobTracker jobTracker = jobTracker ?? throw new ArgumentNullException(nameof(jobTracker));
@@ -548,14 +549,14 @@ public sealed class ExtractionPipeline(DateTime requestTime, IHttpClientFactory 
         {
             await Parallel.ForEachAsync(extractions, options, async (extraction, cancellationToken) =>
             {
-                var extractionLogger = logger.ForContext("ExtractionId", extraction.Id)
-                                        .ForContext("ExtractionName", extraction.Name);
+                var extractionLogger = logger?.ForContext("ExtractionId", extraction.Id)
+                                            ?.ForContext("ExtractionName", extraction.Name) ?? logger;
 
                 if (cancellationToken.IsCancellationRequested) return;
                 if (extraction.Origin is null) return;
                 if (extraction.Origin.DbType is null || extraction.Origin.ConnectionString is null) return;
 
-                extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId}", extraction.Id);
+                extractionLogger?.Debug("Starting database data fetch for extraction {ExtractionId}", extraction.Id);
 
                 bool shouldPartition = false;
 
@@ -564,14 +565,14 @@ public sealed class ExtractionPipeline(DateTime requestTime, IHttpClientFactory 
                     var result = await ProduceDataCheck(extraction, cancellationToken).ConfigureAwait(false);
                     if (!result.IsSuccessful)
                     {
-                        extractionLogger.Error("Data check failed for extraction {ExtractionId}", extraction.Id);
+                        extractionLogger?.Error("Data check failed for extraction {ExtractionId}", extraction.Id);
                         return;
                     }
                     shouldPartition = result.Value > 0;
 
                     if (shouldPartition)
                     {
-                        extractionLogger.Information("Using partitioned fetch for extraction {ExtractionId} (existing rows: {ExistingRows})",
+                        extractionLogger?.Information("Using partitioned fetch for extraction {ExtractionId} (existing rows: {ExistingRows})",
                             extraction.Id, result.Value);
                     }
                 }
@@ -599,20 +600,20 @@ public sealed class ExtractionPipeline(DateTime requestTime, IHttpClientFactory 
                     }
                     catch (ObjectDisposedException)
                     {
-                        extractionLogger.Warning("Connection disposed during fetch for extraction {ExtractionId}", extraction.Id);
+                        extractionLogger?.Warning("Connection disposed during fetch for extraction {ExtractionId}", extraction.Id);
                         break;
                     }
 
                     if (!attempt.IsSuccessful)
                     {
-                        extractionLogger.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, attempt.Error.ExceptionMessage);
+                        extractionLogger?.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, attempt.Error.ExceptionMessage);
                         pipelineErrors.Add(attempt.Error);
                         break;
                     }
 
                     if (attempt.Value.Rows.Count == 0)
                     {
-                        extractionLogger.Debug("No more data to fetch for extraction {ExtractionId}", extraction.Id);
+                        extractionLogger?.Debug("No more data to fetch for extraction {ExtractionId}", extraction.Id);
                         break;
                     }
 
@@ -620,7 +621,7 @@ public sealed class ExtractionPipeline(DateTime requestTime, IHttpClientFactory 
                     currentOffset += (ulong)attempt.Value.Rows.Count;
                     Interlocked.Add(ref totalRowsProduced, attempt.Value.Rows.Count);
 
-                    extractionLogger.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched})",
+                    extractionLogger?.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched})",
                         attempt.Value.Rows.Count, extraction.Id, currentOffset);
 
                     Helper.GetAndSetByteUsageForExtraction(attempt.Value, extraction.Id, jobTracker);
@@ -630,7 +631,7 @@ public sealed class ExtractionPipeline(DateTime requestTime, IHttpClientFactory 
 
                 if (extractionRowCount > 0)
                 {
-                    extractionLogger.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows",
+                    extractionLogger?.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows",
                         extraction.Id, extractionRowCount);
                 }
 
