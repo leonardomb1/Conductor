@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -19,16 +20,63 @@ using ILogger = Serilog.ILogger;
 
 namespace Conductor.Service;
 
-public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory, IJobTracker jobTracker, int? overrideFilter, IScriptEngine? scriptEngine = null) : IAsyncDisposable, IDisposable
+public sealed class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory, IJobTracker jobTracker, int? overrideFilter, IScriptEngine? scriptEngine = null) : IAsyncDisposable, IDisposable
 {
     private readonly ConcurrentBag<Error> pipelineErrors = [];
-    private readonly ConcurrentDictionary<string, DbConnection> connectionPool = new();
+    private readonly ConcurrentDictionary<string, PooledConnection> connectionPool = new(StringComparer.Ordinal);
     private readonly ILogger logger = Log.ForContext<ExtractionPipeline>();
-    private bool disposed = false;
+    private readonly DateTime requestTime = requestTime;
+    private readonly IHttpClientFactory factory = factory ?? throw new ArgumentNullException(nameof(factory));
+    private readonly IJobTracker jobTracker = jobTracker ?? throw new ArgumentNullException(nameof(jobTracker));
+    private readonly int? overrideFilter = overrideFilter;
+    private readonly IScriptEngine? scriptEngine = scriptEngine;
+    private volatile bool disposed;
+    private readonly Lock disposeLock = new();
 
-    private static bool ReturnOnCancellation(CancellationToken t, out Error? error)
+    private sealed class PooledConnection(DbConnection connection) : IAsyncDisposable, IDisposable
     {
-        if (t.IsCancellationRequested)
+        private readonly DbConnection connection = connection ?? throw new ArgumentNullException(nameof(connection));
+        private volatile bool disposed;
+
+        public DbConnection Connection => disposed ? throw new ObjectDisposedException(nameof(PooledConnection)) : connection;
+
+        public async ValueTask DisposeAsync()
+        {
+            if (disposed) return;
+            disposed = true;
+
+            try
+            {
+                if (connection.State != ConnectionState.Closed)
+                {
+                    await connection.CloseAsync().ConfigureAwait(false);
+                }
+                await connection.DisposeAsync().ConfigureAwait(false);
+            }
+            catch { }
+        }
+
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+
+            try
+            {
+                if (connection.State != ConnectionState.Closed)
+                {
+                    connection.Close();
+                }
+                connection.Dispose();
+            }
+            catch {}
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ReturnOnCancellation(CancellationToken token, out Error? error)
+    {
+        if (token.IsCancellationRequested)
         {
             error = new Error("Cancellation Requested");
             return true;
@@ -37,54 +85,73 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         return false;
     }
 
-    private static bool TryProcessOperation(Result operation, DbConnection con, CancellationTokenSource cts, out Error? err)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryProcessOperation(Result operation, DbConnection connection, CancellationTokenSource cancellationTokenSource, out Error? error)
     {
         if (!operation.IsSuccessful)
         {
-            con.Close();
-            cts.Cancel();
-            err = operation.Error;
+            try
+            {
+                connection?.Close();
+                cancellationTokenSource?.Cancel();
+            }
+            catch { }
+            error = operation.Error;
             return false;
         }
 
-        err = null;
+        error = null;
         return true;
     }
 
-    private static bool TryProcessOperation<T>(Result<T> operation, DbConnection con, CancellationTokenSource cts, out Error? err)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryProcessOperation<T>(Result<T> operation, DbConnection connection, CancellationTokenSource cancellationTokenSource, out Error? error)
     {
         if (!operation.IsSuccessful)
         {
-            con.Close();
-            cts.Cancel();
-            err = operation.Error;
+            try
+            {
+                connection?.Close();
+                cancellationTokenSource?.Cancel();
+            }
+            catch { }
+            error = operation.Error;
             return false;
         }
 
-        err = null;
+        error = null;
         return true;
     }
 
     private DbConnection GetOrCreateConnection(string connectionString, string dbType)
     {
-        var key = $"{connectionString} {dbType}";
-        return connectionPool.GetOrAdd(key, _ =>
+        if (disposed)
+            throw new ObjectDisposedException(nameof(ExtractionPipeline));
+
+        var key = string.Concat(connectionString.AsSpan(), " ".AsSpan(), dbType.AsSpan());
+        
+        var pooledConnection = connectionPool.GetOrAdd(key, _ =>
         {
             logger.Debug("Creating new database connection for {DbType}", dbType);
 
+            var enhancedConnectionString = DBExchange.SupportsMARS(dbType) 
+                ? connectionString + ";MultipleActiveResultSets=True"
+                : connectionString;
+
             if (DBExchange.SupportsMARS(dbType))
             {
-                connectionString += ";MultipleActiveResultSets=True";
                 logger.Debug("Enabled MARS for {DbType}", dbType);
             }
 
             var dbFactory = DBExchangeFactory.Create(dbType);
-            var connection = dbFactory.CreateConnection(connectionString);
+            var connection = dbFactory.CreateConnection(enhancedConnectionString);
             connection.Open();
 
             logger.Information("Database connection established for {DbType}", dbType);
-            return connection;
+            return new PooledConnection(connection);
         });
+
+        return pooledConnection.Connection;
     }
 
     private static async Task<Result> WriteToCsvMemoryAsync(DataTable data, Stream memory, bool writeHeader = true)
@@ -92,30 +159,35 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         var logger = Log.ForContext<ExtractionPipeline>();
         logger.Debug("Writing {RowCount} rows to CSV memory stream, WriteHeader: {WriteHeader}", data.Rows.Count, writeHeader);
 
-        using var writer = new StreamWriter(memory, leaveOpen: true);
-        using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
-
         try
         {
+            using var writer = new StreamWriter(memory, leaveOpen: true);
+            using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+
             if (writeHeader)
             {
-                foreach (DataColumn column in data.Columns)
+                int count = data.Columns.Count;
+                for (int i = 0; i < count; i++)
                 {
-                    csv.WriteField(column.ColumnName);
+                    csv.WriteField(data.Columns[i].ColumnName);
                 }
-                csv.NextRecord();
+                await csv.NextRecordAsync().ConfigureAwait(false);
             }
 
-            foreach (DataRow row in data.Rows)
+            var rowCount = data.Rows.Count;
+            var columnCount = data.Columns.Count;
+            
+            for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
             {
-                foreach (DataColumn column in data.Columns)
+                var row = data.Rows[rowIndex];
+                for (int columnIndex = 0; columnIndex < columnCount; columnIndex++)
                 {
-                    csv.WriteField(row[column]);
+                    csv.WriteField(row[columnIndex]);
                 }
-                csv.NextRecord();
+                await csv.NextRecordAsync().ConfigureAwait(false);
             }
 
-            await writer.FlushAsync();
+            await writer.FlushAsync().ConfigureAwait(false);
             logger.Debug("Successfully wrote {RowCount} rows to CSV memory stream", data.Rows.Count);
             return Result.Ok();
         }
@@ -134,8 +206,8 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         try
         {
             memory.Position = 0;
-            using var fileStream = new FileStream(filePath, FileMode.Append, FileAccess.Write);
-            await memory.CopyToAsync(fileStream);
+            using var fileStream = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 81920);
+            await memory.CopyToAsync(fileStream).ConfigureAwait(false);
             logger.Information("Successfully wrote CSV file: {FilePath} ({Size:N0} bytes)", filePath, memory.Length);
             return Result.Ok();
         }
@@ -154,27 +226,41 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         bool? shouldCheckUp = null
     )
     {
+        if (disposed)
+            throw new ObjectDisposedException(nameof(ExtractionPipeline));
+
+        ArgumentNullException.ThrowIfNull(extractions);
+        ArgumentNullException.ThrowIfNull(produceData);
+        ArgumentNullException.ThrowIfNull(consumeData);
+
         logger.Information("Starting extraction pipeline with {ExtractionCount} extractions at {RequestTime}",
             extractions.Count, requestTime);
 
-        Channel<(DataTable, Extraction)> channel = Channel.CreateUnbounded<(DataTable, Extraction)>();
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var channelOptions = new UnboundedChannelOptions
+        {
+            SingleReader = false,
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
+        };
+
+        var channel = Channel.CreateUnbounded<(DataTable, Extraction)>(channelOptions);
+        using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        Task producer = Task.Run(
-            async () => await produceData(extractions, channel, requestTime, cts.Token, shouldCheckUp),
-            cts.Token
+        var producer = Task.Run(
+            async () => await produceData(extractions, channel, requestTime, cancellationTokenSource.Token, shouldCheckUp).ConfigureAwait(false),
+            cancellationTokenSource.Token
         );
 
-        Task consumer = Task.Run(
-            async () => await consumeData(channel, requestTime, cts.Token),
-            cts.Token
+        var consumer = Task.Run(
+            async () => await consumeData(channel, requestTime, cancellationTokenSource.Token).ConfigureAwait(false),
+            cancellationTokenSource.Token
         );
 
         try
         {
-            await Task.WhenAll(producer, consumer);
+            await Task.WhenAll(producer, consumer).ConfigureAwait(false);
             stopwatch.Stop();
 
             logger.Information("Extraction pipeline completed successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
@@ -186,28 +272,14 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         }
         finally
         {
-            logger.Debug("Cleaning up {ConnectionCount} database connections", connectionPool.Count);
-
-            foreach (var connection in connectionPool.Values)
-            {
-                try
-                {
-                    await connection.CloseAsync();
-                    await connection.DisposeAsync();
-                }
-                catch (Exception ex)
-                {
-                    logger.Error(ex, "Error closing and disposing database connections during cleanup");
-                    pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
-                }
-            }
+            await CleanupConnectionsAsync().ConfigureAwait(false);
 
             if (!pipelineErrors.IsEmpty)
             {
                 logger.Warning("Pipeline completed with {ErrorCount} errors", pipelineErrors.Count);
                 if (Settings.SendWebhookOnError && !Settings.WebhookUri.IsNullOrEmpty())
                 {
-                    _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]));
+                    _ = Task.Run(async () => await Helper.SendErrorNotification(factory, [.. pipelineErrors]).ConfigureAwait(false));
                 }
             }
         }
@@ -215,58 +287,83 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         return pipelineErrors.IsEmpty ? Result.Ok() : Result.Err(pipelineErrors.ToList());
     }
 
-    private static async Task<Result<ulong>> ProduceDataCheck(Extraction e, CancellationToken t)
+    private async Task CleanupConnectionsAsync()
+    {
+        logger.Debug("Cleaning up {ConnectionCount} database connections", connectionPool.Count);
+
+        var cleanupTasks = connectionPool.Values.Select(async pooledConnection =>
+        {
+            try
+            {
+                await pooledConnection.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.Error(ex, "Error disposing database connection during cleanup");
+                pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
+            }
+        });
+
+        await Task.WhenAll(cleanupTasks).ConfigureAwait(false);
+        connectionPool.Clear();
+    }
+
+    private static async Task<Result<ulong>> ProduceDataCheck(Extraction extraction, CancellationToken token)
     {
         var logger = Log.ForContext<ExtractionPipeline>();
-        logger.Debug("Performing data check for extraction {ExtractionId} ({ExtractionName})", e.Id, e.Name);
+        logger.Debug("Performing data check for extraction {ExtractionId} ({ExtractionName})", extraction.Id, extraction.Name);
 
-        if (ReturnOnCancellation(t, out Error? err)) return err!;
-        using var cts = new CancellationTokenSource();
+        if (ReturnOnCancellation(token, out Error? error)) 
+            return error!;
 
-        var metadata = DBExchangeFactory.Create(e.Destination!.DbType);
-        using var con = metadata.CreateConnection(e.Destination.ConnectionString);
+        if (extraction.Destination is null)
+            return new Error("Extraction destination is null");
 
-        await con.OpenAsync(t);
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var metadata = DBExchangeFactory.Create(extraction.Destination.DbType);
+        using var connection = metadata.CreateConnection(extraction.Destination.ConnectionString);
 
-        var exists = await metadata.Exists(e, con);
-        if (!TryProcessOperation(exists, con, cts, out err))
+        await connection.OpenAsync(token).ConfigureAwait(false);
+
+        var exists = await metadata.Exists(extraction, connection).ConfigureAwait(false);
+        if (!TryProcessOperation(exists, connection, cancellationTokenSource, out error))
         {
-            logger.Error("Failed to check if table exists for extraction {ExtractionId}: {Error}", e.Id, err!.ExceptionMessage);
-            return err!;
+            logger.Error("Failed to check if table exists for extraction {ExtractionId}: {Error}", extraction.Id, error!.ExceptionMessage);
+            return error!;
         }
 
         ulong destinationRowCount = 0;
         if (exists.Value)
         {
-            logger.Debug("Table exists for extraction {ExtractionId}", e.Id);
+            logger.Debug("Table exists for extraction {ExtractionId}", extraction.Id);
 
-            if (!e.IsIncremental)
+            if (!extraction.IsIncremental)
             {
-                logger.Information("Truncating table for non-incremental extraction {ExtractionId}", e.Id);
-                var truncate = await metadata.TruncateTable(e, con);
-                if (!TryProcessOperation(truncate, con, cts, out err))
+                logger.Information("Truncating table for non-incremental extraction {ExtractionId}", extraction.Id);
+                var truncate = await metadata.TruncateTable(extraction, connection).ConfigureAwait(false);
+                if (!TryProcessOperation(truncate, connection, cancellationTokenSource, out error))
                 {
-                    logger.Error("Failed to truncate table for extraction {ExtractionId}: {Error}", e.Id, err!.ExceptionMessage);
-                    return err!;
+                    logger.Error("Failed to truncate table for extraction {ExtractionId}: {Error}", extraction.Id, error!.ExceptionMessage);
+                    return error!;
                 }
             }
 
-            var count = await metadata.CountTableRows(e, con);
-            if (!TryProcessOperation(count, con, cts, out err))
+            var count = await metadata.CountTableRows(extraction, connection).ConfigureAwait(false);
+            if (!TryProcessOperation(count, connection, cancellationTokenSource, out error))
             {
-                logger.Error("Failed to count table rows for extraction {ExtractionId}: {Error}", e.Id, err!.ExceptionMessage);
-                return err!;
+                logger.Error("Failed to count table rows for extraction {ExtractionId}: {Error}", extraction.Id, error!.ExceptionMessage);
+                return error!;
             }
 
             destinationRowCount = count.Value;
-            logger.Debug("Destination table has {RowCount} rows for extraction {ExtractionId}", destinationRowCount, e.Id);
+            logger.Debug("Destination table has {RowCount} rows for extraction {ExtractionId}", destinationRowCount, extraction.Id);
         }
         else
         {
-            logger.Debug("Table does not exist for extraction {ExtractionId}", e.Id);
+            logger.Debug("Table does not exist for extraction {ExtractionId}", extraction.Id);
         }
 
-        await con.CloseAsync();
+        await connection.CloseAsync().ConfigureAwait(false);
         return destinationRowCount;
     }
 
@@ -276,10 +373,16 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         CancellationToken token
     )
     {
+        ArgumentNullException.ThrowIfNull(extractions);
+        ArgumentNullException.ThrowIfNull(channel);
+
         logger.Information("Starting HTTP data production for {ExtractionCount} extractions", extractions.Count);
 
-        ParallelOptions options = Settings.ParallelRule.Value;
-        options.CancellationToken = token;
+        var options = new ParallelOptions
+        {
+            CancellationToken = token,
+            MaxDegreeOfParallelism = Settings.ParallelRule.Value.MaxDegreeOfParallelism
+        };
 
         if (token.IsCancellationRequested) return;
 
@@ -288,18 +391,18 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
         try
         {
-            await Parallel.ForEachAsync(extractions, options, async (extraction, t) =>
+            await Parallel.ForEachAsync(extractions, options, async (extraction, cancellationToken) =>
             {
                 var extractionLogger = logger.ForContext("ExtractionId", extraction.Id)
                                            .ForContext("ExtractionName", extraction.Name);
 
-                if (t.IsCancellationRequested) return;
+                if (cancellationToken.IsCancellationRequested) return;
 
                 extractionLogger.Debug("Starting HTTP data fetch for extraction {ExtractionId}", extraction.Id);
 
-                var (exchange, httpMethod) = HTTPExchangeFactory.Create(factory!, extraction.PaginationType, extraction.HttpMethod);
+                var (exchange, httpMethod) = HTTPExchangeFactory.Create(factory, extraction.PaginationType, extraction.HttpMethod);
 
-                var fetchResult = await exchange.FetchEndpointData(extraction, httpMethod);
+                var fetchResult = await exchange.FetchEndpointData(extraction, httpMethod).ConfigureAwait(false);
                 if (!fetchResult.IsSuccessful)
                 {
                     extractionLogger.Error("HTTP fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, fetchResult.Error.ExceptionMessage);
@@ -318,10 +421,10 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                 extractionLogger.Information("HTTP data fetch completed for extraction {ExtractionId}: {RowCount} rows",
                     extraction.Id, dataTableResult.Value.Rows.Count);
 
-                await channel.Writer.WriteAsync((dataTableResult.Value, extraction), t);
+                await channel.Writer.WriteAsync((dataTableResult.Value, extraction), cancellationToken).ConfigureAwait(false);
 
                 Interlocked.Increment(ref completedCount);
-            });
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -344,9 +447,12 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         CancellationToken token
     )
     {
+        ArgumentNullException.ThrowIfNull(extractions);
+        ArgumentNullException.ThrowIfNull(channel);
+
         logger.Information("Starting script data production for {ExtractionCount} extractions", extractions.Count);
 
-        if (scriptEngine == null)
+        if (scriptEngine is null)
         {
             logger.Error("Script engine not configured for script-based extractions");
             pipelineErrors.Add(new Error("Script engine not configured"));
@@ -354,8 +460,11 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
             return;
         }
 
-        ParallelOptions options = Settings.ParallelRule.Value;
-        options.CancellationToken = token;
+        var options = new ParallelOptions
+        {
+            CancellationToken = token,
+            MaxDegreeOfParallelism = Settings.ParallelRule.Value.MaxDegreeOfParallelism
+        };
 
         if (token.IsCancellationRequested) return;
 
@@ -364,12 +473,12 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
         try
         {
-            await Parallel.ForEachAsync(extractions, options, async (extraction, t) =>
+            await Parallel.ForEachAsync(extractions, options, async (extraction, cancellationToken) =>
             {
                 var extractionLogger = logger.ForContext("ExtractionId", extraction.Id)
                                            .ForContext("ExtractionName", extraction.Name);
 
-                if (t.IsCancellationRequested || !extraction.IsScriptBased) return;
+                if (cancellationToken.IsCancellationRequested || !extraction.IsScriptBased) return;
 
                 extractionLogger.Debug("Starting script execution for extraction {ExtractionId}", extraction.Id);
 
@@ -380,7 +489,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                     OverrideFilter = overrideFilter,
                 };
 
-                var result = await scriptEngine.ExecuteAsync(extraction.Script!, scriptContext, t);
+                var result = await scriptEngine.ExecuteAsync(extraction.Script!, scriptContext, cancellationToken).ConfigureAwait(false);
                 if (!result.IsSuccessful)
                 {
                     extractionLogger.Error("Script execution failed for extraction {ExtractionId}: {Error}", extraction.Id, result.Error.ExceptionMessage);
@@ -391,10 +500,10 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                 extractionLogger.Information("Script execution completed for extraction {ExtractionId}: {RowCount} rows",
                     extraction.Id, result.Value.Rows.Count);
 
-                await channel.Writer.WriteAsync((result.Value, extraction), t);
+                await channel.Writer.WriteAsync((result.Value, extraction), cancellationToken).ConfigureAwait(false);
 
                 Interlocked.Increment(ref completedCount);
-            });
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -418,12 +527,18 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
         bool? hasCheckUp = null
     )
     {
+        ArgumentNullException.ThrowIfNull(extractions);
+        ArgumentNullException.ThrowIfNull(channel);
+
         logger.Information("Starting database data production for {ExtractionCount} extractions", extractions.Count);
 
         if (token.IsCancellationRequested) return;
 
-        ParallelOptions options = Settings.ParallelRule.Value;
-        options.CancellationToken = token;
+        var options = new ParallelOptions
+        {
+            CancellationToken = token,
+            MaxDegreeOfParallelism = Settings.ParallelRule.Value.MaxDegreeOfParallelism
+        };
 
         var completedCount = 0;
         var totalRowsProduced = 0L;
@@ -431,64 +546,73 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
         try
         {
-            await Parallel.ForEachAsync(extractions, options, async (e, t) =>
+            await Parallel.ForEachAsync(extractions, options, async (extraction, cancellationToken) =>
             {
-                var extractionLogger = logger.ForContext("ExtractionId", e.Id)
-                                        .ForContext("ExtractionName", e.Name);
+                var extractionLogger = logger.ForContext("ExtractionId", extraction.Id)
+                                        .ForContext("ExtractionName", extraction.Name);
 
-                if (t.IsCancellationRequested) return;
-                if (e.Origin is null) return;
-                if (e.Origin.DbType is null || e.Origin.ConnectionString is null) return;
+                if (cancellationToken.IsCancellationRequested) return;
+                if (extraction.Origin is null) return;
+                if (extraction.Origin.DbType is null || extraction.Origin.ConnectionString is null) return;
 
-                extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId}", e.Id);
+                extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId}", extraction.Id);
 
                 bool shouldPartition = false;
 
                 if (hasCheckUp is not null && hasCheckUp.Value)
                 {
-                    var res = await ProduceDataCheck(e, t);
-                    if (!res.IsSuccessful)
+                    var result = await ProduceDataCheck(extraction, cancellationToken).ConfigureAwait(false);
+                    if (!result.IsSuccessful)
                     {
-                        extractionLogger.Error("Data check failed for extraction {ExtractionId}", e.Id);
+                        extractionLogger.Error("Data check failed for extraction {ExtractionId}", extraction.Id);
                         return;
                     }
-                    shouldPartition = res.Value > 0;
+                    shouldPartition = result.Value > 0;
 
                     if (shouldPartition)
                     {
                         extractionLogger.Information("Using partitioned fetch for extraction {ExtractionId} (existing rows: {ExistingRows})",
-                            e.Id, res.Value);
+                            extraction.Id, result.Value);
                     }
                 }
 
-                var fetcher = DBExchangeFactory.Create(e.Origin.DbType);
+                var fetcher = DBExchangeFactory.Create(extraction.Origin.DbType);
                 var extractionRowCount = 0;
-
                 ulong currentOffset = 0;
 
-                while (!t.IsCancellationRequested)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    Result<DataTable> attempt = await fetcher.FetchDataTable(
-                        e,
-                        requestTime,
-                        shouldPartition,
-                        currentOffset,
-                        GetOrCreateConnection(e.Origin.ConnectionString, e.Origin.DbType),
-                        t,
-                        overrideFilter,
-                        Settings.ProducerLineMax
-                    );
+                    Result<DataTable> attempt;
+                    try
+                    {
+                        var connection = GetOrCreateConnection(extraction.Origin.ConnectionString, extraction.Origin.DbType);
+                        attempt = await fetcher.FetchDataTable(
+                            extraction,
+                            requestTime,
+                            shouldPartition,
+                            currentOffset,
+                            connection,
+                            cancellationToken,
+                            overrideFilter,
+                            Settings.ProducerLineMax
+                        ).ConfigureAwait(false);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        extractionLogger.Warning("Connection disposed during fetch for extraction {ExtractionId}", extraction.Id);
+                        break;
+                    }
 
                     if (!attempt.IsSuccessful)
                     {
-                        extractionLogger.Error("Database fetch failed for extraction {ExtractionId}: {Error}", e.Id, attempt.Error.ExceptionMessage);
+                        extractionLogger.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, attempt.Error.ExceptionMessage);
                         pipelineErrors.Add(attempt.Error);
                         break;
                     }
 
                     if (attempt.Value.Rows.Count == 0)
                     {
-                        extractionLogger.Debug("No more data to fetch for extraction {ExtractionId}", e.Id);
+                        extractionLogger.Debug("No more data to fetch for extraction {ExtractionId}", extraction.Id);
                         break;
                     }
 
@@ -497,21 +621,21 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                     Interlocked.Add(ref totalRowsProduced, attempt.Value.Rows.Count);
 
                     extractionLogger.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched})",
-                        attempt.Value.Rows.Count, e.Id, currentOffset);
+                        attempt.Value.Rows.Count, extraction.Id, currentOffset);
 
-                    Helper.GetAndSetByteUsageForExtraction(attempt.Value, e.Id, jobTracker);
+                    Helper.GetAndSetByteUsageForExtraction(attempt.Value, extraction.Id, jobTracker);
 
-                    await channel.Writer.WriteAsync((attempt.Value, e), t);
+                    await channel.Writer.WriteAsync((attempt.Value, extraction), cancellationToken).ConfigureAwait(false);
                 }
 
                 if (extractionRowCount > 0)
                 {
                     extractionLogger.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows",
-                        e.Id, extractionRowCount);
+                        extraction.Id, extractionRowCount);
                 }
 
                 Interlocked.Increment(ref completedCount);
-            });
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -529,12 +653,17 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
     public async Task ConsumeDataToCsv(Channel<(DataTable, Extraction)> channel, DateTime requestTime, CancellationToken token)
     {
+        ArgumentNullException.ThrowIfNull(channel);
+
         logger.Information("Starting CSV data consumption");
 
         if (token.IsCancellationRequested) return;
 
-        ParallelOptions options = Settings.ParallelRule.Value;
-        options.CancellationToken = token;
+        var options = new ParallelOptions
+        {
+            CancellationToken = token,
+            MaxDegreeOfParallelism = Settings.ParallelRule.Value.MaxDegreeOfParallelism
+        };
 
         var totalRowsProcessed = 0L;
         var totalFilesCreated = 0;
@@ -542,7 +671,7 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
         try
         {
-            while (await channel.Reader.WaitToReadAsync(token))
+            while (await channel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
             {
                 if (token.IsCancellationRequested) return;
 
@@ -555,54 +684,54 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
                 logger.Debug("Processing batch of {BatchSize} extractions for CSV output", fetchedData.Count);
 
-                await Parallel.ForEachAsync(fetchedData, options, async (e, t) =>
+                await Parallel.ForEachAsync(fetchedData, options, async (item, cancellationToken) =>
                 {
-                    var extractionLogger = logger.ForContext("ExtractionId", e.metadata.Id)
-                                            .ForContext("ExtractionName", e.metadata.Name);
+                    var extractionLogger = logger.ForContext("ExtractionId", item.metadata.Id)
+                                            .ForContext("ExtractionName", item.metadata.Name);
 
-                    if (options.CancellationToken.IsCancellationRequested) return;
+                    if (cancellationToken.IsCancellationRequested) return;
 
                     Result insertTaskResult = Result.Ok();
 
-                    string tableKey = e.metadata.Alias ?? e.metadata.Name;
+                    string tableKey = item.metadata.Alias ?? item.metadata.Name;
                     string filePath = Path.Combine(Settings.CsvOutputPath, $"{tableKey}_{requestTime:yyyyMMddHH}.csv");
 
                     bool writeHeader = !File.Exists(filePath);
 
                     extractionLogger.Debug("Writing {RowCount} rows to CSV file: {FilePath} (WriteHeader: {WriteHeader})",
-                        e.data.Rows.Count, filePath, writeHeader);
+                        item.data.Rows.Count, filePath, writeHeader);
 
                     for (byte attempt = 0; attempt < Settings.PipelineAttemptMax; attempt++)
                     {
                         if (attempt > 0)
                         {
                             extractionLogger.Warning("Retrying CSV write for extraction {ExtractionId}, attempt {Attempt}",
-                                e.metadata.Id, attempt + 1);
+                                item.metadata.Id, attempt + 1);
                         }
 
                         using var memory = new MemoryStream();
-                        var writeToMemory = await WriteToCsvMemoryAsync(e.data, memory, writeHeader);
+                        var writeToMemory = await WriteToCsvMemoryAsync(item.data, memory, writeHeader).ConfigureAwait(false);
 
                         if (!writeToMemory.IsSuccessful)
                         {
                             insertTaskResult = Result.Err(writeToMemory.Error);
-                            await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), t);
+                            await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                             continue;
                         }
 
-                        var writeToFile = await WriteMemoryStreamToFileAsync(memory, filePath);
+                        var writeToFile = await WriteMemoryStreamToFileAsync(memory, filePath).ConfigureAwait(false);
 
                         if (!writeToFile.IsSuccessful)
                         {
                             insertTaskResult = Result.Err(writeToFile.Error);
-                            await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), t);
+                            await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                             continue;
                         }
 
                         extractionLogger.Information("Successfully wrote CSV file for extraction {ExtractionId}: {FilePath} ({RowCount} rows)",
-                            e.metadata.Id, filePath, e.data.Rows.Count);
+                            item.metadata.Id, filePath, item.data.Rows.Count);
 
-                        Interlocked.Add(ref totalRowsProcessed, e.data.Rows.Count);
+                        Interlocked.Add(ref totalRowsProcessed, item.data.Rows.Count);
                         Interlocked.Increment(ref totalFilesCreated);
 
                         insertTaskResult = Result.Ok();
@@ -612,12 +741,12 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                     if (!insertTaskResult.IsSuccessful)
                     {
                         extractionLogger.Error("Failed to write CSV file for extraction {ExtractionId} after {MaxAttempts} attempts",
-                            e.metadata.Id, Settings.PipelineAttemptMax);
+                            item.metadata.Id, Settings.PipelineAttemptMax);
                         pipelineErrors.Add(insertTaskResult.Error);
                     }
 
-                    e.data.Dispose();
-                });
+                    item.data.Dispose();
+                }).ConfigureAwait(false);
             }
         }
         finally
@@ -630,21 +759,26 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
     public async Task ConsumeDataToDB(Channel<(DataTable, Extraction)> channel, DateTime requestTime, CancellationToken token)
     {
+        ArgumentNullException.ThrowIfNull(channel);
+
         logger.Information("Starting database data consumption");
 
         if (token.IsCancellationRequested) return;
 
-        ParallelOptions options = Settings.ParallelRule.Value;
-        options.CancellationToken = token;
-        Dictionary<string, bool> tablesExecutionState = [];
-
+        var options = new ParallelOptions
+        {
+            CancellationToken = token,
+            MaxDegreeOfParallelism = Settings.ParallelRule.Value.MaxDegreeOfParallelism
+        };
+        
+        var tablesExecutionState = new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
         var totalRowsProcessed = 0L;
         var totalTablesProcessed = 0;
         var startTime = DateTime.UtcNow;
 
         try
         {
-            while (await channel.Reader.WaitToReadAsync(token))
+            while (await channel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
             {
                 if (token.IsCancellationRequested) return;
 
@@ -657,26 +791,26 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
 
                 logger.Debug("Processing batch of {BatchSize} extractions for database output", fetchedData.Count);
 
-                await Parallel.ForEachAsync(fetchedData, options, async (e, t) =>
+                await Parallel.ForEachAsync(fetchedData, options, async (item, cancellationToken) =>
                 {
-                    var extractionLogger = logger.ForContext("ExtractionId", e.metadata.Id)
-                                            .ForContext("ExtractionName", e.metadata.Name);
+                    var extractionLogger = logger.ForContext("ExtractionId", item.metadata.Id)
+                                            .ForContext("ExtractionName", item.metadata.Name);
 
-                    if (t.IsCancellationRequested) return;
-                    if (e.metadata.Destination is null) return;
+                    if (cancellationToken.IsCancellationRequested) return;
+                    if (item.metadata.Destination is null) return;
 
                     Result insertTaskResult = Result.Ok();
-                    var inserter = DBExchangeFactory.Create(e.metadata.Destination.DbType);
-                    DbConnection? con = null;
+                    var inserter = DBExchangeFactory.Create(item.metadata.Destination.DbType);
+                    DbConnection? connection = null;
 
                     try
                     {
-                        con = inserter.CreateConnection(e.metadata.Destination.ConnectionString);
-                        await con.OpenAsync(t);
-                        string tableKey = e.metadata.Alias ?? e.metadata.Name;
+                        connection = inserter.CreateConnection(item.metadata.Destination.ConnectionString);
+                        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                        string tableKey = item.metadata.Alias ?? item.metadata.Name;
 
                         extractionLogger.Debug("Processing {RowCount} rows for table {TableKey} in {DbType}",
-                            e.data.Rows.Count, tableKey, e.metadata.Destination.DbType);
+                            item.data.Rows.Count, tableKey, item.metadata.Destination.DbType);
 
                         bool operationSuccessful = false;
 
@@ -685,45 +819,48 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                             if (attempt > 0)
                             {
                                 extractionLogger.Warning("Retrying database operation for extraction {ExtractionId}, attempt {Attempt}",
-                                    e.metadata.Id, attempt + 1);
+                                    item.metadata.Id, attempt + 1);
                             }
 
                             try
                             {
-                                var exists = await inserter.Exists(e.metadata, con);
+                                var exists = await inserter.Exists(item.metadata, connection).ConfigureAwait(false);
                                 if (!exists.IsSuccessful)
                                 {
                                     insertTaskResult = Result.Err(exists.Error);
-                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), t);
+                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                                     continue;
                                 }
 
                                 if (!exists.Value)
                                 {
                                     extractionLogger.Information("Creating table {TableKey} for extraction {ExtractionId}",
-                                        tableKey, e.metadata.Id);
-                                    var createResult = await inserter.CreateTable(e.data, e.metadata, con);
+                                        tableKey, item.metadata.Id);
+                                    var createResult = await inserter.CreateTable(item.data, item.metadata, connection).ConfigureAwait(false);
                                     if (!createResult.IsSuccessful)
                                     {
                                         insertTaskResult = Result.Err(createResult.Error);
-                                        await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), t);
+                                        await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                                         continue;
                                     }
                                 }
 
-                                var count = await inserter.CountTableRows(e.metadata, con);
+                                var count = await inserter.CountTableRows(item.metadata, connection).ConfigureAwait(false);
                                 if (!count.IsSuccessful)
                                 {
                                     insertTaskResult = Result.Err(count.Error);
-                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), t);
+                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                                     continue;
                                 }
 
-                                if (!tablesExecutionState.TryGetValue(tableKey, out bool isBulkInsertContinuousExecution))
-                                {
-                                    isBulkInsertContinuousExecution = count.Value == 0;
-                                    tablesExecutionState[tableKey] = isBulkInsertContinuousExecution;
+                                bool isBulkInsertContinuousExecution = tablesExecutionState.GetOrAdd(tableKey, _ => count.Value == 0);
 
+                                if (tablesExecutionState.TryGetValue(tableKey, out var currentStrategy) && currentStrategy != isBulkInsertContinuousExecution)
+                                {
+                                    isBulkInsertContinuousExecution = currentStrategy;
+                                }
+                                else if (!tablesExecutionState.ContainsKey(tableKey))
+                                {
                                     extractionLogger.Information("Table {TableKey} load strategy: {Strategy} (existing rows: {ExistingRows})",
                                         tableKey, isBulkInsertContinuousExecution ? "BulkLoad" : "MergeLoad", count.Value);
                                 }
@@ -732,12 +869,12 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                                 if (isBulkInsertContinuousExecution)
                                 {
                                     extractionLogger.Debug("Performing bulk load for table {TableKey}", tableKey);
-                                    loadResult = await inserter.BulkLoad(e.data, e.metadata, con);
+                                    loadResult = await inserter.BulkLoad(item.data, item.metadata, connection).ConfigureAwait(false);
                                 }
                                 else
                                 {
                                     extractionLogger.Debug("Performing merge load for table {TableKey}", tableKey);
-                                    loadResult = await inserter.MergeLoad(e.data, e.metadata, requestTime, con);
+                                    loadResult = await inserter.MergeLoad(item.data, item.metadata, requestTime, connection).ConfigureAwait(false);
                                 }
 
                                 if (!loadResult.IsSuccessful)
@@ -749,10 +886,10 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                                     if (isBulkInsertContinuousExecution && attempt < Settings.PipelineAttemptMax - 1)
                                     {
                                         extractionLogger.Information("Switching from bulk load to merge load for table {TableKey} due to failure", tableKey);
-                                        tablesExecutionState[tableKey] = false;
+                                        tablesExecutionState.TryUpdate(tableKey, false, true);
                                     }
 
-                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), t);
+                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                                     continue;
                                 }
 
@@ -760,20 +897,20 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                                 insertTaskResult = Result.Ok();
 
                                 extractionLogger.Information("Successfully processed {RowCount} rows for table {TableKey}",
-                                    e.data.Rows.Count, tableKey);
+                                    item.data.Rows.Count, tableKey);
 
-                                Interlocked.Add(ref totalRowsProcessed, e.data.Rows.Count);
+                                Interlocked.Add(ref totalRowsProcessed, item.data.Rows.Count);
                                 Interlocked.Increment(ref totalTablesProcessed);
                             }
                             catch (Exception retryEx)
                             {
                                 extractionLogger.Warning(retryEx, "Exception during database operation attempt {Attempt} for extraction {ExtractionId}",
-                                    attempt + 1, e.metadata.Id);
+                                    attempt + 1, item.metadata.Id);
                                 insertTaskResult = Result.Err(new Error(retryEx.Message, retryEx.StackTrace));
 
                                 if (attempt < Settings.PipelineAttemptMax - 1)
                                 {
-                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), t);
+                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                                 }
                             }
                         }
@@ -781,33 +918,33 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
                         if (!operationSuccessful)
                         {
                             extractionLogger.Error("Failed to process table {TableKey} for extraction {ExtractionId} after {MaxAttempts} attempts",
-                                tableKey, e.metadata.Id, Settings.PipelineAttemptMax);
+                                tableKey, item.metadata.Id, Settings.PipelineAttemptMax);
                             pipelineErrors.Add(insertTaskResult.Error);
                         }
                     }
                     catch (Exception ex)
                     {
-                        extractionLogger.Error(ex, "Unexpected error processing extraction {ExtractionId}", e.metadata.Id);
+                        extractionLogger.Error(ex, "Unexpected error processing extraction {ExtractionId}", item.metadata.Id);
                         pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
                     }
                     finally
                     {
-                        if (con is not null)
+                        if (connection is not null)
                         {
                             try
                             {
-                                await con.CloseAsync();
-                                await con.DisposeAsync();
+                                await connection.CloseAsync().ConfigureAwait(false);
+                                await connection.DisposeAsync().ConfigureAwait(false);
                             }
                             catch (Exception disposeEx)
                             {
-                                extractionLogger.Warning(disposeEx, "Error disposing connection for extraction {ExtractionId}", e.metadata.Id);
+                                extractionLogger.Warning(disposeEx, "Error disposing connection for extraction {ExtractionId}", item.metadata.Id);
                             }
                         }
 
-                        e.data.Dispose();
+                        item.data.Dispose();
                     }
-                });
+                }).ConfigureAwait(false);
             }
         }
         finally
@@ -822,25 +959,17 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
     {
         if (disposed) return;
 
-        logger.Debug("Disposing extraction pipeline (async)");
-
-        foreach (var connection in connectionPool.Values)
+        lock (disposeLock)
         {
-            try
-            {
-                await connection.CloseAsync();
-                await connection.DisposeAsync();
-            }
-            catch (Exception ex)
-            {
-                logger.Warning(ex, "Error disposing database connection during async cleanup");
-            }
+            if (disposed) return;
+            disposed = true;
         }
 
-        connectionPool.Clear();
-        disposed = true;
-        GC.SuppressFinalize(this);
+        logger.Debug("Disposing extraction pipeline (async)");
 
+        await CleanupConnectionsAsync().ConfigureAwait(false);
+
+        GC.SuppressFinalize(this);
         logger.Debug("Extraction pipeline disposed successfully");
     }
 
@@ -848,25 +977,38 @@ public class ExtractionPipeline(DateTime requestTime, IHttpClientFactory factory
     {
         if (disposed) return;
 
+        lock (disposeLock)
+        {
+            if (disposed) return;
+            disposed = true;
+        }
+
         logger.Debug("Disposing extraction pipeline (sync)");
 
-        foreach (var connection in connectionPool.Values)
+        var disposeTasks = connectionPool.Values.Select(pooledConnection =>
         {
             try
             {
-                connection.Close();
-                connection.Dispose();
+                pooledConnection.Dispose();
             }
             catch (Exception ex)
             {
                 logger.Warning(ex, "Error disposing database connection during sync cleanup");
             }
+            return Task.CompletedTask;
+        });
+
+        try
+        {
+            Task.WaitAll([.. disposeTasks], TimeSpan.FromSeconds(30));
+        }
+        catch (Exception ex)
+        {
+            logger.Warning(ex, "Timeout or error during synchronous disposal");
         }
 
         connectionPool.Clear();
-        disposed = true;
         GC.SuppressFinalize(this);
-
         logger.Debug("Extraction pipeline disposed successfully");
     }
 }
