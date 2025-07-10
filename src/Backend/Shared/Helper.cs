@@ -1,16 +1,35 @@
 using System.Data;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Conductor.Logging;
 using Conductor.Model;
 using Conductor.Types;
-using Microsoft.IdentityModel.Tokens;
-using Serilog;
 
 namespace Conductor.Shared;
 
 public static class Helper
 {
+    private static readonly Dictionary<Type, long> typeBaseSizes = new()
+    {
+        [typeof(string)] = Settings.DefaultStringEstimateBytes,
+        [typeof(byte[])] = Settings.DefaultByteArrayEstimateBytes,
+        [typeof(DateTime)] = sizeof(long),
+        [typeof(bool)] = sizeof(bool),
+        [typeof(int)] = sizeof(int),
+        [typeof(long)] = sizeof(long),
+        [typeof(decimal)] = sizeof(decimal),
+        [typeof(double)] = sizeof(double),
+        [typeof(float)] = sizeof(float),
+        [typeof(short)] = sizeof(short),
+        [typeof(byte)] = sizeof(byte),
+        [typeof(char)] = sizeof(char),
+        [typeof(uint)] = sizeof(uint),
+        [typeof(ulong)] = sizeof(ulong),
+        [typeof(ushort)] = sizeof(ushort),
+        [typeof(sbyte)] = sizeof(sbyte)
+    };
+
     public static void ShowHelp()
     {
         ShowSignature();
@@ -39,18 +58,188 @@ public static class Helper
         );
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long GetTypeBaseSize(Type type)
+    {
+        return typeBaseSizes.TryGetValue(type, out var size) ? size : Settings.DefaultTypeEstimateBytes;
+    }
+
     public static long CalculateBytesUsed(DataTable data)
     {
-        long bytes = 0;
-        foreach (DataRow row in data.Rows)
+        if (Settings.EnableAccurateMemoryCalculation)
         {
-            foreach (DataColumn col in data.Columns)
+            return CalculateAccurateDataTableBytes(data);
+        }
+        else
+        {
+            return EstimateDataTableMemory(data);
+        }
+    }
+
+    public static long EstimateDataTableMemory(DataTable dataTable)
+    {
+        if (dataTable?.Rows is null || dataTable.Rows.Count == 0)
+            return Settings.DataTableColumnOverheadBytes * (dataTable?.Columns.Count ?? 0);
+
+        long totalBytes = 0;
+        var rowCount = dataTable.Rows.Count;
+        var columnCount = dataTable.Columns.Count;
+
+        foreach (DataColumn column in dataTable.Columns)
+        {
+            var baseTypeSize = GetTypeBaseSize(column.DataType);
+
+            if (column.DataType == typeof(string))
             {
-                if (row[col] is null || row[col] == DBNull.Value) continue;
-                bytes += GetTypeByteSize(row[col], col.DataType);
+                totalBytes += EstimateStringColumnSize(dataTable, column, rowCount);
+            }
+            else if (column.DataType == typeof(byte[]))
+            {
+                totalBytes += EstimateByteArrayColumnSize(dataTable, column, rowCount);
+            }
+            else
+            {
+                totalBytes += baseTypeSize * rowCount;
             }
         }
-        return bytes;
+
+        totalBytes += Settings.DataTableColumnOverheadBytes * columnCount;
+        totalBytes += Settings.DataTableRowOverheadBytes * rowCount;
+        totalBytes += Settings.DataTableStructureOverheadBytes;
+
+        return totalBytes;
+    }
+
+    public static long CalculateAccurateDataTableBytes(DataTable dataTable)
+    {
+        if (dataTable?.Rows is null || dataTable.Rows.Count == 0)
+            return Settings.DataTableColumnOverheadBytes * (dataTable?.Columns.Count ?? 0);
+
+        long totalBytes = 0;
+
+        foreach (DataRow row in dataTable.Rows)
+        {
+            foreach (DataColumn column in dataTable.Columns)
+            {
+                var value = row[column];
+                if (value is null || value == DBNull.Value) continue;
+
+                totalBytes += GetAccurateValueSize(value, column.DataType);
+            }
+        }
+
+        totalBytes += Settings.DataTableColumnOverheadBytes * dataTable.Columns.Count;
+        totalBytes += Settings.DataTableRowOverheadBytes * dataTable.Rows.Count;
+        totalBytes += Settings.DataTableStructureOverheadBytes;
+
+        return totalBytes;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long GetAccurateValueSize(object value, Type type)
+    {
+        return type switch
+        {
+            _ when type == typeof(string) => Encoding.UTF8.GetByteCount((string)value),
+            _ when type == typeof(byte[]) => ((byte[])value).LongLength,
+            _ when type == typeof(DateTime) => sizeof(long),
+            _ when type == typeof(bool) => sizeof(bool),
+            _ when type == typeof(int) => sizeof(int),
+            _ when type == typeof(long) => sizeof(long),
+            _ when type == typeof(decimal) => sizeof(decimal),
+            _ when type == typeof(double) => sizeof(double),
+            _ when type == typeof(float) => sizeof(float),
+            _ when type == typeof(short) => sizeof(short),
+            _ when type == typeof(byte) => sizeof(byte),
+            _ when type == typeof(char) => sizeof(char),
+            _ when type == typeof(uint) => sizeof(uint),
+            _ when type == typeof(ulong) => sizeof(ulong),
+            _ when type == typeof(ushort) => sizeof(ushort),
+            _ when type == typeof(sbyte) => sizeof(sbyte),
+            _ => GetFallbackValueSize(value)
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long GetFallbackValueSize(object value)
+    {
+        var str = value.ToString();
+        return str?.Length * sizeof(char) ?? Settings.DefaultTypeEstimateBytes;
+    }
+
+    private static long EstimateStringColumnSize(DataTable dataTable, DataColumn column, int rowCount)
+    {
+        if (rowCount == 0) return 0;
+
+        var sampleSize = Math.Min(Settings.StringEstimateSampleSize, rowCount);
+        var sampleRows = GetSampleRows(dataTable, sampleSize);
+
+        long totalSampleLength = 0;
+        int validSamples = 0;
+
+        foreach (var row in sampleRows)
+        {
+            var value = row[column];
+            if (value is not null && value != DBNull.Value && value is string str)
+            {
+                totalSampleLength += Encoding.UTF8.GetByteCount(str);
+                validSamples++;
+            }
+        }
+
+        if (validSamples == 0)
+            return Settings.DefaultStringEstimateBytes * rowCount;
+
+        var averageStringSize = totalSampleLength / validSamples;
+        var adjustedAverage = Math.Max(averageStringSize, Settings.MinStringEstimateBytes);
+
+        return adjustedAverage * rowCount;
+    }
+
+    private static long EstimateByteArrayColumnSize(DataTable dataTable, DataColumn column, int rowCount)
+    {
+        if (rowCount == 0) return 0;
+
+        var sampleSize = Math.Min(Settings.ByteArrayEstimateSampleSize, rowCount);
+        var sampleRows = GetSampleRows(dataTable, sampleSize);
+
+        long totalSampleLength = 0;
+        int validSamples = 0;
+
+        foreach (var row in sampleRows)
+        {
+            var value = row[column];
+            if (value is not null && value != DBNull.Value && value is byte[] bytes)
+            {
+                totalSampleLength += bytes.LongLength;
+                validSamples++;
+            }
+        }
+
+        if (validSamples == 0)
+            return Settings.DefaultByteArrayEstimateBytes * rowCount;
+
+        var averageArraySize = totalSampleLength / validSamples;
+        return averageArraySize * rowCount;
+    }
+
+    private static IEnumerable<DataRow> GetSampleRows(DataTable dataTable, int sampleSize)
+    {
+        var rowCount = dataTable.Rows.Count;
+        if (sampleSize >= rowCount)
+        {
+            return dataTable.Rows.Cast<DataRow>();
+        }
+
+        var step = Math.Max(1, rowCount / sampleSize);
+        var samples = new List<DataRow>(sampleSize);
+
+        for (int i = 0; i < rowCount && samples.Count < sampleSize; i += step)
+        {
+            samples.Add(dataTable.Rows[i]);
+        }
+
+        return samples;
     }
 
     public static async Task SendErrorNotification(IHttpClientFactory clientFactory, Error[] errors)
@@ -105,21 +294,7 @@ public static class Helper
 
     public static long GetTypeByteSize(object value, Type type)
     {
-        return type switch
-        {
-            _ when type == typeof(string) => Encoding.UTF8.GetByteCount((string)value),
-            _ when type == typeof(byte[]) => ((byte[])value).LongLength,
-            _ when type == typeof(DateTime) => sizeof(long),
-            _ when type == typeof(bool) => sizeof(bool),
-            _ when type == typeof(int) => sizeof(int),
-            _ when type == typeof(long) => sizeof(long),
-            _ when type == typeof(decimal) => sizeof(decimal),
-            _ when type == typeof(double) => sizeof(double),
-            _ when type == typeof(float) => sizeof(float),
-            _ when type == typeof(short) => sizeof(short),
-            _ when type == typeof(byte) => sizeof(byte),
-            _ => value.ToString()?.Length * sizeof(char) ?? 0
-        };
+        return GetAccurateValueSize(value, type);
     }
 
     public static void DecryptConnectionStrings(List<Extraction> extractions, string? encryptionKey = null)

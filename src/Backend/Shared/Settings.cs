@@ -45,6 +45,66 @@ public static class Settings
         WriteIndented = true
     });
 
+    [ConfigKey("FILE_STREAM_BUFFER_SIZE")]
+    public static int FileStreamBufferSize { get; set; }
+
+    [ConfigKey("CONNECTION_POOL_MAX_SIZE")]
+    public static int ConnectionPoolMaxSize { get; set; }
+
+    [ConfigKey("CONNECTION_POOL_MIN_SIZE")]
+    public static int ConnectionPoolMinSize { get; set; }
+
+    [ConfigKey("CONNECTION_IDLE_TIMEOUT_MINUTES")]
+    public static int ConnectionIdleTimeoutMinutes { get; set; }
+
+    [ConfigKey("DATATABLE_LIFETIME_MINUTES")]
+    public static int DataTableLifetimeMinutes { get; set; }
+
+    [ConfigKey("DATATABLE_CLEANUP_INTERVAL_MINUTES")]
+    public static int DataTableCleanupIntervalMinutes { get; set; }
+
+    [ConfigKey("GC_CHECK_INTERVAL_MINUTES")]
+    public static int GcCheckIntervalMinutes { get; set; }
+
+    [ConfigKey("MEMORY_PRESSURE_THRESHOLD_GB")]
+    public static double MemoryPressureThresholdGB { get; set; }
+
+    [ConfigKey("MEMORY_PRESSURE_FORCE_GC_MULTIPLIER")]
+    public static double MemoryPressureForceGcMultiplier { get; set; }
+
+    [ConfigKey("DATATABLE_DISPOSE_TIMEOUT_SECONDS")]
+    public static int DataTableDisposeTimeoutSeconds { get; set; }
+
+    [ConfigKey("DATATABLE_COLUMN_OVERHEAD_BYTES")]
+    public static long DataTableColumnOverheadBytes { get; set; }
+
+    [ConfigKey("DATATABLE_ROW_OVERHEAD_BYTES")]
+    public static long DataTableRowOverheadBytes { get; set; }
+
+    [ConfigKey("DATATABLE_STRUCTURE_OVERHEAD_BYTES")]
+    public static long DataTableStructureOverheadBytes { get; set; }
+
+    [ConfigKey("DEFAULT_STRING_ESTIMATE_BYTES")]
+    public static long DefaultStringEstimateBytes { get; set; }
+
+    [ConfigKey("DEFAULT_BYTE_ARRAY_ESTIMATE_BYTES")]
+    public static long DefaultByteArrayEstimateBytes { get; set; }
+
+    [ConfigKey("DEFAULT_TYPE_ESTIMATE_BYTES")]
+    public static long DefaultTypeEstimateBytes { get; set; }
+
+    [ConfigKey("STRING_ESTIMATE_SAMPLE_SIZE")]
+    public static int StringEstimateSampleSize { get; set; }
+
+    [ConfigKey("BYTE_ARRAY_ESTIMATE_SAMPLE_SIZE")]
+    public static int ByteArrayEstimateSampleSize { get; set; }
+
+    [ConfigKey("MIN_STRING_ESTIMATE_BYTES")]
+    public static long MinStringEstimateBytes { get; set; }
+
+    [ConfigKey("ENABLE_ACCURATE_MEMORY_CALCULATION")]
+    public static bool EnableAccurateMemoryCalculation { get; set; }
+
     [ConfigKey("LOGGING_LEVEL_DEBUG")]
     public static bool LogLevelDebug { get; set; }
 

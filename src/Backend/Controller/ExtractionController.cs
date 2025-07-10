@@ -13,8 +13,14 @@ using static Microsoft.AspNetCore.Http.StatusCodes;
 
 namespace Conductor.Controller;
 
-public sealed class ExtractionController(ExtractionRepository repository, IHttpClientFactory factory, IJobTracker jobTracker) : ControllerBase<Extraction>(repository)
+public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker tracker, ConnectionPoolManager poolManager, IDataTableMemoryManager memManager, ExtractionRepository repository) : ControllerBase<Extraction>(repository)
 {
+    private readonly IHttpClientFactory httpFactory = factory;
+    private readonly IJobTracker jobTracker = tracker;
+    private readonly ConnectionPoolManager connectionPoolManager = poolManager;
+    private readonly IDataTableMemoryManager memoryManager = memManager;
+    private readonly ExtractionRepository extractionRepository = repository;
+
     public override async Task<IResult> Get(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
@@ -28,9 +34,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             );
         }
 
-        var result = await repository.Search(filters);
-
-        var extractions = result.Value;
+        var result = await extractionRepository.Search(filters);
 
         if (!result.IsSuccessful)
         {
@@ -57,7 +61,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             );
         }
 
-        var fetch = await repository.Search(filters);
+        var fetch = await extractionRepository.Search(filters);
 
         if (!fetch.IsSuccessful)
         {
@@ -106,13 +110,20 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             Helper.DecryptConnectionStrings(extractions);
 
             var useHttp = extractions.Any(e => (e.SourceType?.ToLowerInvariant() ?? "db") == "http");
-            await using var pipeline = new ExtractionPipeline(DateTime.UtcNow, factory, jobTracker, overrideFilter);
 
-            Func<List<Extraction>, Channel<(DataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> producer =
+            await using var pipeline = new ExtractionPipeline(
+                DateTime.UtcNow,
+                httpFactory,
+                jobTracker,
+                overrideFilter,
+                connectionPoolManager,
+                memoryManager);
+
+            Func<List<Extraction>, Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> producer =
                 useHttp
                     ? (ex, ch, rt, ct, sc) => pipeline.ProduceHttpData(ex, ch, ct)
                     : pipeline.ProduceDBData;
-            Func<Channel<(DataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToDB;
+            Func<Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToDB;
 
             var result = await pipeline.ChannelParallelize(
                 extractions,
@@ -153,7 +164,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             );
         }
 
-        var fetch = await repository.Search(filters);
+        var fetch = await extractionRepository.Search(filters);
 
         if (!fetch.IsSuccessful)
         {
@@ -194,14 +205,20 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
         {
             Helper.DecryptConnectionStrings(extractions);
 
-            await using var pipeline = new ExtractionPipeline(DateTime.UtcNow, factory, jobTracker, overrideFilter);
+            await using var pipeline = new ExtractionPipeline(
+                DateTime.UtcNow,
+                httpFactory,
+                jobTracker,
+                overrideFilter,
+                connectionPoolManager,
+                memoryManager);
 
             var useHttp = extractions.Any(e => (e.SourceType?.ToLowerInvariant() ?? "db") == "http");
-            Func<List<Extraction>, Channel<(DataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> producer =
+            Func<List<Extraction>, Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> producer =
                 useHttp
                     ? (ex, ch, rt, ct, sc) => pipeline.ProduceHttpData(ex, ch, ct)
                     : pipeline.ProduceDBData;
-            Func<Channel<(DataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToCsv;
+            Func<Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToCsv;
 
             var result = await pipeline.ChannelParallelize(
                 extractions,
@@ -230,7 +247,7 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
 
     public async Task<IResult> FetchData(IQueryCollection? filters, CancellationToken token)
     {
-        var fetch = await repository.Search(filters);
+        var fetch = await extractionRepository.Search(filters);
 
         if (!fetch.IsSuccessful)
         {
@@ -261,71 +278,92 @@ public sealed class ExtractionController(ExtractionRepository repository, IHttpC
             currentRowCount = page == 1 ? 0 : page * Settings.FetcherLineMax;
         }
 
-        if ((res.SourceType?.ToLowerInvariant() ?? "db") == "http")
+        try
         {
-            await using var pipeline = new ExtractionPipeline(DateTime.UtcNow, factory, jobTracker, null);
-            var (exchange, httpMethod) = HTTPExchangeFactory.Create(factory!, res.PaginationType, res.HttpMethod);
-
-            var fetchResult = await exchange.FetchEndpointData(res, httpMethod);
-            if (!fetchResult.IsSuccessful)
+            if ((res.SourceType?.ToLowerInvariant() ?? "db") == "http")
             {
-                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
-                return Results.InternalServerError(ErrorMessage(fetchResult.Error));
-            }
+                var (exchange, httpMethod) = HTTPExchangeFactory.Create(httpFactory!, res.PaginationType, res.HttpMethod);
 
-            var dataTableResult = Converter.ProcessJsonDocument(fetchResult.Value);
-            if (!dataTableResult.IsSuccessful)
+                var fetchResult = await exchange.FetchEndpointData(res, httpMethod);
+                if (!fetchResult.IsSuccessful)
+                {
+                    await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+                    return Results.InternalServerError(ErrorMessage(fetchResult.Error));
+                }
+
+                var dataTableResult = Converter.ProcessJsonDocument(fetchResult.Value);
+                if (!dataTableResult.IsSuccessful)
+                {
+                    await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+                    return Results.InternalServerError(ErrorMessage(dataTableResult.Error));
+                }
+
+                Helper.GetAndSetByteUsageForExtraction(dataTableResult.Value, res.Id, jobTracker);
+
+                List<Dictionary<string, object>> rows = [.. dataTableResult.Value.Rows.Cast<DataRow>().Select(row =>
+                    dataTableResult.Value.Columns.Cast<DataColumn>().ToDictionary(
+                        col => col.ColumnName,
+                        col => row[col]
+                    )
+                )];
+
+                dataTableResult.Value.Dispose();
+
+                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
+                return Results.Ok(new Message<Dictionary<string, object>>(Status200OK, "OK", rows, page: page == 0 ? 1 : page));
+            }
+            else
             {
-                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
-                return Results.InternalServerError(ErrorMessage(dataTableResult.Error));
+                string conStr = Encryption.SymmetricDecryptAES256(
+                    res.Origin!.ConnectionString!,
+                    Settings.EncryptionKey
+                );
+
+                var engine = DBExchangeFactory.Create(res.Origin!.DbType!);
+
+                DbConnection? connection = null;
+                try
+                {
+                    connection = await connectionPoolManager.GetConnectionAsync(conStr, res.Origin.DbType!, token);
+
+                    var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, connection, token, limit: Settings.FetcherLineMax, shouldPaginate: true);
+                    if (!query.IsSuccessful)
+                    {
+                        await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+                        return Results.InternalServerError(ErrorMessage(query.Error));
+                    }
+
+                    Helper.GetAndSetByteUsageForExtraction(query.Value, res.Id, jobTracker);
+
+                    List<Dictionary<string, object>> rows = [.. query.Value.Rows.Cast<DataRow>().Select(row =>
+                        query.Value.Columns.Cast<DataColumn>().ToDictionary(
+                            col => col.ColumnName,
+                            col => row[col]
+                        )
+                    )];
+
+                    query.Value.Dispose();
+
+                    await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
+                    return Results.Ok(
+                        new Message<Dictionary<string, object>>(Status200OK, "OK", rows, page: page == 0 ? 1 : page)
+                    );
+                }
+                finally
+                {
+                    if (connection is not null)
+                    {
+                        var connectionKey = $"{res.Origin.DbType}:{conStr.GetHashCode()}";
+                        connectionPoolManager.ReturnConnection(connectionKey, connection);
+                    }
+                }
             }
-
-            Helper.GetAndSetByteUsageForExtraction(dataTableResult.Value, res.Id, jobTracker);
-
-            List<Dictionary<string, object>> rows = [.. dataTableResult.Value.Rows.Cast<DataRow>().Select(row =>
-                dataTableResult.Value.Columns.Cast<DataColumn>().ToDictionary(
-                    col => col.ColumnName,
-                    col => row[col]
-                )
-            )];
-
-            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
-            return Results.Ok(new Message<Dictionary<string, object>>(Status200OK, "OK", rows, page: page == 0 ? 1 : page));
         }
-        else
+        catch (Exception ex)
         {
-            string conStr = Encryption.SymmetricDecryptAES256(
-                res.Origin!.ConnectionString!,
-                Settings.EncryptionKey
-            );
-
-            var engine = DBExchangeFactory.Create(res.Origin!.DbType!);
-            using DbConnection con = engine.CreateConnection(conStr);
-
-            await con.OpenAsync(token);
-
-            var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, con, token, limit: Settings.FetcherLineMax, shouldPaginate: true);
-            if (!query.IsSuccessful)
-            {
-                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
-                return Results.InternalServerError(ErrorMessage(fetch.Error));
-            }
-
-            await con.CloseAsync();
-
-            Helper.GetAndSetByteUsageForExtraction(query.Value, res.Id, jobTracker);
-
-            List<Dictionary<string, object>> rows = [.. query.Value.Rows.Cast<DataRow>().Select(row =>
-                query.Value.Columns.Cast<DataColumn>().ToDictionary(
-                    col => col.ColumnName,
-                    col => row[col]
-                )
-            )];
-
-            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
-            return Results.Ok(
-                new Message<Dictionary<string, object>>(Status200OK, "OK", rows, page: page == 0 ? 1 : page)
-            );
+            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+            return Results.InternalServerError(
+                ErrorMessage(new Error(ex.Message, ex.StackTrace)));
         }
     }
 

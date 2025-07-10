@@ -9,7 +9,7 @@ public record TableMemoryDetail
     public int ColumnCount { get; init; }
     public long EstimatedMemoryBytes { get; init; }
     public bool IsDisposed { get; init; }
-    
+
     public double EstimatedMemoryMB => EstimatedMemoryBytes / (1024.0 * 1024.0);
     public TimeSpan Age => DateTime.UtcNow - CreatedAt;
     public TimeSpan TimeSinceLastAccess => DateTime.UtcNow - LastAccessed;

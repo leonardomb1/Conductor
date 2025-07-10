@@ -7,6 +7,8 @@ using Conductor.Controller;
 using Conductor.Logging;
 using Conductor.Middleware;
 using Conductor.Repository;
+using Conductor.Service;
+using Conductor.Service.Database;
 using Conductor.Service.Script;
 using Conductor.Shared;
 using Microsoft.AspNetCore.Http.Json;
@@ -172,8 +174,10 @@ public sealed class Server : IAsyncDisposable
         builder.Services.AddScoped<JobExtractionRepository>();
 
         /// Singleton Services
-        builder.Services.AddSingleton<IScriptEngine, RoslynScriptEngine>();
         builder.Services.AddSingleton<IJobTracker, JobTracker>();
+        builder.Services.AddSingleton<IConnectionPoolManager, ConnectionPoolManager>();
+        builder.Services.AddSingleton<IDataTableMemoryManager, DataTableMemoryManager>();
+        builder.Services.AddSingleton<IScriptEngine, RoslynScriptEngine>();
 
         /// Controllers
         builder.Services.AddScoped<DestinationController>();
