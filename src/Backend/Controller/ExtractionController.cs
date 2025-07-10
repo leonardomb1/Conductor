@@ -13,11 +13,11 @@ using static Microsoft.AspNetCore.Http.StatusCodes;
 
 namespace Conductor.Controller;
 
-public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker tracker, ConnectionPoolManager poolManager, IDataTableMemoryManager memManager, ExtractionRepository repository) : ControllerBase<Extraction>(repository)
+public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker tracker, IConnectionPoolManager poolManager, IDataTableMemoryManager memManager, ExtractionRepository repository) : ControllerBase<Extraction>(repository)
 {
     private readonly IHttpClientFactory httpFactory = factory;
     private readonly IJobTracker jobTracker = tracker;
-    private readonly ConnectionPoolManager connectionPoolManager = poolManager;
+    private readonly IConnectionPoolManager connectionPoolManager = poolManager;
     private readonly IDataTableMemoryManager memoryManager = memManager;
     private readonly ExtractionRepository extractionRepository = repository;
 
