@@ -2,7 +2,6 @@ using System.Data;
 using System.Data.Common;
 using System.Text;
 using Conductor.Model;
-using Conductor.Shared;
 using Conductor.Types;
 using Npgsql;
 using Serilog;
