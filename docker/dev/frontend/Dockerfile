@@ -14,9 +14,8 @@ RUN npm ci
 # Copy source code
 COPY ../../../src/Frontend/ ./
 
-# Set timezone
-RUN cp /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime && \
-    echo "America/Sao_Paulo" > /etc/timezone
+# Set timezone using environment variable (simpler approach)
+ENV TZ=America/Sao_Paulo
 
 # Expose port
 EXPOSE 3000

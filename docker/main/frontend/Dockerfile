@@ -27,9 +27,8 @@ COPY --from=builder /app/build ./build
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
-# Set timezone
-RUN cp /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime && \
-    echo "America/Sao_Paulo" > /etc/timezone
+# Set timezone using environment variable (simpler approach)
+ENV TZ=America/Sao_Paulo
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
