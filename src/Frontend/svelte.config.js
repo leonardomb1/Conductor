@@ -7,10 +7,10 @@ const config = {
     adapter: adapter({
       out: 'build',
       precompress: false,
-      envPrefix: 'VITE_'
+      envPrefix: 'PUBLIC_'
     }),
     env: {
-      publicPrefix: 'VITE_'
+      publicPrefix: 'PUBLIC_'
     }
   },
   preprocess: vitePreprocess()
