@@ -6,6 +6,8 @@
 # dotenv files
 .env
 
+*.svelte-kit
+
 # User-specific files
 *.rsuser
 *.suo

@@ -255,7 +255,7 @@ public abstract partial class DBExchange
 
         if (extraction.IsVirtual)
         {
-            if (extraction.VirtualIdGroup is null) return new Error("No Virtual Id Group was given.");
+            if (extraction.VirtualIdGroup is null) return new Error($"No Virtual Id Group was given for {extraction.Name}, id: {extraction.Id}");
 
             Result<List<Extraction>> deps = await ExtractionRepository.GetDependencies(extraction);
             if (!deps.IsSuccessful) return deps.Error;
@@ -369,7 +369,7 @@ public abstract partial class DBExchange
             }
             else
             {
-                return new Error("No template was given.");
+                return new Error($"No template was given for {string.Join(", ", extractions)}");
             }
         }
         catch (Exception ex)
@@ -384,7 +384,7 @@ public abstract partial class DBExchange
 
     public virtual async Task<Result> CreateTable(DataTable table, Extraction extraction, DbConnection connection)
     {
-        if (extraction.Origin is null) return new Error("No origin was given.");
+        if (extraction.Origin is null) return new Error($"No origin was given for {extraction.Name}, id: {extraction.Id}");
         if (extraction.IndexName is null) return new Error("Invalid metadata, missing index name.");
         string schemaName = extraction.Origin.Alias ?? extraction.Origin.Name;
         string tableName = extraction.Alias ?? extraction.Name;
