@@ -3,13 +3,13 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY src/frontend/package*.json ./
+COPY ../../../src/Frontend/package*.json ./
 
 # Install dependencies
 RUN npm ci
 
 # Copy source code
-COPY src/frontend/ ./
+COPY ../../../src/Frontend/ ./
 
 # Build the application
 RUN npm run build
@@ -33,11 +33,11 @@ RUN cp /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime && \
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
+    adduser -S svelte -u 1001
 
 # Change ownership
-RUN chown -R nextjs:nodejs /app
-USER nextjs
+RUN chown -R svelte:nodejs /app
+USER svelte
 
 # Expose port
 EXPOSE 3000

@@ -6,13 +6,13 @@ RUN apk add --no-cache curl bash
 WORKDIR /app
 
 # Copy package files
-COPY src/frontend/package*.json ./
+COPY ../../../src/Frontend/package*.json ./
 
 # Install dependencies
 RUN npm ci
 
 # Copy source code
-COPY src/frontend/ ./
+COPY ../../../src/Frontend/ ./
 
 # Set timezone
 RUN cp /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime && \
