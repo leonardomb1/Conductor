@@ -155,7 +155,7 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
             if (existingExtraction is null)
                 return new Error($"Extraction with id: {id} was not found", null);
 
-            context.Entry(existingExtraction).CurrentValues.SetValues(existingExtraction);
+            context.Entry(existingExtraction).CurrentValues.SetValues(extraction);
             await context.SaveChangesAsync();
 
             return Result.Ok();
