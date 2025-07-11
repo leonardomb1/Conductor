@@ -21,6 +21,9 @@
   let executeType = $state<'transfer' | 'pull'>('transfer');
   let executeLoading = $state(false);
   let selectedExtractions = $state<number[]>([]);
+  let currentPage = $state(1);
+  let totalPages = $state(1);
+  const pageSize = 20;
 
   const columns = [
     { key: 'id', label: 'ID', sortable: true, width: '80px' },
@@ -86,7 +89,9 @@
   async function loadExtractions() {
     try {
       loading = true;
-      const filters: Record<string, string> = {};
+      const filters: Record<string, string> = {
+        take: pageSize.toString()
+      };
       
       if (searchTerm) filters.contains = searchTerm;
       if (filterOrigin) filters.origin = filterOrigin;
@@ -95,8 +100,12 @@
 
       const response = await api.getExtractions(filters);
       extractions = response.content || [];
+      
+      // Calculate pagination
+      totalPages = Math.ceil((response.entityCount || extractions.length) / pageSize);
     } catch (error) {
       console.error('Failed to load extractions:', error);
+      alert('Failed to load extractions. Please check your connection and try again.');
     } finally {
       loading = false;
     }
@@ -110,24 +119,33 @@
 
     executeLoading = true;
     try {
+      // Get extraction names for the selected IDs
+      const selectedNames = selectedExtractions.map(id => 
+        extractions.find(e => e.id === id)?.extractionName
+      ).filter(Boolean);
+
+      if (selectedNames.length === 0) {
+        alert('No valid extractions selected');
+        return;
+      }
+
       const filters = { 
-        contains: selectedExtractions.map(id => 
-          extractions.find(e => e.id === id)?.extractionName || ''
-        ).join(',')
+        contains: selectedNames.join(',')
       };
 
       if (executeType === 'transfer') {
         await api.executeTransfer(filters);
+        alert('Transfer job started successfully');
       } else {
         await api.executePull(filters);
+        alert('Pull job started successfully');
       }
       
       showExecuteModal = false;
       selectedExtractions = [];
-      alert(`${executeType} job started successfully`);
     } catch (error) {
       console.error(`Failed to execute ${executeType}:`, error);
-      alert(`Failed to start ${executeType} job`);
+      alert(`Failed to start ${executeType} job: ${error.message}`);
     } finally {
       executeLoading = false;
     }
@@ -139,6 +157,21 @@
     } else {
       selectedExtractions = [...selectedExtractions, id];
     }
+  }
+
+  function selectAllVisible() {
+    const visibleIds = extractions.map(e => e.id);
+    selectedExtractions = [...new Set([...selectedExtractions, ...visibleIds])];
+  }
+
+  function deselectAllVisible() {
+    const visibleIds = extractions.map(e => e.id);
+    selectedExtractions = selectedExtractions.filter(id => !visibleIds.includes(id));
+  }
+
+  function handlePageChange(page: number) {
+    currentPage = page;
+    loadExtractions();
   }
 
   // Global functions for table actions
@@ -186,7 +219,7 @@
           disabled={selectedExtractions.length === 0}
         >
           <Play size={16} class="mr-2" />
-          Execute Selected
+          Execute Selected ({selectedExtractions.length})
         </Button>
         <Button variant="primary" onclick={() => window.location.href = '/extractions/new'}>
           <Plus size={16} class="mr-2" />
@@ -225,12 +258,26 @@
         <span class="text-sm text-blue-700">
           {selectedExtractions.length} extraction{selectedExtractions.length !== 1 ? 's' : ''} selected
         </span>
-        <button
-          onclick={() => selectedExtractions = []}
-          class="text-sm text-blue-600 hover:text-blue-800"
-        >
-          Clear selection
-        </button>
+        <div class="flex space-x-2">
+          <button
+            onclick={selectAllVisible}
+            class="text-sm text-blue-600 hover:text-blue-800"
+          >
+            Select all visible
+          </button>
+          <button
+            onclick={deselectAllVisible}
+            class="text-sm text-blue-600 hover:text-blue-800"
+          >
+            Deselect all visible
+          </button>
+          <button
+            onclick={() => selectedExtractions = []}
+            class="text-sm text-blue-600 hover:text-blue-800"
+          >
+            Clear all
+          </button>
+        </div>
       </div>
     </div>
   {/if}
@@ -243,6 +290,13 @@
         data={extractions}
         {loading}
         emptyMessage="No extractions found"
+        pagination={{
+          currentPage,
+          totalPages,
+          pageSize,
+          totalItems: extractions.length,
+          onPageChange: handlePageChange
+        }}
       />
     </div>
   </div>
@@ -250,7 +304,17 @@
   <!-- Bulk selection checkboxes -->
   {#if extractions.length > 0}
     <div class="bg-white p-4 rounded-lg shadow">
-      <h4 class="text-sm font-medium text-supabase-gray-700 mb-3">Bulk Operations</h4>
+      <div class="flex justify-between items-center mb-3">
+        <h4 class="text-sm font-medium text-supabase-gray-700">Bulk Operations</h4>
+        <div class="flex space-x-2">
+          <Button size="sm" variant="ghost" onclick={selectAllVisible}>
+            Select All Visible
+          </Button>
+          <Button size="sm" variant="ghost" onclick={deselectAllVisible}>
+            Deselect All Visible
+          </Button>
+        </div>
+      </div>
       <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-2">
         {#each extractions as extraction}
           <label class="flex items-center space-x-2 text-sm">
@@ -275,6 +339,15 @@
       Execute {selectedExtractions.length} selected extraction{selectedExtractions.length !== 1 ? 's' : ''}.
     </p>
 
+    <div class="bg-supabase-gray-50 p-3 rounded-md">
+      <h5 class="text-sm font-medium text-supabase-gray-700 mb-2">Selected extractions:</h5>
+      <div class="text-sm text-supabase-gray-600">
+        {#each selectedExtractions as id}
+          <div>• {extractions.find(e => e.id === id)?.extractionName || `ID: ${id}`}</div>
+        {/each}
+      </div>
+    </div>
+
     <Select
       label="Execution Type"
       bind:value={executeType}
@@ -293,7 +366,7 @@
         loading={executeLoading}
         onclick={executeExtractions}
       >
-        Execute
+        Execute {executeType}
       </Button>
     </div>
   </div>

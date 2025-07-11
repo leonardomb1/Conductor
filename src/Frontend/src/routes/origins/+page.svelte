@@ -18,6 +18,9 @@
   let modalMode = $state<'create' | 'edit'>('create');
   let selectedOrigin = $state<Origin | null>(null);
   let saving = $state(false);
+  let currentPage = $state(1);
+  let totalPages = $state(1);
+  const pageSize = 20;
 
   // Form data
   let formData = $state({
@@ -74,13 +77,19 @@
   async function loadOrigins() {
     try {
       loading = true;
-      const filters: Record<string, string> = {};
+      const filters: Record<string, string> = {
+        take: pageSize.toString()
+      };
       if (searchTerm) filters.name = searchTerm;
 
       const response = await api.getOrigins(filters);
       origins = response.content || [];
+      
+      // Calculate pagination
+      totalPages = Math.ceil((response.entityCount || origins.length) / pageSize);
     } catch (error) {
       console.error('Failed to load origins:', error);
+      alert('Failed to load origins. Please check your connection and try again.');
     } finally {
       loading = false;
     }
@@ -162,6 +171,11 @@
     }
   }
 
+  function handlePageChange(page: number) {
+    currentPage = page;
+    loadOrigins();
+  }
+
   // Global functions for table actions
   if (typeof window !== 'undefined') {
     (window as any).editOrigin = (id: number) => {
@@ -222,6 +236,13 @@
         data={origins}
         {loading}
         emptyMessage="No origins found"
+        pagination={{
+          currentPage,
+          totalPages,
+          pageSize,
+          totalItems: origins.length,
+          onPageChange: handlePageChange
+        }}
       />
     </div>
   </div>

@@ -1,4 +1,5 @@
 import type { ApiResponse, Destination, Origin, Schedule, User, Extraction, JobDto, ExtractionAggregatedDto } from './types.js';
+import { goto } from '$app/navigation';
 
 class ApiClient {
   private token: string | null = null;
@@ -17,16 +18,34 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`/api${endpoint}`, {
-      ...options,
-      headers,
-    });
+    try {
+      const response = await fetch(`/api${endpoint}`, {
+        ...options,
+        headers,
+      });
 
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
+      // Handle 401 Unauthorized - redirect to login
+      if (response.status === 401) {
+        // Clear invalid token
+        this.token = null;
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('conductor_token');
+          localStorage.removeItem('conductor_user');
+        }
+        goto('/login');
+        throw new Error('Unauthorized - redirecting to login');
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('API request error:', error);
+      throw error;
     }
-
-    return response.json();
   }
 
   async login(username: string, password: string): Promise<string> {
@@ -249,11 +268,17 @@ class ApiClient {
 
   async getHealth(): Promise<{ status: string; timestamp: string; activeJobs: number }> {
     const response = await fetch('/api/health');
+    if (!response.ok) {
+      throw new Error('Failed to fetch health data');
+    }
     return response.json();
   }
 
   async getMetrics(): Promise<any> {
     const response = await fetch('/api/metrics/json');
+    if (!response.ok) {
+      throw new Error('Failed to fetch metrics data');
+    }
     return response.json();
   }
 }

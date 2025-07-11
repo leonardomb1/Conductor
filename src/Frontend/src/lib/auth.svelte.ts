@@ -1,5 +1,6 @@
 import type { AuthStore } from './types.js';
 import { api } from './api.js';
+import { goto } from '$app/navigation';
 
 class AuthManager {
   private store: AuthStore = $state({
@@ -18,6 +19,9 @@ class AuthManager {
         this.store.user = user;
         this.store.isAuthenticated = true;
         api.setToken(token);
+        
+        // Validate token on startup
+        this.validateToken();
       }
     }
   }
@@ -32,6 +36,20 @@ class AuthManager {
 
   get token() {
     return this.store.token;
+  }
+
+  async validateToken() {
+    if (!this.store.token) return false;
+    
+    try {
+      // Try to make an authenticated request to validate the token
+      await api.getHealth();
+      return true;
+    } catch (error) {
+      // Token is invalid, clear it
+      this.logout();
+      return false;
+    }
   }
 
   async login(username: string, password: string, useLdap = false) {

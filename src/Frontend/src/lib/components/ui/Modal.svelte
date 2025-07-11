@@ -6,7 +6,8 @@
     title?: string;
     children: any;
     onClose?: () => void;
-    size?: 'sm' | 'md' | 'lg' | 'xl';
+    size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+    scrollable?: boolean;
   }
 
   let {
@@ -14,14 +15,16 @@
     title,
     children,
     onClose,
-    size = 'md'
+    size = 'md',
+    scrollable = true
   }: Props = $props();
 
   const sizes = {
     sm: 'max-w-md',
     md: 'max-w-lg',
     lg: 'max-w-2xl',
-    xl: 'max-w-4xl'
+    xl: 'max-w-4xl',
+    '2xl': 'max-w-6xl'
   };
 
   function handleClose() {
@@ -31,6 +34,12 @@
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
+      handleClose();
+    }
+  }
+
+  function handleBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
       handleClose();
     }
   }
@@ -48,13 +57,18 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div 
         class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-        onclick={handleClose}
+        onclick={handleBackdropClick}
       ></div>
       
       <!-- Modal content -->
-      <div class="relative bg-white rounded-lg shadow-xl w-full {sizes[size]}">
+      <div 
+        class="relative bg-white rounded-lg shadow-xl w-full {sizes[size]}"
+        class:max-h-[90vh]={scrollable}
+        class:flex={scrollable}
+        class:flex-col={scrollable}
+      >
         {#if title}
-          <div class="flex items-center justify-between p-6 border-b border-supabase-gray-200">
+          <div class="flex items-center justify-between p-6 border-b border-supabase-gray-200 flex-shrink-0">
             <h3 class="text-lg font-semibold text-supabase-gray-900">{title}</h3>
             <button
               onclick={handleClose}
@@ -65,7 +79,11 @@
           </div>
         {/if}
         
-        <div class="p-6">
+        <div 
+          class="p-6"
+          class:overflow-y-auto={scrollable}
+          class:flex-1={scrollable}
+        >
           {@render children()}
         </div>
       </div>

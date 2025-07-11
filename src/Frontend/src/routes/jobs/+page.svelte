@@ -22,6 +22,9 @@
   let filterStatus = $state('');
   let filterType = $state('');
   let relativeTime = $state('86400'); // Last 24 hours
+  let currentPage = $state(1);
+  let totalPages = $state(1);
+  const pageSize = 20;
 
   const jobColumns = [
     { key: 'name', label: 'Extraction', sortable: true },
@@ -136,7 +139,8 @@
   async function loadRecentJobs() {
     try {
       const filters: Record<string, string> = {
-        relativeStart: relativeTime
+        relativeStart: relativeTime,
+        take: pageSize.toString()
       };
       
       if (searchTerm) filters.extractionName = searchTerm;
@@ -145,6 +149,9 @@
 
       const response = await api.searchJobs(filters);
       recentJobs = response.content || [];
+      
+      // Calculate pagination
+      totalPages = Math.ceil((response.entityCount || recentJobs.length) / pageSize);
     } catch (error) {
       console.error('Failed to load recent jobs:', error);
     }
@@ -174,6 +181,11 @@
         alert('Failed to clear job history');
       }
     }
+  }
+
+  function handlePageChange(page: number) {
+    currentPage = page;
+    loadJobs();
   }
 
   async function refreshData() {

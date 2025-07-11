@@ -288,19 +288,22 @@
   {/if}
 </div>
 
+
 <!-- Preview Modal -->
-<Modal bind:open={showPreviewModal} title="Data Preview" size="xl">
+<Modal bind:open={showPreviewModal} title="Data Preview" size="2xl" scrollable={true}>
   <div class="space-y-4">
     {#if previewData.length > 0}
       <p class="text-sm text-supabase-gray-600">
         Showing first {previewData.length} rows
       </p>
-      <Table
-        columns={previewColumns}
-        data={previewData}
-        loading={false}
-        emptyMessage="No data available"
-      />
+      <div class="overflow-x-auto">
+        <Table
+          columns={previewColumns}
+          data={previewData}
+          loading={false}
+          emptyMessage="No data available"
+        />
+      </div>
     {:else}
       <p class="text-center py-8 text-supabase-gray-500">No data available for preview</p>
     {/if}

@@ -16,6 +16,9 @@
   let modalMode = $state<'create' | 'edit'>('create');
   let selectedUser = $state<User | null>(null);
   let saving = $state(false);
+  let currentPage = $state(1);
+  let totalPages = $state(1);
+  const pageSize = 20;
 
   // Form data
   let formData = $state({
@@ -54,16 +57,27 @@
   async function loadUsers() {
     try {
       loading = true;
-      const filters: Record<string, string> = {};
+      const filters: Record<string, string> = {
+        take: pageSize.toString()
+      };
       if (searchTerm) filters.name = searchTerm;
 
       const response = await api.getUsers(filters);
       users = response.content || [];
+      
+      // Calculate pagination
+      totalPages = Math.ceil((response.entityCount || users.length) / pageSize);
     } catch (error) {
       console.error('Failed to load users:', error);
+      alert('Failed to load users. Please check your connection and try again.');
     } finally {
       loading = false;
     }
+  }
+
+  function handlePageChange(page: number) {
+    currentPage = page;
+    loadUsers();
   }
 
   function openCreateModal() {
@@ -133,7 +147,7 @@
       await loadUsers();
     } catch (error) {
       console.error(`Failed to ${modalMode} user:`, error);
-      alert(`Failed to ${modalMode} user`);
+      alert(`Failed to ${modalMode} user: ${error.message}`);
     } finally {
       saving = false;
     }
@@ -183,11 +197,16 @@
 
   <!-- Filters -->
   <div class="bg-white p-4 rounded-lg shadow">
-    <div class="max-w-md">
-      <Input
-        placeholder="Search users..."
-        bind:value={searchTerm}
-      />
+    <div class="flex justify-between items-center gap-4">
+      <div class="max-w-md flex-1">
+        <Input
+          placeholder="Search users..."
+          bind:value={searchTerm}
+        />
+      </div>
+      <div class="text-sm text-supabase-gray-600">
+        Showing {users.length} users (Page {currentPage} of {totalPages})
+      </div>
     </div>
   </div>
 
@@ -199,6 +218,13 @@
         data={users}
         {loading}
         emptyMessage="No users found"
+        pagination={{
+          currentPage,
+          totalPages,
+          pageSize,
+          totalItems: users.length,
+          onPageChange: handlePageChange
+        }}
       />
     </div>
   </div>
