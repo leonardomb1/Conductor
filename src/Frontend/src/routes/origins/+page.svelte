@@ -229,7 +229,7 @@
 
 <!-- Create/Edit Modal -->
 <Modal bind:open={showModal} title={modalMode === 'create' ? 'New Origin' : 'Edit Origin'}>
-  <form onsubmit|preventDefault={handleSubmit} class="space-y-4">
+  <form onsubmit={handleSubmit} class="space-y-4">
     <Input
       label="Name"
       bind:value={formData.originName}

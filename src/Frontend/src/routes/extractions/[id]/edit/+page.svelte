@@ -247,7 +247,7 @@
     <!-- Use the same form structure as new extraction, but with populated data -->
     <!-- Form content here would be identical to the new extraction form -->
     <!-- For brevity, I'm showing the structure -->
-    <form onsubmit|preventDefault={handleSubmit} class="space-y-6">
+    <form onsubmit={handleSubmit} class="space-y-6">
       <!-- Same form structure as new extraction page -->
       <!-- Just replace all the form fields with the same structure -->
       <!-- The formData is already populated from the extraction -->

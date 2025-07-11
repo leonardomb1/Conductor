@@ -190,7 +190,7 @@
     {/snippet}
   </PageHeader>
 
-  <form onsubmit|preventDefault={handleSubmit} class="space-y-6">
+  <form onsubmit={handleSubmit} class="space-y-6">
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Main Configuration -->
       <div class="lg:col-span-2 space-y-6">
@@ -443,10 +443,7 @@
                 bind:value={formData.script}
                 class="form-textarea"
                 rows="6"
-                placeholder="// Custom C# script for data processing
-var table = CreateDataTable((\"id\", typeof(int)), (\"name\", typeof(string)));
-AddRow(table, 1, \"Example\");
-return table;"
+                placeholder=""
               ></textarea>
               <p class="mt-1 text-xs text-supabase-gray-500">
                 Custom C# script for advanced data processing
