@@ -6,7 +6,7 @@ WORKDIR /app
 COPY ../../../src/Frontend/package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm i
 
 # Copy source code
 COPY ../../../src/Frontend/ ./
