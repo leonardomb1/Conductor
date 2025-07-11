@@ -8,6 +8,7 @@
   import Input from '$lib/components/ui/Input.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Select from '$lib/components/ui/Select.svelte';
+  import Toast from '$lib/components/ui/Toast.svelte';
   import { Plus, Edit, Trash2, Upload } from '@lucide/svelte';
 
   let destinations = $state<Destination[]>([]);
@@ -17,6 +18,19 @@
   let modalMode = $state<'create' | 'edit'>('create');
   let selectedDestination = $state<Destination | null>(null);
   let saving = $state(false);
+
+  // Pagination
+  let currentPage = $state(1);
+  let totalPages = $state(1);
+  let totalItems = $state(0);
+  let pageSize = $state(20);
+  let sortKey = $state('');
+  let sortDirection = $state<'asc' | 'desc'>('asc');
+
+  // Toast notifications
+  let toastMessage = $state('');
+  let toastType = $state<'success' | 'error' | 'info'>('info');
+  let showToast = $state(false);
 
   // Form data
   let formData = $state({
@@ -34,6 +48,7 @@
     { 
       key: 'destinationDbType', 
       label: 'Database Type',
+      sortable: true,
       render: (value: string) => {
         const colors = {
           'PostgreSQL': 'bg-blue-100 text-blue-800',
@@ -44,7 +59,12 @@
         return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}">${value}</span>`;
       }
     },
-    { key: 'destinationTimeZoneOffSet', label: 'Timezone Offset', render: (value: number) => `${value > 0 ? '+' : ''}${value}` },
+    { 
+      key: 'destinationTimeZoneOffSet', 
+      label: 'Timezone Offset', 
+      sortable: true,
+      render: (value: number) => `${value > 0 ? '+' : ''}${value}` 
+    },
     {
       key: 'actions',
       label: 'Actions',
@@ -63,6 +83,13 @@
     }
   ];
 
+  function showToastMessage(message: string, type: 'success' | 'error' | 'info' = 'info') {
+    toastMessage = message;
+    toastType = type;
+    showToast = true;
+    setTimeout(() => showToast = false, 5000);
+  }
+
   onMount(async () => {
     await loadDestinations();
   });
@@ -70,13 +97,26 @@
   async function loadDestinations() {
     try {
       loading = true;
-      const filters: Record<string, string> = {};
+      const filters: Record<string, string> = {
+        take: pageSize.toString(),
+        skip: ((currentPage - 1) * pageSize).toString()
+      };
+      
       if (searchTerm) filters.name = searchTerm;
+      if (sortKey) {
+        filters.sortBy = sortKey;
+        filters.sortDirection = sortDirection;
+      }
 
       const response = await api.getDestinations(filters);
       destinations = response.content || [];
+      
+      // Calculate pagination
+      totalItems = response.entityCount || 0;
+      totalPages = Math.ceil(totalItems / pageSize);
     } catch (error) {
       console.error('Failed to load destinations:', error);
+      showToastMessage('Failed to load destinations. Please check your connection and try again.', 'error');
     } finally {
       loading = false;
     }
@@ -141,18 +181,38 @@
 
       if (modalMode === 'create') {
         await api.createDestination(destinationData);
+        showToastMessage('Destination created successfully', 'success');
       } else if (selectedDestination) {
         await api.updateDestination(selectedDestination.id, destinationData);
+        showToastMessage('Destination updated successfully', 'success');
       }
 
       showModal = false;
       await loadDestinations();
     } catch (error) {
       console.error(`Failed to ${modalMode} destination:`, error);
-      alert(`Failed to ${modalMode} destination`);
+      showToastMessage(`Failed to ${modalMode} destination: ${error.message}`, 'error');
     } finally {
       saving = false;
     }
+  }
+
+  function handlePageChange(page: number) {
+    currentPage = page;
+    loadDestinations();
+  }
+
+  function handlePageSizeChange(newPageSize: number) {
+    pageSize = newPageSize;
+    currentPage = 1;
+    loadDestinations();
+  }
+
+  function handleSort(key: string, direction: 'asc' | 'desc') {
+    sortKey = key;
+    sortDirection = direction;
+    currentPage = 1;
+    loadDestinations();
   }
 
   // Global functions for table actions
@@ -167,15 +227,18 @@
         try {
           await api.deleteDestination(id);
           await loadDestinations();
+          showToastMessage('Destination deleted successfully', 'success');
         } catch (error) {
           console.error('Failed to delete destination:', error);
-          alert('Failed to delete destination');
+          showToastMessage('Failed to delete destination', 'error');
         }
       }
     };
   }
 
+  // Auto-reload when search term changes
   $effect(() => {
+    currentPage = 1;
     loadDestinations();
   });
 </script>
@@ -215,6 +278,17 @@
         data={destinations}
         {loading}
         emptyMessage="No destinations found"
+        onSort={handleSort}
+        {sortKey}
+        {sortDirection}
+        pagination={{
+          currentPage,
+          totalPages,
+          pageSize,
+          totalItems,
+          onPageChange: handlePageChange,
+          onPageSizeChange: handlePageSizeChange
+        }}
       />
     </div>
   </div>
@@ -280,3 +354,6 @@
     </div>
   </form>
 </Modal>
+
+<!-- Toast Notifications -->
+<Toast bind:show={showToast} type={toastType} message={toastMessage} />

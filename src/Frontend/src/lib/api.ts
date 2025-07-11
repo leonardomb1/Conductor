@@ -1,3 +1,4 @@
+// src/Frontend/src/lib/api.ts
 import type { ApiResponse, Destination, Origin, Schedule, User, Extraction, JobDto, ExtractionAggregatedDto } from './types.js';
 import { auth } from './auth.svelte.js';
 
@@ -13,27 +14,42 @@ class ApiClient {
       headers.Authorization = `Bearer ${auth.token}`;
     } 
 
-    const response = await fetch(`/api${endpoint}`, {
-      ...options,
-      headers,
-    });
-    // Handle 401 Unauthorized
-    if (response.status === 401) {
-      auth.handleUnauthorized();
-      throw new Error('Unauthorized - please login again');
-    }
+    try {
+      const response = await fetch(`/api${endpoint}`, {
+        ...options,
+        headers,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
-    }
+      // Handle 401 Unauthorized
+      if (response.status === 401) {
+        auth.handleUnauthorized();
+        throw new Error('Session expired - please login again');
+      }
 
-    return response.json();
+      if (!response.ok) {
+        let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            errorMessage += ` - ${errorText}`;
+          }
+        } catch (e) {
+          // Ignore parsing errors
+        }
+        throw new Error(errorMessage);
+      }
+
+      return response.json();
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Network error - please check your connection');
+      }
+      throw error;
+    }
   }
 
   // Login methods (don't use request method to avoid circular dependencies)
   async login(username: string, password: string): Promise<string> {
-    
     const response = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,7 +57,7 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      throw new Error('Login failed');
+      throw new Error('Invalid username or password');
     }
 
     const token = await response.text();
@@ -56,7 +72,7 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      throw new Error('LDAP login failed');
+      throw new Error('LDAP authentication failed');
     }
 
     const token = await response.text();
@@ -112,10 +128,26 @@ class ApiClient {
     return response.json();
   }
 
-  // All other methods remain the same...
+  // Helper method to build query params with defaults
+  private buildFilters(filters?: Record<string, string>, defaultTake = 20): Record<string, string> {
+    const params: Record<string, string> = {
+      take: defaultTake.toString(),
+      ...filters
+    };
+
+    // Ensure skip is set if not provided
+    if (!params.skip) {
+      params.skip = '0';
+    }
+
+    return params;
+  }
+
+  // Destinations
   async getDestinations(filters?: Record<string, string>): Promise<ApiResponse<Destination>> {
-    const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<Destination>(`/destinations${params}`);
+    const params = this.buildFilters(filters);
+    const queryString = new URLSearchParams(params).toString();
+    return this.request<Destination>(`/destinations?${queryString}`);
   }
 
   async getDestination(id: number): Promise<ApiResponse<Destination>> {
@@ -144,8 +176,9 @@ class ApiClient {
 
   // Origins
   async getOrigins(filters?: Record<string, string>): Promise<ApiResponse<Origin>> {
-    const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<Origin>(`/origins${params}`);
+    const params = this.buildFilters(filters);
+    const queryString = new URLSearchParams(params).toString();
+    return this.request<Origin>(`/origins?${queryString}`);
   }
 
   async getOrigin(id: number): Promise<ApiResponse<Origin>> {
@@ -174,8 +207,9 @@ class ApiClient {
 
   // Schedules
   async getSchedules(filters?: Record<string, string>): Promise<ApiResponse<Schedule>> {
-    const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<Schedule>(`/schedules${params}`);
+    const params = this.buildFilters(filters);
+    const queryString = new URLSearchParams(params).toString();
+    return this.request<Schedule>(`/schedules?${queryString}`);
   }
 
   async getSchedule(id: number): Promise<ApiResponse<Schedule>> {
@@ -204,8 +238,9 @@ class ApiClient {
 
   // Users
   async getUsers(filters?: Record<string, string>): Promise<ApiResponse<User>> {
-    const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<User>(`/users${params}`);
+    const params = this.buildFilters(filters);
+    const queryString = new URLSearchParams(params).toString();
+    return this.request<User>(`/users?${queryString}`);
   }
 
   async getUser(id: number): Promise<ApiResponse<User>> {
@@ -234,8 +269,9 @@ class ApiClient {
 
   // Extractions
   async getExtractions(filters?: Record<string, string>): Promise<ApiResponse<Extraction>> {
-    const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<Extraction>(`/extractions${params}`);
+    const params = this.buildFilters(filters);
+    const queryString = new URLSearchParams(params).toString();
+    return this.request<Extraction>(`/extractions?${queryString}`);
   }
 
   async getExtraction(id: number): Promise<ApiResponse<Extraction>> {
@@ -287,13 +323,15 @@ class ApiClient {
   }
 
   async searchJobs(filters?: Record<string, string>): Promise<ApiResponse<JobDto>> {
-    const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<JobDto>(`/jobs/search${params}`);
+    const params = this.buildFilters(filters);
+    const queryString = new URLSearchParams(params).toString();
+    return this.request<JobDto>(`/jobs/search?${queryString}`);
   }
 
   async getAggregatedJobs(filters?: Record<string, string>): Promise<ApiResponse<ExtractionAggregatedDto>> {
-    const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<ExtractionAggregatedDto>(`/jobs/total${params}`);
+    const params = this.buildFilters(filters);
+    const queryString = new URLSearchParams(params).toString();
+    return this.request<ExtractionAggregatedDto>(`/jobs/total?${queryString}`);
   }
 
   async clearJobs(): Promise<void> {

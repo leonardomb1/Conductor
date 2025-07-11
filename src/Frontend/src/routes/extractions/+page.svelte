@@ -9,6 +9,7 @@
   import Select from '$lib/components/ui/Select.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
+  import Toast from '$lib/components/ui/Toast.svelte';
   import { Plus, Play, Download, Eye, Edit, Trash2 } from '@lucide/svelte';
 
   let extractions = $state<Extraction[]>([]);
@@ -21,9 +22,19 @@
   let executeType = $state<'transfer' | 'pull'>('transfer');
   let executeLoading = $state(false);
   let selectedExtractions = $state<number[]>([]);
+  
+  // Pagination
   let currentPage = $state(1);
   let totalPages = $state(1);
-  const pageSize = 20;
+  let totalItems = $state(0);
+  let pageSize = $state(20);
+  let sortKey = $state('');
+  let sortDirection = $state<'asc' | 'desc'>('asc');
+
+  // Toast notifications
+  let toastMessage = $state('');
+  let toastType = $state<'success' | 'error' | 'info'>('info');
+  let showToast = $state(false);
 
   const columns = [
     { key: 'id', label: 'ID', sortable: true, width: '80px' },
@@ -31,6 +42,7 @@
     { 
       key: 'sourceType', 
       label: 'Type', 
+      sortable: true,
       render: (value: string) => {
         const type = value || 'db';
         const variant = type === 'http' ? 'info' : type === 'db' ? 'success' : 'default';
@@ -40,21 +52,25 @@
     { 
       key: 'origin', 
       label: 'Origin', 
+      sortable: true,
       render: (value: any) => value?.originName || '-'
     },
     { 
       key: 'destination', 
       label: 'Destination', 
+      sortable: true,
       render: (value: any) => value?.destinationName || '-'
     },
     { 
       key: 'schedule', 
       label: 'Schedule', 
+      sortable: true,
       render: (value: any) => value?.scheduleName || '-'
     },
     {
       key: 'isIncremental',
       label: 'Incremental',
+      sortable: true,
       render: (value: boolean) => {
         return value 
           ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Yes</span>'
@@ -82,6 +98,13 @@
     }
   ];
 
+  function showToastMessage(message: string, type: 'success' | 'error' | 'info' = 'info') {
+    toastMessage = message;
+    toastType = type;
+    showToast = true;
+    setTimeout(() => showToast = false, 5000);
+  }
+
   onMount(async () => {
     await loadExtractions();
   });
@@ -90,22 +113,28 @@
     try {
       loading = true;
       const filters: Record<string, string> = {
-        take: pageSize.toString()
+        take: pageSize.toString(),
+        skip: ((currentPage - 1) * pageSize).toString()
       };
       
       if (searchTerm) filters.contains = searchTerm;
       if (filterOrigin) filters.origin = filterOrigin;
       if (filterDestination) filters.destination = filterDestination;
       if (filterSchedule) filters.schedule = filterSchedule;
+      if (sortKey) {
+        filters.sortBy = sortKey;
+        filters.sortDirection = sortDirection;
+      }
 
       const response = await api.getExtractions(filters);
       extractions = response.content || [];
       
       // Calculate pagination
-      totalPages = Math.ceil((response.entityCount || extractions.length) / pageSize);
+      totalItems = response.entityCount || 0;
+      totalPages = Math.ceil(totalItems / pageSize);
     } catch (error) {
       console.error('Failed to load extractions:', error);
-      alert('Failed to load extractions. Please check your connection and try again.');
+      showToastMessage('Failed to load extractions. Please check your connection and try again.', 'error');
     } finally {
       loading = false;
     }
@@ -113,7 +142,7 @@
 
   async function executeExtractions() {
     if (selectedExtractions.length === 0) {
-      alert('Please select at least one extraction');
+      showToastMessage('Please select at least one extraction', 'error');
       return;
     }
 
@@ -125,7 +154,7 @@
       ).filter(Boolean);
 
       if (selectedNames.length === 0) {
-        alert('No valid extractions selected');
+        showToastMessage('No valid extractions selected', 'error');
         return;
       }
 
@@ -135,17 +164,17 @@
 
       if (executeType === 'transfer') {
         await api.executeTransfer(filters);
-        alert('Transfer job started successfully');
+        showToastMessage(`Transfer job started successfully for ${selectedNames.length} extraction${selectedNames.length > 1 ? 's' : ''}`, 'success');
       } else {
         await api.executePull(filters);
-        alert('Pull job started successfully');
+        showToastMessage(`Pull job started successfully for ${selectedNames.length} extraction${selectedNames.length > 1 ? 's' : ''}`, 'success');
       }
       
       showExecuteModal = false;
       selectedExtractions = [];
     } catch (error) {
       console.error(`Failed to execute ${executeType}:`, error);
-      alert(`Failed to start ${executeType} job: ${error.message}`);
+      showToastMessage(`Failed to start ${executeType} job: ${error.message}`, 'error');
     } finally {
       executeLoading = false;
     }
@@ -174,6 +203,19 @@
     loadExtractions();
   }
 
+  function handlePageSizeChange(newPageSize: number) {
+    pageSize = newPageSize;
+    currentPage = 1;
+    loadExtractions();
+  }
+
+  function handleSort(key: string, direction: 'asc' | 'desc') {
+    sortKey = key;
+    sortDirection = direction;
+    currentPage = 1;
+    loadExtractions();
+  }
+
   // Global functions for table actions
   if (typeof window !== 'undefined') {
     (window as any).viewExtraction = (id: number) => {
@@ -189,15 +231,18 @@
         try {
           await api.deleteExtraction(id);
           await loadExtractions();
+          showToastMessage('Extraction deleted successfully', 'success');
         } catch (error) {
           console.error('Failed to delete extraction:', error);
-          alert('Failed to delete extraction');
+          showToastMessage('Failed to delete extraction', 'error');
         }
       }
     };
   }
 
+  // Auto-reload when filters change
   $effect(() => {
+    currentPage = 1;
     loadExtractions();
   });
 </script>
@@ -290,12 +335,16 @@
         data={extractions}
         {loading}
         emptyMessage="No extractions found"
+        onSort={handleSort}
+        {sortKey}
+        {sortDirection}
         pagination={{
           currentPage,
           totalPages,
           pageSize,
-          totalItems: extractions.length,
-          onPageChange: handlePageChange
+          totalItems,
+          onPageChange: handlePageChange,
+          onPageSizeChange: handlePageSizeChange
         }}
       />
     </div>
@@ -371,3 +420,6 @@
     </div>
   </div>
 </Modal>
+
+<!-- Toast Notifications -->
+<Toast bind:show={showToast} type={toastType} message={toastMessage} />

@@ -9,6 +9,7 @@
   import Select from '$lib/components/ui/Select.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Card from '$lib/components/ui/Card.svelte';
+  import Toast from '$lib/components/ui/Toast.svelte';
   import { Trash2, RefreshCw, BarChart3, Clock, CheckCircle, XCircle } from '@lucide/svelte';
 
   let activeJobs = $state<JobDto[]>([]);
@@ -17,14 +18,30 @@
   let loading = $state(true);
   let activeView = $state<'active' | 'recent' | 'aggregated'>('active');
   
+  // Pagination for recent jobs
+  let currentPage = $state(1);
+  let totalPages = $state(1);
+  let totalItems = $state(0);
+  let pageSize = $state(20);
+  
+  // Pagination for aggregated jobs
+  let aggregatedCurrentPage = $state(1);
+  let aggregatedTotalPages = $state(1);
+  let aggregatedTotalItems = $state(0);
+  let aggregatedPageSize = $state(20);
+  
   // Filters for recent jobs
   let searchTerm = $state('');
   let filterStatus = $state('');
   let filterType = $state('');
   let relativeTime = $state('86400'); // Last 24 hours
-  let currentPage = $state(1);
-  let totalPages = $state(1);
-  const pageSize = 20;
+  let sortKey = $state('');
+  let sortDirection = $state<'asc' | 'desc'>('desc');
+
+  // Toast notifications
+  let toastMessage = $state('');
+  let toastType = $state<'success' | 'error' | 'info'>('info');
+  let showToast = $state(false);
 
   const jobColumns = [
     { key: 'name', label: 'Extraction', sortable: true },
@@ -32,6 +49,7 @@
     { 
       key: 'status', 
       label: 'Status',
+      sortable: true,
       render: (value: string) => {
         const variant = value === 'Completed' ? 'success' : value === 'Running' ? 'info' : 'error';
         const colors = {
@@ -45,6 +63,7 @@
     { 
       key: 'timeSpentMs', 
       label: 'Duration',
+      sortable: true,
       render: (value: number) => {
         const seconds = Math.floor(value / 1000);
         const minutes = Math.floor(seconds / 60);
@@ -58,6 +77,7 @@
     { 
       key: 'megaBytes', 
       label: 'Data Size',
+      sortable: true,
       render: (value: number) => {
         if (value < 1) return `${(value * 1024).toFixed(1)} KB`;
         if (value < 1024) return `${value.toFixed(1)} MB`;
@@ -67,6 +87,7 @@
     { 
       key: 'startTime', 
       label: 'Started',
+      sortable: true,
       render: (value: string) => new Date(value).toLocaleString()
     }
   ];
@@ -77,6 +98,7 @@
     { 
       key: 'totalSizeMB', 
       label: 'Total Data',
+      sortable: true,
       render: (value: number) => {
         if (value < 1024) return `${value.toFixed(1)} MB`;
         return `${(value / 1024).toFixed(1)} GB`;
@@ -85,6 +107,7 @@
     { 
       key: 'completedJobs', 
       label: 'Completed',
+      sortable: true,
       render: (value: number, row: ExtractionAggregatedDto) => {
         const percentage = row.totalJobs > 0 ? (value / row.totalJobs * 100).toFixed(1) : '0';
         return `${value} (${percentage}%)`;
@@ -93,6 +116,7 @@
     { 
       key: 'failedJobs', 
       label: 'Failed',
+      sortable: true,
       render: (value: number, row: ExtractionAggregatedDto) => {
         const percentage = row.totalJobs > 0 ? (value / row.totalJobs * 100).toFixed(1) : '0';
         return `${value} (${percentage}%)`;
@@ -101,9 +125,17 @@
     { 
       key: 'lastEndTime', 
       label: 'Last Run',
+      sortable: true,
       render: (value: string) => value ? new Date(value).toLocaleString() : '-'
     }
   ];
+
+  function showToastMessage(message: string, type: 'success' | 'error' | 'info' = 'info') {
+    toastMessage = message;
+    toastType = type;
+    showToast = true;
+    setTimeout(() => showToast = false, 5000);
+  }
 
   onMount(async () => {
     await loadJobs();
@@ -130,8 +162,7 @@
     try {
       const response = await api.getActiveJobs();
       activeJobs = response.content || [];
-    }
-    catch (error) {
+    } catch (error) {
       console.error('Failed to load active jobs:', error);
     }
   }
@@ -140,33 +171,52 @@
     try {
       const filters: Record<string, string> = {
         relativeStart: relativeTime,
-        take: pageSize.toString()
+        take: pageSize.toString(),
+        skip: ((currentPage - 1) * pageSize).toString()
       };
       
       if (searchTerm) filters.extractionName = searchTerm;
       if (filterStatus) filters.status = filterStatus;
       if (filterType) filters.type = filterType;
+      if (sortKey) {
+        filters.sortBy = sortKey;
+        filters.sortDirection = sortDirection;
+      }
 
       const response = await api.searchJobs(filters);
       recentJobs = response.content || [];
       
       // Calculate pagination
-      totalPages = Math.ceil((response.entityCount || recentJobs.length) / pageSize);
+      totalItems = response.entityCount || 0;
+      totalPages = Math.ceil(totalItems / pageSize);
     } catch (error) {
       console.error('Failed to load recent jobs:', error);
+      showToastMessage('Failed to load recent jobs', 'error');
     }
   }
 
   async function loadAggregatedJobs() {
     try {
       const filters: Record<string, string> = {
-        relativeStart: relativeTime
+        relativeStart: relativeTime,
+        take: aggregatedPageSize.toString(),
+        skip: ((aggregatedCurrentPage - 1) * aggregatedPageSize).toString()
       };
+
+      if (sortKey) {
+        filters.sortBy = sortKey;
+        filters.sortDirection = sortDirection;
+      }
 
       const response = await api.getAggregatedJobs(filters);
       aggregatedJobs = response.content || [];
+      
+      // Calculate pagination
+      aggregatedTotalItems = response.entityCount || 0;
+      aggregatedTotalPages = Math.ceil(aggregatedTotalItems / aggregatedPageSize);
     } catch (error) {
       console.error('Failed to load aggregated jobs:', error);
+      showToastMessage('Failed to load aggregated jobs', 'error');
     }
   }
 
@@ -175,28 +225,66 @@
       try {
         await api.clearJobs();
         await loadJobs();
-        alert('Job history cleared successfully');
+        showToastMessage('Job history cleared successfully', 'success');
       } catch (error) {
         console.error('Failed to clear jobs:', error);
-        alert('Failed to clear job history');
+        showToastMessage('Failed to clear job history', 'error');
       }
     }
   }
 
-  function handlePageChange(page: number) {
+  function handleRecentJobsPageChange(page: number) {
     currentPage = page;
-    loadJobs();
+    loadRecentJobs();
+  }
+
+  function handleRecentJobsPageSizeChange(newPageSize: number) {
+    pageSize = newPageSize;
+    currentPage = 1;
+    loadRecentJobs();
+  }
+
+  function handleAggregatedJobsPageChange(page: number) {
+    aggregatedCurrentPage = page;
+    loadAggregatedJobs();
+  }
+
+  function handleAggregatedJobsPageSizeChange(newPageSize: number) {
+    aggregatedPageSize = newPageSize;
+    aggregatedCurrentPage = 1;
+    loadAggregatedJobs();
+  }
+
+  function handleSort(key: string, direction: 'asc' | 'desc') {
+    sortKey = key;
+    sortDirection = direction;
+    
+    if (activeView === 'recent') {
+      currentPage = 1;
+      loadRecentJobs();
+    } else if (activeView === 'aggregated') {
+      aggregatedCurrentPage = 1;
+      loadAggregatedJobs();
+    }
   }
 
   async function refreshData() {
     loading = true;
     await loadJobs();
+    showToastMessage('Data refreshed', 'success');
   }
 
+  // Auto-refresh when filters change
   $effect(() => {
     if (activeView === 'recent') {
+      currentPage = 1;
       loadRecentJobs();
-    } else if (activeView === 'aggregated') {
+    }
+  });
+
+  $effect(() => {
+    if (activeView === 'aggregated') {
+      aggregatedCurrentPage = 1;
       loadAggregatedJobs();
     }
   });
@@ -385,6 +473,17 @@
             data={recentJobs}
             {loading}
             emptyMessage="No jobs found for the selected criteria"
+            onSort={handleSort}
+            {sortKey}
+            {sortDirection}
+            pagination={{
+              currentPage,
+              totalPages,
+              pageSize,
+              totalItems,
+              onPageChange: handleRecentJobsPageChange,
+              onPageSizeChange: handleRecentJobsPageSizeChange
+            }}
           />
         </div>
 
@@ -410,9 +509,23 @@
             data={aggregatedJobs}
             {loading}
             emptyMessage="No aggregated data available"
+            onSort={handleSort}
+            {sortKey}
+            {sortDirection}
+            pagination={{
+              currentPage: aggregatedCurrentPage,
+              totalPages: aggregatedTotalPages,
+              pageSize: aggregatedPageSize,
+              totalItems: aggregatedTotalItems,
+              onPageChange: handleAggregatedJobsPageChange,
+              onPageSizeChange: handleAggregatedJobsPageSizeChange
+            }}
           />
         </div>
       {/if}
     </div>
   </div>
 </div>
+
+<!-- Toast Notifications -->
+<Toast bind:show={showToast} type={toastType} message={toastMessage} />
