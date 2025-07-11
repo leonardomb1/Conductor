@@ -315,18 +315,7 @@ public sealed class Server : IAsyncDisposable
 
         var api = app.MapGroup("/api");
 
-        api.MapGet("/health", (IJobTracker jobTracker) =>
-        {
-            var activeJobs = jobTracker.GetActiveJobs().Count();
-            activeJobsGauge.Record(activeJobs);
-
-            return Results.Ok(new
-            {
-                status = "Healthy",
-                timestamp = DateTime.Now,
-                activeJobs = activeJobs
-            });
-        }).WithName("HealthCheck");
+        api.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now })).WithName("HealthCheck");
 
         api.MapPrometheusScrapingEndpoint("/metrics");
 

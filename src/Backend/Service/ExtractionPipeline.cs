@@ -111,7 +111,11 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
         if (disposed)
             throw new ObjectDisposedException(nameof(ExtractionPipeline));
 
-        return await connectionPoolManager.GetConnectionAsync(connectionString, dbType, cancellationToken);
+        string finalConnectionString = DBExchange.SupportsMARS(dbType)
+            ? DBExchange.EnsureMARSEnabled(connectionString, dbType)
+            : connectionString;
+
+        return await connectionPoolManager.GetConnectionAsync(finalConnectionString, dbType, cancellationToken);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -119,7 +123,11 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
     {
         if (disposed || connection is null) return;
 
-        string connectionKey = GenerateConnectionKey(connectionString, dbType);
+        string finalConnectionString = DBExchange.SupportsMARS(dbType)
+            ? DBExchange.EnsureMARSEnabled(connectionString, dbType)
+            : connectionString;
+
+        string connectionKey = GenerateConnectionKey(finalConnectionString, dbType);
         connectionPoolManager.ReturnConnection(connectionKey, connection);
     }
 
@@ -591,16 +599,22 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                 if (extraction.Origin is null) return;
                 if (extraction.Origin.DbType is null || extraction.Origin.ConnectionString is null) return;
 
-                extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId}", extraction.Id);
+                string dbType = extraction.Origin.DbType;
+                string connectionString = extraction.Origin.ConnectionString;
 
-                var shouldPartition = false;
+                extractionLogger.Debug(
+                    "Starting database data fetch for extraction {ExtractionId} using {DbType} (MARS: {MARSSupported})",
+                    extraction.Id, dbType, DBExchange.SupportsMARS(dbType)
+                );
+
+                bool shouldPartition = false;
 
                 if (hasCheckUp is not null && hasCheckUp.Value)
                 {
                     var result = await ProduceDataCheck(extraction, cancellationToken).ConfigureAwait(false);
                     if (!result.IsSuccessful)
                     {
-                        extractionLogger.Error("Data check failed for extraction {ExtractionId}", extraction.Id);
+                        extractionLogger?.Error("Data check failed for extraction {ExtractionId}", extraction.Id);
                         extractionActivity?.SetTag("success", false);
                         return;
                     }
@@ -608,7 +622,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                     if (shouldPartition)
                     {
-                        extractionLogger.Information("Using partitioned fetch for extraction {ExtractionId} (existing rows: {ExistingRows})",
+                        extractionLogger?.Information("Using partitioned fetch for extraction {ExtractionId} (existing rows: {ExistingRows})",
                             extraction.Id, result.Value);
                     }
                 }
@@ -624,7 +638,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                     try
                     {
-                        connection = await GetConnectionAsync(extraction.Origin.ConnectionString, extraction.Origin.DbType, cancellationToken);
+                        connection = await GetConnectionAsync(connectionString, dbType, cancellationToken);
                         attempt = await fetcher.FetchDataTable(
                             extraction,
                             requestTime,
@@ -638,7 +652,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                     }
                     catch (ObjectDisposedException)
                     {
-                        extractionLogger.Warning("Connection disposed during fetch for extraction {ExtractionId}", extraction.Id);
+                        extractionLogger?.Warning("Connection disposed during fetch for extraction {ExtractionId}", extraction.Id);
                         break;
                     }
                     finally
@@ -651,15 +665,29 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                     if (!attempt.IsSuccessful)
                     {
-                        extractionLogger.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, attempt.Error.ExceptionMessage);
-                        pipelineErrors.Add(attempt.Error);
+                        if (attempt.HasMultipleErrors)
+                        {
+                            foreach (var err in attempt.Errors)
+                            {
+                                var error = err ?? new Error("Unknown database fetch error occurred");
+                                extractionLogger?.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, error.ExceptionMessage);
+                                pipelineErrors.Add(error);
+                            }
+                        }
+                        else
+                        {
+                            var error = attempt.Error ?? new Error("Unknown database fetch error occurred");
+                            extractionLogger?.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, error.ExceptionMessage);
+                            pipelineErrors.Add(error);
+                        }
+
                         extractionActivity?.SetTag("success", false);
                         break;
                     }
 
                     if (attempt.Value.Rows.Count == 0)
                     {
-                        extractionLogger.Debug("No more data to fetch for extraction {ExtractionId}", extraction.Id);
+                        extractionLogger?.Debug("No more data to fetch for extraction {ExtractionId}", extraction.Id);
                         attempt.Value.Dispose();
                         break;
                     }
@@ -668,7 +696,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                     currentOffset += (ulong)attempt.Value.Rows.Count;
                     Interlocked.Add(ref totalRowsProduced, attempt.Value.Rows.Count);
 
-                    extractionLogger.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched})",
+                    extractionLogger?.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched})",
                         attempt.Value.Rows.Count, extraction.Id, currentOffset);
 
                     var managedTable = CreateManagedDataTable($"db_extraction_{extraction.Id}_batch_{currentOffset}");
@@ -683,7 +711,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                 if (extractionRowCount > 0)
                 {
-                    extractionLogger.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows",
+                    extractionLogger?.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows",
                         extraction.Id, extractionRowCount);
                 }
 

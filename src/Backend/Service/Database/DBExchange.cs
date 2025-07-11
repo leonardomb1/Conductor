@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Text;
+using System.Text.RegularExpressions;
 using Conductor.Model;
 using Conductor.Repository;
 using Conductor.Shared;
@@ -10,11 +11,25 @@ using Serilog;
 
 namespace Conductor.Service.Database;
 
-public abstract class DBExchange
+public abstract partial class DBExchange
 {
     private static readonly HashSet<string> MARSCompatibleDatabases = ["SqlServer"];
 
     public static bool SupportsMARS(string dbType) => MARSCompatibleDatabases.Contains(dbType);
+
+    public static string EnsureMARSEnabled(string connectionString, string dbType)
+    {
+        if (!SupportsMARS(dbType))
+            return connectionString;
+
+        if (connectionString.Contains("MultipleActiveResultSets", StringComparison.OrdinalIgnoreCase))
+        {
+            return MyRegex().Replace(connectionString, "MultipleActiveResultSets=true");
+        }
+
+        string separator = connectionString.EndsWith(';') ? "" : ";";
+        return $"{connectionString}{separator}MultipleActiveResultSets=true";
+    }
 
     protected abstract string? QueryNonLocking();
 
@@ -405,4 +420,7 @@ public abstract class DBExchange
             return new Error(ex.Message, ex.StackTrace);
         }
     }
+
+    [GeneratedRegex(@"MultipleActiveResultSets\s*=\s*[^;]*", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex MyRegex();
 }

@@ -18,8 +18,8 @@ public readonly struct Result<T>
     public bool IsSuccessful => success;
     public T Value => value;
     public Error Error => singleError;
-    public ReadOnlySpan<Error> Errors => multipleErrors ?? (singleError != null ? new[] { singleError } : Array.Empty<Error>());
-    public bool HasMultipleErrors => multipleErrors != null;
+    public ReadOnlySpan<Error> Errors => multipleErrors ?? (singleError is not null ? [singleError] : Array.Empty<Error>());
+    public bool HasMultipleErrors => multipleErrors is not null;
 
     public static Result<T> Ok(T value) => new(value, null!, null!, true);
     public static Result<T> Err(Error error) => new(default!, error, null!, false);
@@ -52,8 +52,8 @@ public readonly struct Result
 
     public bool IsSuccessful => success;
     public Error Error => singleError;
-    public ReadOnlySpan<Error> Errors => multipleErrors ?? (singleError != null ? new[] { singleError } : Array.Empty<Error>());
-    public bool HasMultipleErrors => multipleErrors != null;
+    public ReadOnlySpan<Error> Errors => multipleErrors ?? (singleError is not null ? [singleError] : Array.Empty<Error>());
+    public bool HasMultipleErrors => multipleErrors is not null;
     public static Result Ok() => new(null!, null!, true);
     public static Result Err(Error error) => new(error, null!, false);
     public static Result Err(params Error[] errors) => new(null!, errors, false);
