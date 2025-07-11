@@ -1,5 +1,5 @@
+using System.Diagnostics.Metrics;
 using System.Net;
-using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -23,11 +23,34 @@ namespace Conductor.Router;
 public sealed class Server : IAsyncDisposable
 {
     private readonly WebApplication app;
-
+    private readonly Meter serverMeter;
+    private readonly Counter<int> requestsCounter;
+    private readonly Counter<int> errorsCounter;
+    private readonly Gauge<int> activeJobsGauge;
+    private readonly Histogram<double> requestDurationHistogram;
     private bool disposed = false;
 
     public Server()
     {
+        serverMeter = new Meter("Conductor.Server", "1.0.0");
+
+        requestsCounter = serverMeter.CreateCounter<int>(
+            "conductor_http_requests_total",
+            description: "Total number of HTTP requests");
+
+        errorsCounter = serverMeter.CreateCounter<int>(
+            "conductor_http_errors_total",
+            description: "Total number of HTTP errors");
+
+        activeJobsGauge = serverMeter.CreateGauge<int>(
+            "conductor_active_jobs",
+            description: "Current number of active jobs");
+
+        requestDurationHistogram = serverMeter.CreateHistogram<double>(
+            "conductor_http_request_duration_seconds",
+            "s",
+            "Duration of HTTP requests in seconds");
+
         if (Settings.LogLevelDebug)
         {
             Log.Logger = new LoggerConfiguration()
@@ -179,6 +202,13 @@ public sealed class Server : IAsyncDisposable
         builder.Services.AddSingleton<IDataTableMemoryManager, DataTableMemoryManager>();
         builder.Services.AddSingleton<IScriptEngine, RoslynScriptEngine>();
 
+        // Register server metrics as singleton for dependency injection
+        builder.Services.AddSingleton(serverMeter);
+        builder.Services.AddSingleton(requestsCounter);
+        builder.Services.AddSingleton(errorsCounter);
+        builder.Services.AddSingleton(activeJobsGauge);
+        builder.Services.AddSingleton(requestDurationHistogram);
+
         /// Controllers
         builder.Services.AddScoped<DestinationController>();
         builder.Services.AddScoped<OriginController>();
@@ -186,8 +216,6 @@ public sealed class Server : IAsyncDisposable
         builder.Services.AddScoped<ExtractionController>();
         builder.Services.AddScoped<ScheduleController>();
         builder.Services.AddScoped<JobController>();
-
-
 
         string runningEnvironment = Environment.GetEnvironmentVariable("DOCKER_ENVIRONMENT") is null ? "CLI" : "Docker";
         string runningArch = Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit";
@@ -212,11 +240,51 @@ public sealed class Server : IAsyncDisposable
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
                     .AddProcessInstrumentation()
+                    .AddMeter("Conductor.Server")
+                    .AddMeter("Conductor.DataTableMemory")
+                    .AddMeter("Conductor.ConnectionPool")
                     .AddPrometheusExporter()
                     .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName));
             });
 
         app = builder.Build();
+
+        app.Use(async (context, next) =>
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var method = context.Request.Method;
+            var path = context.Request.Path.Value ?? "unknown";
+
+            try
+            {
+                await next();
+
+                requestsCounter.Add(1, new[]
+                {
+                    new KeyValuePair<string, object?>("method", method),
+                    new KeyValuePair<string, object?>("path", path),
+                    new KeyValuePair<string, object?>("status_code", context.Response.StatusCode.ToString())
+                });
+            }
+            catch (Exception)
+            {
+                errorsCounter.Add(1, new[]
+                {
+                    new KeyValuePair<string, object?>("method", method),
+                    new KeyValuePair<string, object?>("path", path)
+                });
+                throw;
+            }
+            finally
+            {
+                stopwatch.Stop();
+                requestDurationHistogram.Record(stopwatch.Elapsed.TotalSeconds, new[]
+                {
+                    new KeyValuePair<string, object?>("method", method),
+                    new KeyValuePair<string, object?>("path", path)
+                });
+            }
+        });
 
         if (Settings.VerifyCors)
         {
@@ -245,11 +313,49 @@ public sealed class Server : IAsyncDisposable
         }
         app.UseResponseCompression();
 
-        /// Base API Route
         var api = app.MapGroup("/api");
 
-        api.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now })).WithName("HealthCheck");
+        api.MapGet("/health", (IJobTracker jobTracker) =>
+        {
+            var activeJobs = jobTracker.GetActiveJobs().Count();
+            activeJobsGauge.Record(activeJobs);
+
+            return Results.Ok(new
+            {
+                status = "Healthy",
+                timestamp = DateTime.Now,
+                activeJobs = activeJobs
+            });
+        }).WithName("HealthCheck");
+
         api.MapPrometheusScrapingEndpoint("/metrics");
+
+        api.MapGet("/metrics/json", (
+            IJobTracker jobTracker,
+            IConnectionPoolManager poolManager,
+            IDataTableMemoryManager memoryManager) =>
+        {
+            var poolStats = poolManager.GetPoolStats();
+            var memoryStats = memoryManager.GetMemoryStats();
+            var activeJobs = jobTracker.GetActiveJobs().Count();
+
+            return Results.Ok(new
+            {
+                timestamp = DateTime.UtcNow,
+                jobs = new { active = activeJobs },
+                connectionPools = new
+                {
+                    totalPools = poolStats.TotalActivePools,
+                    totalConnections = poolStats.TotalActiveConnections,
+                    poolSize = poolStats.TotalPoolSize
+                },
+                dataTables = new
+                {
+                    activeTables = memoryStats.TotalActiveTables,
+                    estimatedMemoryMB = memoryStats.TotalEstimatedMemoryMB
+                }
+            });
+        }).WithName("MetricsJson");
 
         DestinationController.Map(api);
         OriginController.Map(api);
@@ -282,6 +388,7 @@ public sealed class Server : IAsyncDisposable
     {
         if (!disposed && disposing)
         {
+            serverMeter?.Dispose();
             await app.DisposeAsync();
             disposed = true;
         }
