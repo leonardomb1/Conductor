@@ -324,7 +324,11 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 DbConnection? connection = null;
                 try
                 {
-                    connection = await connectionPoolManager.GetConnectionAsync(conStr, res.Origin.DbType!, token);
+                    string finalConnectionString = DBExchange.SupportsMARS(res.Origin.DbType!)
+                        ? DBExchange.EnsureMARSEnabled(res.Origin.ConnectionString!, res.Origin.DbType!)
+                        : res.Origin.ConnectionString!;
+
+                    connection = await connectionPoolManager.GetConnectionAsync(finalConnectionString, res.Origin.DbType!, token);
 
                     var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, connection, token, limit: Settings.FetcherLineMax, shouldPaginate: true);
                     if (!query.IsSuccessful)
