@@ -1,7 +1,5 @@
 import type { ApiResponse, Destination, Origin, Schedule, User, Extraction, JobDto, ExtractionAggregatedDto } from './types.js';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL
-
 class ApiClient {
   private token: string | null = null;
 
@@ -19,7 +17,7 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(`/api${endpoint}`, {
       ...options,
       headers,
     });
@@ -31,9 +29,8 @@ class ApiClient {
     return response.json();
   }
 
-  // Auth
   async login(username: string, password: string): Promise<string> {
-    const response = await fetch(`${API_BASE}/login`, {
+    const response = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -47,7 +44,7 @@ class ApiClient {
   }
 
   async loginLdap(username: string, password: string): Promise<string> {
-    const response = await fetch(`${API_BASE}/ssologin`, {
+    const response = await fetch('/api/ssologin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -250,14 +247,13 @@ class ApiClient {
     });
   }
 
-  // Health
   async getHealth(): Promise<{ status: string; timestamp: string; activeJobs: number }> {
-    const response = await fetch(`${API_BASE}/health`);
+    const response = await fetch('/api/health');
     return response.json();
   }
 
   async getMetrics(): Promise<any> {
-    const response = await fetch(`${API_BASE}/metrics/json`);
+    const response = await fetch('/api/metrics/json');
     return response.json();
   }
 }

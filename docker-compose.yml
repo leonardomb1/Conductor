@@ -143,7 +143,7 @@ services:
     env_file:
       - .env
     environment:
-      VITE_API_BASE_URL: http://conductor-api:${PORT_NUMBER}/api
+      API_HOST: conductor-api:${PORT_NUMBER}
       ORIGIN: http://localhost:${FRONTEND_PORT_NUMBER}
       HOST: 0.0.0.0
       PORT: ${FRONTEND_PORT_NUMBER}

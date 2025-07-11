@@ -4,21 +4,25 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [sveltekit()],
   server: {
-    host: true, // Allow external connections
+    host: true, 
     port: 3000,
-    // Only proxy in development when connecting to localhost
-    ...(process.env.VITE_API_BASE_URL?.includes('localhost') && {
-      proxy: {
-        '/api': {
-          target: process.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:5000',
-          changeOrigin: true,
-          secure: false
-        }
+    proxy: {
+      '/api': {
+        target: `http://conductor-api:${process.env.PORT_NUMBER}`,
+        changeOrigin: true,
+        secure: false
       }
-    })
+    }
   },
   preview: {
     host: true,
-    port: 3000
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: `http://conductor-api:${process.env.PORT_NUMBER}`,
+        changeOrigin: true,
+        secure: false
+      }
+    }
   }
 });
