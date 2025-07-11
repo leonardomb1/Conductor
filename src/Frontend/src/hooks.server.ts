@@ -6,14 +6,21 @@ export const handle: Handle = async ({ event, resolve }) => {
     const apiUrl = `http://${apiHost}${event.url.pathname}${event.url.search}`;
     
     try {
-      const response = await fetch(apiUrl, {
+      const requestOptions: RequestInit = {
         method: event.request.method,
         headers: {
           ...Object.fromEntries(event.request.headers),
           'X-Forwarded-For': event.getClientAddress(),
         },
-        body: event.request.method !== 'GET' ? event.request.body : undefined,
-      });
+      };
+
+      // Add body and duplex option for non-GET requests
+      if (event.request.method !== 'GET' && event.request.method !== 'HEAD') {
+        requestOptions.body = event.request.body;
+        requestOptions.duplex = 'half';
+      }
+
+      const response = await fetch(apiUrl, requestOptions);
 
       return new Response(response.body, {
         status: response.status,
@@ -22,7 +29,7 @@ export const handle: Handle = async ({ event, resolve }) => {
       });
     } catch (error) {
       console.error('API proxy error:', error);
-      return new Response('API Error', { status: 500 });
+      return new Response(`API Error: ${error.message}`, { status: 500 });
     }
   }
 
