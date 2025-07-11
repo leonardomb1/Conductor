@@ -8,14 +8,14 @@
     Database, 
     FileText, 
     Users, 
-    Gear, 
-    ChartBar,
+    Settings, 
+    BarChart3,
     Calendar,
     Download,
     Upload,
     Activity,
     Clock
-  } from 'phosphor-svelte';
+  } from 'lucide-svelte';
 
   let healthData = $state<any>(null);
   let metricsData = $state<any>(null);
@@ -131,7 +131,7 @@
     <Card>
       <div class="flex items-center">
         <div class="flex-shrink-0">
-          <ChartBar class="h-8 w-8 text-orange-500" />
+          <BarChart3 class="h-8 w-8 text-orange-500" />
         </div>
         <div class="ml-4">
           <p class="text-sm font-medium text-supabase-gray-600">Memory Usage</p>

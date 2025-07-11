@@ -9,7 +9,7 @@
   import Modal from '$lib/components/ui/Modal.svelte';
   import Card from '$lib/components/ui/Card.svelte';
   import Select from '$lib/components/ui/Select.svelte';
-  import { Plus, PencilSimple, Trash, Database } from 'phosphor-svelte';
+  import { Plus, Edit, Trash2, Database } from 'lucide-svelte';
 
   let origins = $state<Origin[]>([]);
   let loading = $state(true);

@@ -8,7 +8,7 @@
   import Input from '$lib/components/ui/Input.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Select from '$lib/components/ui/Select.svelte';
-  import { Plus, PencilSimple, Trash, Upload } from 'phosphor-svelte';
+  import { Plus, Edit, Trash2, Upload } from 'lucide-svelte';
 
   let destinations = $state<Destination[]>([]);
   let loading = $state(true);

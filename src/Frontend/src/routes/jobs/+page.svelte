@@ -9,7 +9,7 @@
   import Select from '$lib/components/ui/Select.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Card from '$lib/components/ui/Card.svelte';
-  import { Trash, ArrowClockwise, ChartBar, Clock, CheckCircle, XCircle } from 'phosphor-svelte';
+  import { Trash2, RefreshCw, BarChart3, Clock, CheckCircle, XCircle } from 'lucide-svelte';
 
   let activeJobs = $state<JobDto[]>([]);
   let recentJobs = $state<JobDto[]>([]);
@@ -202,11 +202,11 @@
     {#snippet actions()}
       <div class="flex space-x-3">
         <Button variant="secondary" onclick={refreshData} loading={loading}>
-          <ArrowClockwise size={16} class="mr-2" />
+          <RefreshCw size={16} class="mr-2" />
           Refresh
         </Button>
         <Button variant="danger" onclick={clearAllJobs}>
-          <Trash size={16} class="mr-2" />
+          <Trash2 size={16} class="mr-2" />
           Clear History
         </Button>
       </div>
@@ -258,7 +258,7 @@
     <Card>
       <div class="flex items-center">
         <div class="flex-shrink-0">
-          <ChartBar class="h-8 w-8 text-purple-500" />
+          <BarChart3 class="h-8 w-8 text-purple-500" />
         </div>
         <div class="ml-4">
           <p class="text-sm font-medium text-supabase-gray-600">Data Processed (24h)</p>
