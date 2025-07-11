@@ -325,8 +325,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 try
                 {
                     string finalConnectionString = DBExchange.SupportsMARS(res.Origin.DbType!)
-                        ? DBExchange.EnsureMARSEnabled(res.Origin.ConnectionString!, res.Origin.DbType!)
-                        : res.Origin.ConnectionString!;
+                        ? DBExchange.EnsureMARSEnabled(conStr, res.Origin.DbType!) 
+                        : conStr; 
 
                     connection = await connectionPoolManager.GetConnectionAsync(finalConnectionString, res.Origin.DbType!, token);
 
@@ -357,7 +357,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 {
                     if (connection is not null)
                     {
-                        var connectionKey = $"{res.Origin.DbType}:{conStr.GetHashCode()}";
+                        var connectionKey = $"{res.Origin.DbType}:{conStr.GetHashCode()}"; // Use decrypted string for key
                         connectionPoolManager.ReturnConnection(connectionKey, connection);
                     }
                 }
