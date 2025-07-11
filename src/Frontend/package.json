@@ -23,7 +23,7 @@
     "vite": "^5.0.3"
   },
   "dependencies": {
-    "lucide-svelte": "^0.292.0",
+    "@lucide/svelte": "^0.514.0",
     "@tailwindcss/forms": "^0.5.7"
   },
   "type": "module"

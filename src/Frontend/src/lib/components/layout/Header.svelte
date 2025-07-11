@@ -1,7 +1,7 @@
 <script lang="ts">
   import { auth } from '$lib/auth.svelte.js';
   import { goto } from '$app/navigation';
-  import { Bell, Search, User, LogOut } from 'lucide-svelte';
+  import { Bell, Search, User, LogOut } from '@lucide/svelte';
   import { onMount } from 'svelte';
   
   let showUserMenu = $state(false);

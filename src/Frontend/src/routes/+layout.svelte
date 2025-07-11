@@ -10,7 +10,6 @@
   let { children } = $props();
 
   $effect(() => {
-    // Redirect to login if not authenticated and not on login page
     if (!auth.isAuthenticated && !$page.url.pathname.startsWith('/login')) {
       goto('/login');
     }

@@ -9,7 +9,7 @@
   import Select from '$lib/components/ui/Select.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Card from '$lib/components/ui/Card.svelte';
-  import { Trash2, RefreshCw, BarChart3, Clock, CheckCircle, XCircle } from 'lucide-svelte';
+  import { Trash2, RefreshCw, BarChart3, Clock, CheckCircle, XCircle } from '@lucide/svelte';
 
   let activeJobs = $state<JobDto[]>([]);
   let recentJobs = $state<JobDto[]>([]);

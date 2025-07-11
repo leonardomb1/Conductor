@@ -8,7 +8,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Input from '$lib/components/ui/Input.svelte';
   import Select from '$lib/components/ui/Select.svelte';
-  import { ArrowLeft, Save } from 'lucide-svelte';
+  import { ArrowLeft, Save } from '@lucide/svelte';
 
   let extraction = $state<Extraction | null>(null);
   let origins = $state<Origin[]>([]);

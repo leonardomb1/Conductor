@@ -9,7 +9,7 @@
   import Select from '$lib/components/ui/Select.svelte';
   import Badge from '$lib/components/ui/Badge.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
-  import { Plus, Play, Download, Eye, Edit, Trash2 } from 'lucide-svelte';
+  import { Plus, Play, Download, Eye, Edit, Trash2 } from '@lucide/svelte';
 
   let extractions = $state<Extraction[]>([]);
   let loading = $state(true);

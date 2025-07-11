@@ -15,7 +15,7 @@
     Upload,
     Activity,
     Clock
-  } from 'lucide-svelte';
+  } from '@lucide/svelte';
 
   let healthData = $state<any>(null);
   let metricsData = $state<any>(null);
