@@ -6,12 +6,8 @@ const config = {
   kit: {
     adapter: adapter({
       out: 'build',
-      precompress: false,
-      envPrefix: 'PUBLIC_'
-    }),
-    env: {
-      publicPrefix: 'PUBLIC_'
-    }
+      precompress: false
+    })
   },
   preprocess: vitePreprocess()
 };
