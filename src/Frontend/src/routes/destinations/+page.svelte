@@ -222,7 +222,7 @@
 
 <!-- Create/Edit Modal -->
 <Modal bind:open={showModal} title={modalMode === 'create' ? 'New Destination' : 'Edit Destination'}>
-  <form onsubmit|preventDefault={handleSubmit} class="space-y-4">
+  <form on:submit|preventDefault={handleSubmit} class="space-y-4">
     <Input
       label="Name"
       bind:value={formData.destinationName}
