@@ -1,6 +1,6 @@
 import type { ApiResponse, Destination, Origin, Schedule, User, Extraction, JobDto, ExtractionAggregatedDto } from './types.js';
 
-const API_BASE = 'http://localhost:5000/api'; // Adjust based on your backend port
+const API_BASE = import.meta.env.VITE_API_BASE_URL
 
 class ApiClient {
   private token: string | null = null;

@@ -21,7 +21,7 @@ services:
       retries: 5
 
   api:
-    image: conductor:0.0.3-${DOCKER_ENVIRONMENT}
+    image: conductor-api:0.0.3-${DOCKER_ENVIRONMENT}
     hostname: conductor-api
     build:
       context: .
@@ -87,6 +87,31 @@ services:
       - conductor-network
     ports:
       - "${API_FORWARDED_PORT_NUMBER}:${PORT_NUMBER}"
+
+  frontend:
+    image: conductor-frontend:0.0.3-${DOCKER_ENVIRONMENT}
+    hostname: conductor-frontend
+    build:
+      context: .
+      dockerfile: docker/frontend/${DOCKER_ENVIRONMENT}/Dockerfile
+    env_file:
+      - .env
+    environment:
+      VITE_API_BASE_URL: http://conductor-api:${PORT_NUMBER}/api
+      ORIGIN: http://localhost:${FRONTEND_PORT_NUMBER}
+      HOST: 0.0.0.0
+      PORT: ${FRONTEND_PORT_NUMBER}
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://conductor-frontend:${FRONTEND_PORT_NUMBER} || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks:
+      - conductor-network
+    ports:
+      - "${FRONTEND_FORWARDED_PORT_NUMBER}:${FRONTEND_PORT_NUMBER}"
 
 networks:
   conductor-network:
