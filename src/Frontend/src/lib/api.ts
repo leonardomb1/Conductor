@@ -1,54 +1,39 @@
 import type { ApiResponse, Destination, Origin, Schedule, User, Extraction, JobDto, ExtractionAggregatedDto } from './types.js';
-import { goto } from '$app/navigation';
+import { auth } from './auth.svelte.js';
 
 class ApiClient {
-  private token: string | null = null;
-
-  setToken(token: string | null) {
-    this.token = token;
-  }
-
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       ...options.headers,
     };
 
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    // Add Bearer token if available
+    if (auth.token) {
+      headers.Authorization = `Bearer ${auth.token}`;
+    } 
+
+    const response = await fetch(`/api${endpoint}`, {
+      ...options,
+      headers,
+    });
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      auth.handleUnauthorized();
+      throw new Error('Unauthorized - please login again');
     }
 
-    try {
-      const response = await fetch(`/api${endpoint}`, {
-        ...options,
-        headers,
-      });
-
-      // Handle 401 Unauthorized - redirect to login
-      if (response.status === 401) {
-        // Clear invalid token
-        this.token = null;
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('conductor_token');
-          localStorage.removeItem('conductor_user');
-        }
-        goto('/login');
-        throw new Error('Unauthorized - redirecting to login');
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      return response.json();
-    } catch (error) {
-      console.error('API request error:', error);
-      throw error;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
     }
+
+    return response.json();
   }
 
+  // Login methods (don't use request method to avoid circular dependencies)
   async login(username: string, password: string): Promise<string> {
+    
     const response = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,7 +44,8 @@ class ApiClient {
       throw new Error('Login failed');
     }
 
-    return response.text();
+    const token = await response.text();
+    return token;
   }
 
   async loginLdap(username: string, password: string): Promise<string> {
@@ -73,10 +59,60 @@ class ApiClient {
       throw new Error('LDAP login failed');
     }
 
-    return response.text();
+    const token = await response.text();
+    return token;
   }
 
-  // Destinations
+  // Test endpoint to verify auth is working
+  async testAuth(): Promise<{ authenticated: boolean; user?: string }> {
+    try {
+      const health = await this.getHealth();
+      return { authenticated: true, user: auth.user || undefined };
+    } catch (error) {
+      return { authenticated: false };
+    }
+  }
+
+  // Health check (simple, no auth loops)
+  async getHealth(): Promise<{ status: string; timestamp: string; activeJobs: number }> {
+    const headers: HeadersInit = {};
+    if (auth.token) {
+      headers.Authorization = `Bearer ${auth.token}`;
+    } 
+
+    const response = await fetch('/api/health', { headers });
+    
+    if (response.status === 401) {
+      throw new Error('Unauthorized');
+    }
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch health data');
+    }
+    
+    return response.json();
+  }
+
+  async getMetrics(): Promise<any> {
+    const headers: HeadersInit = {};
+    if (auth.token) {
+      headers.Authorization = `Bearer ${auth.token}`;
+    }
+
+    const response = await fetch('/api/metrics/json', { headers });
+    
+    if (response.status === 401) {
+      throw new Error('Unauthorized');
+    }
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch metrics data');
+    }
+    
+    return response.json();
+  }
+
+  // All other methods remain the same...
   async getDestinations(filters?: Record<string, string>): Promise<ApiResponse<Destination>> {
     const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
     return this.request<Destination>(`/destinations${params}`);
@@ -264,22 +300,6 @@ class ApiClient {
     await this.request('/jobs', {
       method: 'DELETE',
     });
-  }
-
-  async getHealth(): Promise<{ status: string; timestamp: string; activeJobs: number }> {
-    const response = await fetch('/api/health');
-    if (!response.ok) {
-      throw new Error('Failed to fetch health data');
-    }
-    return response.json();
-  }
-
-  async getMetrics(): Promise<any> {
-    const response = await fetch('/api/metrics/json');
-    if (!response.ok) {
-      throw new Error('Failed to fetch metrics data');
-    }
-    return response.json();
   }
 }
 

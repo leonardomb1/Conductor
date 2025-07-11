@@ -1,5 +1,6 @@
 <script lang="ts">
   import { auth } from '$lib/auth.svelte.js';
+  import { api } from '$lib/api.js';
   import { goto } from '$app/navigation';
   import { Bell, Search, User, LogOut } from '@lucide/svelte';
   import { onMount } from 'svelte';
@@ -7,12 +8,15 @@
   let showUserMenu = $state(false);
   let healthData = $state<any>(null);
 
+  // Simple health check on mount - no intervals, no loops
   onMount(async () => {
-    try {
-      const response = await fetch('/api/health');
-      healthData = await response.json();
-    } catch (error) {
-      console.error('Failed to fetch health data:', error);
+    if (auth.isAuthenticated) {
+      try {
+        healthData = await api.getHealth();
+      } catch (error) {
+        // Silently fail - health check is optional
+        console.debug('Health check failed:', error);
+      }
     }
   });
 
@@ -24,6 +28,18 @@
   function toggleUserMenu() {
     showUserMenu = !showUserMenu;
   }
+
+  // Close user menu when clicking outside
+  function handleClickOutside(event: MouseEvent) {
+    if (showUserMenu && !(event.target as Element)?.closest('.user-menu-container')) {
+      showUserMenu = false;
+    }
+  }
+
+  onMount(() => {
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  });
 </script>
 
 <header class="bg-white border-b border-supabase-gray-200">
@@ -44,6 +60,7 @@
     </div>
 
     <div class="flex items-center space-x-4">
+      <!-- Simple system status -->
       {#if healthData}
         <div class="flex items-center space-x-2 text-sm text-supabase-gray-600">
           <div class="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -51,29 +68,37 @@
           <span class="text-supabase-gray-400">•</span>
           <span>{healthData.activeJobs} active jobs</span>
         </div>
+      {:else if auth.isAuthenticated}
+        <div class="flex items-center space-x-2 text-sm text-supabase-gray-600">
+          <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+          <span>System Online</span>
+        </div>
       {/if}
 
+      <!-- Notifications -->
       <button class="p-2 text-supabase-gray-400 hover:text-supabase-gray-600 transition-colors">
         <Bell size={20} />
       </button>
 
-      <div class="relative">
+      <!-- User Menu -->
+      <div class="relative user-menu-container">
         <button
           onclick={toggleUserMenu}
           class="flex items-center space-x-2 p-2 text-supabase-gray-700 hover:text-supabase-gray-900 transition-colors"
         >
           <User size={20} />
-          <span class="text-sm font-medium">{auth.user}</span>
+          <span class="text-sm font-medium">{auth.user || 'User'}</span>
         </button>
 
         {#if showUserMenu}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div 
             class="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 z-50"
-            onclick={() => showUserMenu = false}
           >
             <div class="py-1">
+              <div class="px-4 py-2 text-sm text-supabase-gray-500 border-b border-supabase-gray-100">
+                Signed in as <br />
+                <span class="font-medium text-supabase-gray-900">{auth.user}</span>
+              </div>
               <button
                 onclick={handleLogout}
                 class="flex items-center w-full px-4 py-2 text-sm text-supabase-gray-700 hover:bg-supabase-gray-100"

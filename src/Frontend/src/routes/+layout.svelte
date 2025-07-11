@@ -3,23 +3,19 @@
   import { page } from '$app/stores';
   import { auth } from '$lib/auth.svelte.js';
   import { goto } from '$app/navigation';
-  import { onMount } from 'svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import Header from '$lib/components/layout/Header.svelte';
 
   let { children } = $props();
 
-  onMount(async () => {
-    // Validate token on app startup
-    if (auth.isAuthenticated && !await auth.validateToken()) {
-      // Token was invalid, user has been logged out
-      goto('/login');
-    }
-  });
-
+  // Simple reactive navigation
   $effect(() => {
-    if (!auth.isAuthenticated && !$page.url.pathname.startsWith('/login')) {
+    const isLoginPage = $page.url.pathname.startsWith('/login');
+    
+    if (!auth.isAuthenticated && !isLoginPage) {
       goto('/login');
+    } else if (auth.isAuthenticated && isLoginPage) {
+      goto('/dashboard');
     }
   });
 
@@ -39,7 +35,7 @@
     </div>
   </div>
 {:else}
-  <!-- Loading state while checking authentication -->
+  <!-- Loading while redirecting -->
   <div class="flex min-h-screen items-center justify-center bg-supabase-gray-50">
     <div class="text-center">
       <div class="animate-spin h-8 w-8 border-4 border-supabase-green border-t-transparent rounded-full mx-auto"></div>
