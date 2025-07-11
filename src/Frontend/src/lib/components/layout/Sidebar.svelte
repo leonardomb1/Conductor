@@ -5,14 +5,14 @@
     FileText, 
     Users, 
     Settings, 
-    BarChart3,
+    ChartBar,
     Calendar,
     Download,
     Upload
-  } from 'lucide-svelte';
+  } from 'phosphor-svelte';
 
   const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
+    { name: 'Dashboard', href: '/dashboard', icon: ChartBar },
     { name: 'Extractions', href: '/extractions', icon: Download },
     { name: 'Origins', href: '/origins', icon: Database },
     { name: 'Destinations', href: '/destinations', icon: Upload },
@@ -38,7 +38,7 @@
   
   <nav class="flex-1 px-4 py-6 space-y-1">
     {#each navigation as item}
-      
+      <a
         href={item.href}
         class="flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors"
         class:bg-supabase-green={isActive(item.href)}

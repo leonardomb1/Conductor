@@ -1,7 +1,7 @@
 <script lang="ts">
   import { auth } from '$lib/auth.svelte.js';
   import { goto } from '$app/navigation';
-  import { Bell, Search, User, LogOut } from 'lucide-svelte';
+  import { Bell, MagnifyingGlass, User, SignOut } from 'phosphor-svelte';
   import { onMount } from 'svelte';
   
   let showUserMenu = $state(false);
@@ -32,7 +32,7 @@
       <div class="max-w-lg w-full lg:max-w-xs">
         <div class="relative">
           <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search class="h-5 w-5 text-supabase-gray-400" />
+            <MagnifyingGlass class="h-5 w-5 text-supabase-gray-400" />
           </div>
           <input
             class="block w-full pl-10 pr-3 py-2 border border-supabase-gray-300 rounded-md leading-5 bg-white placeholder-supabase-gray-500 focus:outline-none focus:placeholder-supabase-gray-400 focus:ring-1 focus:ring-supabase-green focus:border-supabase-green sm:text-sm"
@@ -78,7 +78,7 @@
                 onclick={handleLogout}
                 class="flex items-center w-full px-4 py-2 text-sm text-supabase-gray-700 hover:bg-supabase-gray-100"
               >
-                <LogOut size={16} class="mr-2" />
+                <SignOut size={16} class="mr-2" />
                 Sign out
               </button>
             </div>

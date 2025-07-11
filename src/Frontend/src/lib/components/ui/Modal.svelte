@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { X } from 'lucide-svelte';
+  import { X } from 'phosphor-svelte';
 
   interface Props {
     open: boolean;
