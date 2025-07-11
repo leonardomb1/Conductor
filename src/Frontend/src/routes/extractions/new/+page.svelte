@@ -7,7 +7,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Input from '$lib/components/ui/Input.svelte';
   import Select from '$lib/components/ui/Select.svelte';
-  import { ArrowLeft, Save } from 'lucide-svelte';
+  import { ArrowLeft, FloppyDisk } from 'phosphor-svelte';
 
   let origins = $state<Origin[]>([]);
   let destinations = $state<Destination[]>([]);
@@ -183,7 +183,7 @@
           Cancel
         </Button>
         <Button variant="primary" loading={saving} onclick={handleSubmit}>
-          <Save size={16} class="mr-2" />
+          <FloppyDisk size={16} class="mr-2" />
           Create Extraction
         </Button>
       </div>

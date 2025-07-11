@@ -7,7 +7,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Input from '$lib/components/ui/Input.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
-  import { Plus, Edit, Trash2, Users } from 'lucide-svelte';
+  import { Plus, PencilSimple, Trash, Users } from 'phosphor-svelte';
 
   let users = $state<User[]>([]);
   let loading = $state(true);

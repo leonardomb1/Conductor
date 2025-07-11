@@ -9,7 +9,7 @@
   import Badge from '$lib/components/ui/Badge.svelte';
   import Table from '$lib/components/ui/Table.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
-  import { Edit, Play, Download, Eye, ArrowLeft } from 'lucide-svelte';
+  import { PencilSimple, Play, Download, Eye, ArrowLeft } from 'phosphor-svelte';
 
   let extraction = $state<Extraction | null>(null);
   let loading = $state(true);
@@ -119,7 +119,7 @@
             Transfer
           </Button>
           <Button variant="secondary" onclick={() => window.location.href = `/extractions/${extractionId}/edit`}>
-            <Edit size={16} class="mr-2" />
+            <PencilSimple size={16} class="mr-2" />
             Edit
           </Button>
         {/if}

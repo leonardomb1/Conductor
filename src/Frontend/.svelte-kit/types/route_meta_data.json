@@ -1,0 +1,13 @@
+{
+	"/": [],
+	"/dashboard": [],
+	"/destinations": [],
+	"/extractions": [],
+	"/extractions/new": [],
+	"/extractions/[id]": [],
+	"/extractions/[id]/edit": [],
+	"/jobs": [],
+	"/login": [],
+	"/origins": [],
+	"/users": []
+}
