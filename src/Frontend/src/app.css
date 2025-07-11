@@ -1,0 +1,23 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+@layer base {
+  html {
+    font-family: system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .form-input {
+    @apply block w-full rounded-md border-supabase-gray-300 shadow-sm focus:border-supabase-green focus:ring-supabase-green sm:text-sm;
+  }
+  
+  .form-select {
+    @apply block w-full rounded-md border-supabase-gray-300 shadow-sm focus:border-supabase-green focus:ring-supabase-green sm:text-sm;
+  }
+  
+  .form-textarea {
+    @apply block w-full rounded-md border-supabase-gray-300 shadow-sm focus:border-supabase-green focus:ring-supabase-green sm:text-sm;
+  }
+}
