@@ -247,7 +247,6 @@ cp .env.example .env
 
 Create a `.env` file in the project root, you can use the `.env.example` as a basis and edit for your use.
 
-
 ### Database Support
 
 Conductor supports multiple database systems:
