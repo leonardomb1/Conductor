@@ -127,10 +127,10 @@ public static class Settings
     public static string CsvOutputPath { get; set; } = "";
 
     [ConfigKey("MAX_CONCURRENT_CONNECTIONS")]
-    public static uint MaxConcurrentConnections { get; set; }
+    public static int MaxConcurrentConnections { get; set; }
 
     [ConfigKey("MAX_CONSUMER_FETCH")]
-    public static uint ConsumerFetchMax { get; set; }
+    public static int ConsumerFetchMax { get; set; }
 
     [ConfigKey("MAX_PRODUCER_LINECOUNT")]
     public static ulong ProducerLineMax { get; set; }
