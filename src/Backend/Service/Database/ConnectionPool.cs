@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics.Metrics;
+using Conductor.Shared;
 using Conductor.Types;
 using Serilog;
 using ILogger = Serilog.ILogger;
@@ -161,10 +162,10 @@ public sealed class ConnectionPool : IAsyncDisposable
     private readonly string dbType;
     private readonly ILogger logging;
     private readonly Lock statsLock = new();
-    private const int MaxPoolSize = 50;
-    private const int MinPoolSize = 2;
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(30);
-    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(30);
+    private static readonly int MaxPoolSize = Settings.ConnectionPoolMaxSize;
+    private static readonly int MinPoolSize = Settings.ConnectionPoolMinSize;
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(Settings.ConnectionIdleTimeoutMinutes);
+    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(Settings.ConnectionTimeout);
     private int createdConnections;
     private DateTimeOffset lastActivity = DateTimeOffset.UtcNow;
 
@@ -174,7 +175,7 @@ public sealed class ConnectionPool : IAsyncDisposable
         dbType = type;
         logging = logger.ForContext("PoolKey", $"{dbType}:{connectionString.GetHashCode()}");
         semaphore = new SemaphoreSlim(MaxPoolSize, MaxPoolSize);
-        
+
         _ = Task.Run(PrewarmPoolAsync);
     }
 
@@ -218,11 +219,11 @@ public sealed class ConnectionPool : IAsyncDisposable
 
             var newConnection = await CreateNewConnectionAsync(combinedCts.Token);
             var newPooledConnection = new PooledConnection(newConnection, DateTime.UtcNow);
-            
+
             activeConnections.TryAdd(newConnection, newPooledConnection);
 
             Interlocked.Add(ref createdConnections, 1);
-            
+
             logging.Debug("Created new database connection");
             return newConnection;
         }
@@ -268,7 +269,7 @@ public sealed class ConnectionPool : IAsyncDisposable
     {
         var cutoffTime = DateTime.UtcNow - IdleTimeout;
         var connectionsToRemove = new List<PooledConnection>();
-        
+
         while (availableConnections.TryPeek(out var connection) && connection.LastUsed < cutoffTime)
         {
             if (availableConnections.TryDequeue(out var removedConnection))
@@ -279,7 +280,7 @@ public sealed class ConnectionPool : IAsyncDisposable
 
         var disposeTasks = connectionsToRemove.Select(conn => conn.DisposeAsync().AsTask());
         await Task.WhenAll(disposeTasks);
-        
+
         if (connectionsToRemove.Count > 0)
         {
             logging.Information("Cleaned up {Count} idle connections", connectionsToRemove.Count);
@@ -323,7 +324,7 @@ public sealed class ConnectionPool : IAsyncDisposable
     {
         var factory = DBExchangeFactory.Create(dbType);
         var connection = factory.CreateConnection(connectionString);
-        
+
         await connection.OpenAsync(cancellationToken);
         return connection;
     }
@@ -344,12 +345,12 @@ public sealed class ConnectionPool : IAsyncDisposable
     {
         // Dispose all connections
         var allConnections = new List<PooledConnection>();
-        
+
         while (availableConnections.TryDequeue(out var conn))
         {
             allConnections.Add(conn);
         }
-        
+
         foreach (var activeConn in activeConnections.Values)
         {
             allConnections.Add(activeConn);
@@ -357,7 +358,7 @@ public sealed class ConnectionPool : IAsyncDisposable
 
         var disposeTasks = allConnections.Select(conn => conn.DisposeAsync().AsTask());
         await Task.WhenAll(disposeTasks);
-        
+
         activeConnections.Clear();
         semaphore?.Dispose();
     }
