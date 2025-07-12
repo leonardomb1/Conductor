@@ -321,10 +321,12 @@ To be done in the future. Recommended to use a scheduler such as Airflow for thi
 
 ### Authentication
 
-All API requests require authentication via API key:
+When Authentication is activated in the environment variable, all routes, barring ssologin and login routes, require authentication through 'Authorization' header prefixed with either: 1. Key, when using API master key; 2. Bearer, JWT token gained by succesfully logging in the login or ssologin routes; or 3. Basic, with a Base64 encoded user and password.
+
+It is recomended to always use Bearer tokens whenever possible.
 
 ```bash
-Authorization: Key your-api-key-here
+Authorization: {Basic|Bearer|Key} your_secret
 ```
 
 ### Core Endpoints
