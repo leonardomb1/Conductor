@@ -121,7 +121,7 @@ public static class Settings
     public static string AdminPassword { get; set; } = "";
 
     [ConfigKey("MAX_DEGREE_PARALLEL")]
-    public static byte MaxDegreeParallel { get; set; }
+    public static int MaxDegreeParallel { get; set; }
 
     [ConfigKey("CSV_OUTPUT_PATH")]
     public static string CsvOutputPath { get; set; } = "";
