@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte"
   import { api } from "$lib/api.js"
+  import { extractionsStore } from "$lib/stores/extractions.svelte.js"
   import type { Extraction } from "$lib/types.js"
   import PageHeader from "$lib/components/layout/PageHeader.svelte"
   import Table from "$lib/components/ui/Table.svelte"
@@ -19,43 +20,126 @@
     Trash2,
     Search,
     X,
+    RefreshCw,
   } from "@lucide/svelte"
 
-  let allExtractions = $state<Extraction[]>([])
-  let displayedExtractions = $state<Extraction[]>([])
-  let loading = $state(true)
-  let searchLoading = $state(false)
+  const allExtractions = $derived(extractionsStore.data)
+  const loading = $derived(extractionsStore.loading)
 
-  // Search and filter states
   let searchTerm = $state("")
   let filterOrigin = $state("")
   let filterDestination = $state("")
   let filterSchedule = $state("")
   let filterType = $state("")
   let filterIncremental = $state("")
-  let debouncedSearchTerm = $state("")
 
-  // Modal and execution states
   let showExecuteModal = $state(false)
   let executeType = $state<"transfer" | "pull">("transfer")
   let executeLoading = $state(false)
   let selectedExtractions = $state<number[]>([])
 
-  // Pagination
   let currentPage = $state(1)
-  let totalPages = $state(1)
-  let totalItems = $state(0)
-  let pageSize = $state(50) // Increased for better performance
+  let pageSize = $state(50)
   let sortKey = $state("")
   let sortDirection = $state<"asc" | "desc">("asc")
 
-  // Toast notifications
   let toastMessage = $state("")
   let toastType = $state<"success" | "error" | "info">("info")
   let showToast = $state(false)
 
-  // Debounce timer
-  let searchDebounceTimer: NodeJS.Timeout | null = null
+  const filteredExtractions = $derived(() => {
+    let filtered = [...allExtractions]
+
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase()
+      filtered = filtered.filter(
+        (e) =>
+          e.extractionName?.toLowerCase().includes(searchLower) ||
+          e.extractionAlias?.toLowerCase().includes(searchLower) ||
+          e.indexName?.toLowerCase().includes(searchLower),
+      )
+    }
+
+    if (filterOrigin.trim()) {
+      const originLower = filterOrigin.toLowerCase()
+      filtered = filtered.filter((e) =>
+        e.origin?.originName?.toLowerCase().includes(originLower),
+      )
+    }
+
+    if (filterDestination.trim()) {
+      const destLower = filterDestination.toLowerCase()
+      filtered = filtered.filter((e) =>
+        e.destination?.destinationName?.toLowerCase().includes(destLower),
+      )
+    }
+
+    if (filterSchedule.trim()) {
+      const scheduleLower = filterSchedule.toLowerCase()
+      filtered = filtered.filter((e) =>
+        e.schedule?.scheduleName?.toLowerCase().includes(scheduleLower),
+      )
+    }
+
+    if (filterType) {
+      filtered = filtered.filter((e) => (e.sourceType || "db") === filterType)
+    }
+
+    if (filterIncremental) {
+      const isIncremental = filterIncremental === "true"
+      filtered = filtered.filter((e) => e.isIncremental === isIncremental)
+    }
+
+    if (sortKey) {
+      filtered.sort((a, b) => {
+        let aVal: any, bVal: any
+
+        switch (sortKey) {
+          case "origin":
+            aVal = a.origin?.originName || ""
+            bVal = b.origin?.originName || ""
+            break
+          case "destination":
+            aVal = a.destination?.destinationName || ""
+            bVal = b.destination?.destinationName || ""
+            break
+          case "schedule":
+            aVal = a.schedule?.scheduleName || ""
+            bVal = b.schedule?.scheduleName || ""
+            break
+          default:
+            aVal = a[sortKey as keyof Extraction] || ""
+            bVal = b[sortKey as keyof Extraction] || ""
+        }
+
+        if (typeof aVal === "string" && typeof bVal === "string") {
+          aVal = aVal.toLowerCase()
+          bVal = bVal.toLowerCase()
+        }
+
+        if (aVal < bVal) return sortDirection === "asc" ? -1 : 1
+        if (aVal > bVal) return sortDirection === "asc" ? 1 : -1
+        return 0
+      })
+    }
+
+    return filtered
+  })
+
+  const paginatedExtractions = $derived(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    const endIndex = startIndex + pageSize
+    return filteredExtractions.slice(startIndex, endIndex)
+  })
+
+  const totalItems = $derived(filteredExtractions.length)
+  const totalPages = $derived(Math.ceil(totalItems / pageSize))
+
+  const cacheInfo = $derived(() => ({
+    lastLoaded: extractionsStore.lastLoaded,
+    isStale: extractionsStore.isStale,
+    error: extractionsStore.error,
+  }))
 
   const columns = [
     {
@@ -147,213 +231,26 @@
   }
 
   onMount(async () => {
-    await loadInitialExtractions()
+    await extractionsStore.loadExtractions()
   })
 
-  async function loadInitialExtractions() {
-    try {
-      loading = true
-      const filters: Record<string, string> = {
-        take: "1000", // Load more initially for better client-side filtering
-        skip: "0",
-      }
-
-      const response = await api.getExtractions(filters)
-      allExtractions = response.content || []
-      applyClientSideFilters()
-
-      totalItems = response.entityCount || allExtractions.length
-      totalPages = Math.ceil(totalItems / pageSize)
-    } catch (error) {
-      console.error("Failed to load extractions:", error)
-      showToastMessage(
-        "Failed to load extractions. Please check your connection and try again.",
-        "error",
-      )
-    } finally {
-      loading = false
+  async function refreshData() {
+    const success = await extractionsStore.refreshExtractions()
+    if (success) {
+      showToastMessage("Data refreshed successfully", "success")
+    } else {
+      showToastMessage("Failed to refresh data", "error")
     }
-  }
-
-  // Debounced search function
-  function debounceSearch(term: string) {
-    if (searchDebounceTimer) {
-      clearTimeout(searchDebounceTimer)
-    }
-
-    searchDebounceTimer = setTimeout(() => {
-      debouncedSearchTerm = term
-      handleSearch()
-    }, 300)
-  }
-
-  async function handleSearch() {
-    // First apply client-side filters
-    applyClientSideFilters()
-
-    // If no results found in current data and we have a search term, try server search
-    if (displayedExtractions.length === 0 && debouncedSearchTerm.trim()) {
-      await performServerSearch()
-    }
-  }
-
-  async function performServerSearch() {
-    try {
-      searchLoading = true
-      const filters: Record<string, string> = {
-        take: "1000",
-      }
-
-      if (debouncedSearchTerm.trim()) {
-        // Use 'contains' for partial matching
-        filters.contains = debouncedSearchTerm
-      }
-      if (filterOrigin) filters.origin = filterOrigin
-      if (filterDestination) filters.destination = filterDestination
-      if (filterSchedule) filters.schedule = filterSchedule
-
-      const response = await api.getExtractions(filters)
-      const serverResults = response.content || []
-
-      // Merge server results with existing data, avoiding duplicates
-      const existingIds = new Set(allExtractions.map((e) => e.id))
-      const newExtractions = serverResults.filter((e) => !existingIds.has(e.id))
-
-      if (newExtractions.length > 0) {
-        allExtractions = [...allExtractions, ...newExtractions]
-        applyClientSideFilters()
-        showToastMessage(
-          `Found ${newExtractions.length} additional extractions from server`,
-          "info",
-        )
-      } else if (serverResults.length === 0) {
-        showToastMessage(
-          "No extractions found matching your search criteria",
-          "info",
-        )
-      }
-    } catch (error) {
-      console.error("Failed to search extractions:", error)
-      showToastMessage("Search failed. Please try again.", "error")
-    } finally {
-      searchLoading = false
-    }
-  }
-
-  function applyClientSideFilters() {
-    let filtered = [...allExtractions]
-
-    // Apply text search filter
-    if (debouncedSearchTerm.trim()) {
-      const searchLower = debouncedSearchTerm.toLowerCase()
-      filtered = filtered.filter(
-        (e) =>
-          e.extractionName.toLowerCase().includes(searchLower) ||
-          e.extractionAlias?.toLowerCase().includes(searchLower) ||
-          e.indexName?.toLowerCase().includes(searchLower),
-      )
-    }
-
-    // Apply origin filter
-    if (filterOrigin.trim()) {
-      const originLower = filterOrigin.toLowerCase()
-      filtered = filtered.filter((e) =>
-        e.origin?.originName.toLowerCase().includes(originLower),
-      )
-    }
-
-    // Apply destination filter
-    if (filterDestination.trim()) {
-      const destLower = filterDestination.toLowerCase()
-      filtered = filtered.filter((e) =>
-        e.destination?.destinationName.toLowerCase().includes(destLower),
-      )
-    }
-
-    // Apply schedule filter
-    if (filterSchedule.trim()) {
-      const scheduleLower = filterSchedule.toLowerCase()
-      filtered = filtered.filter((e) =>
-        e.schedule?.scheduleName.toLowerCase().includes(scheduleLower),
-      )
-    }
-
-    // Apply type filter
-    if (filterType) {
-      filtered = filtered.filter((e) => (e.sourceType || "db") === filterType)
-    }
-
-    // Apply incremental filter
-    if (filterIncremental) {
-      const isIncremental = filterIncremental === "true"
-      filtered = filtered.filter((e) => e.isIncremental === isIncremental)
-    }
-
-    // Apply sorting
-    if (sortKey) {
-      filtered.sort((a, b) => {
-        let aVal: any, bVal: any
-
-        switch (sortKey) {
-          case "origin":
-            aVal = a.origin?.originName || ""
-            bVal = b.origin?.originName || ""
-            break
-          case "destination":
-            aVal = a.destination?.destinationName || ""
-            bVal = b.destination?.destinationName || ""
-            break
-          case "schedule":
-            aVal = a.schedule?.scheduleName || ""
-            bVal = b.schedule?.scheduleName || ""
-            break
-          default:
-            aVal = a[sortKey as keyof Extraction] || ""
-            bVal = b[sortKey as keyof Extraction] || ""
-        }
-
-        if (typeof aVal === "string" && typeof bVal === "string") {
-          aVal = aVal.toLowerCase()
-          bVal = bVal.toLowerCase()
-        }
-
-        if (aVal < bVal) return sortDirection === "asc" ? -1 : 1
-        if (aVal > bVal) return sortDirection === "asc" ? 1 : -1
-        return 0
-      })
-    }
-
-    // Apply pagination
-    const startIndex = (currentPage - 1) * pageSize
-    const endIndex = startIndex + pageSize
-    displayedExtractions = filtered.slice(startIndex, endIndex)
-
-    // Update pagination info
-    totalItems = filtered.length
-    totalPages = Math.ceil(totalItems / pageSize)
-
-    // Clear selections that are no longer visible
-    const visibleIds = displayedExtractions.map((e) => e.id)
-    selectedExtractions = selectedExtractions.filter((id) =>
-      visibleIds.includes(id),
-    )
   }
 
   function clearFilters() {
     searchTerm = ""
-    debouncedSearchTerm = ""
     filterOrigin = ""
     filterDestination = ""
     filterSchedule = ""
     filterType = ""
     filterIncremental = ""
     currentPage = 1
-
-    if (searchDebounceTimer) {
-      clearTimeout(searchDebounceTimer)
-    }
-
-    applyClientSideFilters()
   }
 
   async function executeExtractions() {
@@ -413,19 +310,19 @@
   }
 
   function selectAllVisible() {
-    const visibleIds = displayedExtractions.map((e) => e.id)
+    const visibleIds = paginatedExtractions.map((e) => e.id)
     selectedExtractions = [...new Set([...selectedExtractions, ...visibleIds])]
   }
 
   function deselectAllVisible() {
-    const visibleIds = displayedExtractions.map((e) => e.id)
+    const visibleIds = paginatedExtractions.map((e) => e.id)
     selectedExtractions = selectedExtractions.filter(
       (id) => !visibleIds.includes(id),
     )
   }
 
   function selectAll() {
-    selectedExtractions = allExtractions.map((e) => e.id)
+    selectedExtractions = filteredExtractions.map((e) => e.id)
   }
 
   function deselectAll() {
@@ -434,39 +331,52 @@
 
   function handlePageChange(page: number) {
     currentPage = page
-    applyClientSideFilters()
+    // Clear selections that are no longer visible
+    const visibleIds = paginatedExtractions.map((e) => e.id)
+    selectedExtractions = selectedExtractions.filter((id) =>
+      visibleIds.includes(id),
+    )
   }
 
   function handlePageSizeChange(newPageSize: number) {
     pageSize = newPageSize
     currentPage = 1
-    applyClientSideFilters()
   }
 
   function handleSort(key: string, direction: "asc" | "desc") {
     sortKey = key
     sortDirection = direction
     currentPage = 1
-    applyClientSideFilters()
   }
+
+  // Reset to first page when filters change
+  $effect(() => {
+    if (
+      searchTerm ||
+      filterOrigin ||
+      filterDestination ||
+      filterSchedule ||
+      filterType ||
+      filterIncremental
+    ) {
+      currentPage = 1
+    }
+  })
 
   // Global functions for table actions
   if (typeof window !== "undefined") {
     ;(window as any).viewExtraction = (id: number) => {
       window.location.href = `/extractions/${id}`
     }
-
     ;(window as any).editExtraction = (id: number) => {
       window.location.href = `/extractions/${id}/edit`
     }
-
     ;(window as any).deleteExtraction = async (id: number) => {
       if (confirm("Are you sure you want to delete this extraction?")) {
         try {
           await api.deleteExtraction(id)
-          // Remove from local data
-          allExtractions = allExtractions.filter((e) => e.id !== id)
-          applyClientSideFilters()
+          // Remove from store immediately
+          extractionsStore.removeExtraction(id)
           selectedExtractions = selectedExtractions.filter((eid) => eid !== id)
           showToastMessage("Extraction deleted successfully", "success")
         } catch (error) {
@@ -475,24 +385,10 @@
         }
       }
     }
-
     ;(window as any).toggleSelection = (id: number) => {
       toggleExtractionSelection(id)
     }
   }
-
-  // Watch for search term changes
-  $effect(() => {
-    if (searchTerm !== debouncedSearchTerm) {
-      debounceSearch(searchTerm)
-    }
-  })
-
-  // Watch for filter changes
-  $effect(() => {
-    currentPage = 1
-    applyClientSideFilters()
-  })
 </script>
 
 <svelte:head>
@@ -506,6 +402,10 @@
   >
     {#snippet actions()}
       <div class="flex space-x-3">
+        <Button variant="ghost" onclick={refreshData} {loading}>
+          <RefreshCw size={16} class="mr-2" />
+          Refresh
+        </Button>
         <Button
           variant="secondary"
           onclick={() => (showExecuteModal = true)}
@@ -525,7 +425,7 @@
     {/snippet}
   </PageHeader>
 
-  <!-- Advanced Filters -->
+  <!-- Optimized Filters -->
   <div class="bg-white p-6 rounded-lg shadow">
     <div class="space-y-4">
       <!-- Search Bar -->
@@ -541,29 +441,7 @@
           placeholder="Search extractions by name, alias, or index..."
           class="block w-full pl-10 pr-10 py-3 border border-supabase-gray-300 rounded-md leading-5 bg-white placeholder-supabase-gray-500 focus:outline-none focus:placeholder-supabase-gray-400 focus:ring-1 focus:ring-supabase-green focus:border-supabase-green"
         />
-        {#if searchLoading}
-          <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
-            <svg
-              class="animate-spin h-5 w-5 text-supabase-gray-400"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-          </div>
-        {:else if searchTerm}
+        {#if searchTerm}
           <button
             onclick={() => {
               searchTerm = ""
@@ -604,21 +482,35 @@
             { value: "false", label: "Full" },
           ]}
         />
-        <Button variant="ghost" onclick={clearFilters} class="self-end">
-          Clear Filters
-        </Button>
+        <Button variant="ghost" onclick={clearFilters}>Clear Filters</Button>
       </div>
 
       <!-- Results Summary -->
       <div
         class="flex justify-between items-center text-sm text-supabase-gray-600"
       >
-        <span>
-          Showing {displayedExtractions.length} of {totalItems} extractions
-          {totalItems !== allExtractions.length
-            ? `(${allExtractions.length} loaded)`
-            : ""}
-        </span>
+        <div class="space-y-1">
+          <span>
+            Showing {paginatedExtractions.length} of {totalItems} extractions (filtered
+            from {allExtractions.length} total)
+          </span>
+          <!-- Cache status info -->
+          {#if cacheInfo.lastLoaded}
+            <div class="text-xs text-supabase-gray-500">
+              Last updated: {cacheInfo.lastLoaded.toLocaleTimeString()}
+              {#if cacheInfo.isStale}
+                <span class="text-yellow-600"
+                  >(stale data - consider refreshing)</span
+                >
+              {/if}
+            </div>
+          {/if}
+          {#if cacheInfo.error}
+            <div class="text-xs text-red-600">
+              Error: {cacheInfo.error}
+            </div>
+          {/if}
+        </div>
         {#if selectedExtractions.length > 0}
           <div class="flex items-center space-x-4">
             <span class="font-medium">
@@ -641,7 +533,7 @@
                 onclick={selectAll}
                 class="text-supabase-green hover:text-supabase-green/80"
               >
-                Select all
+                Select all filtered
               </button>
               <button
                 onclick={deselectAll}
@@ -661,7 +553,7 @@
     <div class="p-6">
       <Table
         {columns}
-        data={displayedExtractions}
+        data={paginatedExtractions}
         {loading}
         emptyMessage="No extractions found. Try adjusting your filters or search terms."
         onSort={handleSort}

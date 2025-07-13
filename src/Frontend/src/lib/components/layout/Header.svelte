@@ -2,17 +2,22 @@
   import { auth } from "$lib/auth.svelte.js"
   import { api } from "$lib/api.js"
   import { goto } from "$app/navigation"
-  import { Bell, User, LogOut } from "@lucide/svelte"
+  import { User, LogOut } from "@lucide/svelte"
   import { onMount } from "svelte"
 
   let showUserMenu = $state(false)
   let healthData = $state<any>(null)
+  let activeJobsCount = $state(0)
 
-  // Simple health check on mount - no intervals, no loops
   onMount(async () => {
     if (auth.isAuthenticated) {
       try {
+        // Get health data for system status
         healthData = await api.getHealth()
+
+        // Get active jobs count
+        const activeJobsResponse = await api.getActiveJobs()
+        activeJobsCount = activeJobsResponse.content?.length || 0
       } catch (error) {
         // Silently fail - health check is optional
         console.debug("Health check failed:", error)
@@ -48,28 +53,25 @@
 <header class="bg-white border-b border-supabase-gray-200">
   <div class="flex items-center justify-between h-16 px-6">
     <!-- Left side - Brand/Logo -->
-    <div class="flex items-center">
-      <div class="flex items-center">
-        <div
-          class="w-8 h-8 bg-supabase-green rounded-lg flex items-center justify-center"
-        >
-          <span class="text-white font-bold text-lg">C</span>
-        </div>
-        <span class="ml-3 text-xl font-semibold text-supabase-gray-900"
-          >Conductor</span
-        >
-      </div>
-    </div>
+    <div class="flex items-center" />
 
     <!-- Right side - System status and user menu -->
     <div class="flex items-center space-x-6">
       <!-- System status -->
       {#if healthData}
-        <div class="flex items-center space-x-2 text-sm text-supabase-gray-600">
-          <div class="w-2 h-2 bg-green-500 rounded-full"></div>
-          <span>System Healthy</span>
-          <span class="text-supabase-gray-400">•</span>
-          <span>{healthData.activeJobs} active jobs</span>
+        <div class="flex items-center space-x-4 text-sm text-supabase-gray-600">
+          <!-- System Health Status -->
+          <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+            <span>System Healthy</span>
+          </div>
+
+          <!-- Active Jobs Count -->
+          <div class="flex items-center space-x-2">
+            <span class="text-supabase-gray-400">•</span>
+            <span class="font-medium">{activeJobsCount}</span>
+            <span>active job{activeJobsCount !== 1 ? "s" : ""}</span>
+          </div>
         </div>
       {:else if auth.isAuthenticated}
         <div class="flex items-center space-x-2 text-sm text-supabase-gray-600">
@@ -77,13 +79,6 @@
           <span>System Online</span>
         </div>
       {/if}
-
-      <!-- Notifications -->
-      <button
-        class="p-2 text-supabase-gray-400 hover:text-supabase-gray-600 transition-colors"
-      >
-        <Bell size={20} />
-      </button>
 
       <!-- User Menu -->
       <div class="relative user-menu-container">

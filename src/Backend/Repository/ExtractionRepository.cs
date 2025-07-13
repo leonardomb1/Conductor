@@ -1,4 +1,3 @@
-
 using Conductor.Model;
 using Conductor.Shared;
 using Conductor.Types;
@@ -16,7 +15,6 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
                 .Include(e => e.Schedule)
                 .Include(e => e.Origin)
                 .Include(e => e.Destination)
-                .OrderByDescending(e => e.Id)
                 .AsQueryable();
 
             if (filters is not null)
@@ -36,15 +34,117 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
                             select.Where(e => e.ScheduleId == schId),
                         "originId" when uint.TryParse(value, out uint originId) =>
                             select.Where(e => e.OriginId == originId),
+                        "destinationId" when uint.TryParse(value, out uint destId) =>
+                            select.Where(e => e.DestinationId == destId),
                         "origin" => select.Where(e => e.Origin != null && e.Origin.Name == value),
                         "destination" => select.Where(e => e.Destination != null && e.Destination.Name == value),
-                        "take" when uint.TryParse(value, out uint count) => select.Take((int)count),
+                        "sourceType" => select.Where(e => e.SourceType == value),
+                        "isIncremental" when bool.TryParse(value, out bool isInc) =>
+                            select.Where(e => e.IsIncremental == isInc),
+                        "isVirtual" when bool.TryParse(value, out bool isVirt) =>
+                            select.Where(e => e.IsVirtual == isVirt),
+                        "search" => select.Where(e =>
+                            e.Name.Contains(value) ||
+                            (e.Alias != null && e.Alias.Contains(value)) ||
+                            (e.IndexName != null && e.IndexName.Contains(value))),
+                        "skip" => select,
+                        "take" => select,
+                        "sortBy" => select,
+                        "sortDirection" => select,
                         _ => select
                     };
                 }
             }
 
+            var sortBy = filters?["sortBy"].FirstOrDefault() ?? "id";
+            var sortDirection = filters?["sortDirection"].FirstOrDefault() ?? "desc";
+
+            select = sortBy.ToLowerInvariant() switch
+            {
+                "name" => sortDirection == "asc" ?
+                    select.OrderBy(e => e.Name) :
+                    select.OrderByDescending(e => e.Name),
+                "sourcetype" => sortDirection == "asc" ?
+                    select.OrderBy(e => e.SourceType) :
+                    select.OrderByDescending(e => e.SourceType),
+                "origin" => sortDirection == "asc" ?
+                    select.OrderBy(e => e.Origin != null ? e.Origin.Name : "") :
+                    select.OrderByDescending(e => e.Origin != null ? e.Origin.Name : ""),
+                "destination" => sortDirection == "asc" ?
+                    select.OrderBy(e => e.Destination != null ? e.Destination.Name : "") :
+                    select.OrderByDescending(e => e.Destination != null ? e.Destination.Name : ""),
+                "schedule" => sortDirection == "asc" ?
+                    select.OrderBy(e => e.Schedule != null ? e.Schedule.Name : "") :
+                    select.OrderByDescending(e => e.Schedule != null ? e.Schedule.Name : ""),
+                "isincremental" => sortDirection == "asc" ?
+                    select.OrderBy(e => e.IsIncremental) :
+                    select.OrderByDescending(e => e.IsIncremental),
+                _ => sortDirection == "asc" ?
+                    select.OrderBy(e => e.Id) :
+                    select.OrderByDescending(e => e.Id)
+            };
+
+            if (filters != null)
+            {
+                if (uint.TryParse(filters["skip"], out uint skip))
+                {
+                    select = select.Skip((int)skip);
+                }
+
+                if (uint.TryParse(filters["take"], out uint take))
+                {
+                    select = select.Take((int)take);
+                }
+            }
+
             return await select.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
+    public async Task<Result<int>> GetCount(IQueryCollection? filters)
+    {
+        try
+        {
+            var select = context.Extractions.AsQueryable();
+
+            if (filters is not null)
+            {
+                foreach (var filter in filters)
+                {
+                    string key = filter.Key.ToString();
+                    string value = filter.Value.ToString();
+                    string[] arrayVal = filter.Value.ToString().Split(Settings.SplitterChar);
+
+                    select = key switch
+                    {
+                        "name" => select.Where(e => e.Name == value),
+                        "contains" => select.Where(e => arrayVal.Any(s => e.Name.Contains(s))),
+                        "scheduleId" when uint.TryParse(value, out uint schId) =>
+                            select.Where(e => e.ScheduleId == schId),
+                        "originId" when uint.TryParse(value, out uint originId) =>
+                            select.Where(e => e.OriginId == originId),
+                        "destinationId" when uint.TryParse(value, out uint destId) =>
+                            select.Where(e => e.DestinationId == destId),
+                        "sourceType" => select.Where(e => e.SourceType == value),
+                        "isIncremental" when bool.TryParse(value, out bool isInc) =>
+                            select.Where(e => e.IsIncremental == isInc),
+                        "isVirtual" when bool.TryParse(value, out bool isVirt) =>
+                            select.Where(e => e.IsVirtual == isVirt),
+                        "search" => select.Where(e =>
+                            e.Name.Contains(value) ||
+                            (e.Alias != null && e.Alias.Contains(value)) ||
+                            (e.IndexName != null && e.IndexName.Contains(value))),
+                        "skip" or "take" or "sortBy" or "sortDirection" => select,
+                        _ => select
+                    };
+                }
+            }
+
+            return await select.CountAsync();
         }
         catch (Exception ex)
         {

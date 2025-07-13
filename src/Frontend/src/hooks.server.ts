@@ -2,7 +2,8 @@ import type { Handle } from '@sveltejs/kit';
 
 export const handle: Handle = async ({ event, resolve }) => {
   if (event.url.pathname.startsWith('/api')) {
-    const apiHost = process.env.API_HOST || 'conductor-api:8080';
+    // const apiHost = process.env.API_HOST || 'conductor-api:8080';
+    const apiHost = 'localhost:10000';
     const apiUrl = `http://${apiHost}${event.url.pathname}${event.url.search}`;
     
     try {

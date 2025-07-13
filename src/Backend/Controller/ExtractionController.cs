@@ -23,14 +23,36 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
     public override async Task<IResult> Get(IQueryCollection? filters)
     {
+        // Validate numeric filters
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "originId") &&
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "Invalid query parameters.", true)
+            );
+        }
+
+        // Validate boolean filters
+        var invalidBoolFilters = filters?.Where(f =>
+            (f.Key == "isIncremental" || f.Key == "isVirtual") &&
+            !bool.TryParse(f.Value, out _)).ToList();
+
+        if (invalidBoolFilters?.Count > 0)
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid boolean query parameters.", true)
+            );
+        }
+
+        // Validate sortDirection
+        var sortDirection = filters?["sortDirection"].FirstOrDefault();
+        if (sortDirection != null && sortDirection != "asc" && sortDirection != "desc")
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "sortDirection must be 'asc' or 'desc'.", true)
             );
         }
 
@@ -48,10 +70,135 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         );
     }
 
+    // Add GetCount endpoint
+    public async Task<IResult> GetCount(IQueryCollection? filters)
+    {
+        // Validate numeric filters
+        var invalidFilters = filters?.Where(f =>
+            (f.Key == "scheduleId" || f.Key == "originId" || f.Key == "destinationId") &&
+            !uint.TryParse(f.Value, out _)).ToList();
+
+        if (invalidFilters?.Count > 0)
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid query parameters.", true)
+            );
+        }
+
+        // Validate boolean filters
+        var invalidBoolFilters = filters?.Where(f =>
+            (f.Key == "isIncremental" || f.Key == "isVirtual") &&
+            !bool.TryParse(f.Value, out _)).ToList();
+
+        if (invalidBoolFilters?.Count > 0)
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid boolean query parameters.", true)
+            );
+        }
+
+        var result = await extractionRepository.GetCount(filters);
+
+        if (!result.IsSuccessful)
+        {
+            return Results.InternalServerError(
+                ErrorMessage(result.Error)
+            );
+        }
+
+        return Results.Ok(
+            new Message<int>(Status200OK, "OK", [result.Value])
+        );
+    }
+
+    // Add GetNames endpoint
+    public async Task<IResult> GetNames(IQueryCollection? filters)
+    {
+        List<uint>? ids = null;
+
+        // Parse ids parameter if provided
+        if (filters?.ContainsKey("ids") == true)
+        {
+            var idsParam = filters["ids"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(idsParam))
+            {
+                var idStrings = idsParam.Split(',');
+                ids = new List<uint>();
+
+                foreach (var idString in idStrings)
+                {
+                    if (uint.TryParse(idString.Trim(), out uint id))
+                    {
+                        ids.Add(id);
+                    }
+                    else
+                    {
+                        return Results.BadRequest(
+                            new Message(Status400BadRequest, "Invalid ID format in ids parameter.", true)
+                        );
+                    }
+                }
+            }
+        }
+
+        var result = await extractionRepository.GetNames(ids);
+
+        if (!result.IsSuccessful)
+        {
+            return Results.InternalServerError(
+                ErrorMessage(result.Error)
+            );
+        }
+
+        return Results.Ok(
+            new Message<SimpleExtractionDto>(Status200OK, "OK", result.Value)
+        );
+    }
+
+    // Add GetDependencies endpoint
+    public async Task<IResult> GetDependencies(string id)
+    {
+        if (!uint.TryParse(id, out uint extractionId))
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid extraction ID.", true)
+            );
+        }
+
+        // First get the extraction
+        var extractionResult = await extractionRepository.Search(extractionId);
+        if (!extractionResult.IsSuccessful)
+        {
+            return Results.InternalServerError(
+                ErrorMessage(extractionResult.Error)
+            );
+        }
+
+        if (extractionResult.Value == null)
+        {
+            return Results.NotFound(
+                new Message(Status404NotFound, $"Extraction with ID {extractionId} not found.", true)
+            );
+        }
+
+        // Get dependencies
+        var dependenciesResult = await ExtractionRepository.GetDependencies(extractionResult.Value);
+        if (!dependenciesResult.IsSuccessful)
+        {
+            return Results.InternalServerError(
+                ErrorMessage(dependenciesResult.Error)
+            );
+        }
+
+        return Results.Ok(
+            new Message<Extraction>(Status200OK, "OK", dependenciesResult.Value)
+        );
+    }
+
     public async Task<IResult> ExecuteTrasfer(IQueryCollection? filters, CancellationToken token)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "originId") &&
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
@@ -71,7 +218,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         if (fetch.Value.Any(e => e.DestinationId is null))
         {
             return Results.BadRequest(
-                new Message(Status400BadRequest, "Any of the extractions used need to have a destination defined.", true)
+                new Message(Status400BadRequest, "All extractions need to have a destination defined.", true)
             );
         }
 
@@ -94,9 +241,9 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             e => !executingId.Any(l => l == e.Id)
         ).ToList();
 
-        if (fetch.Value.Count - extractions.Count == 1)
+        if (fetch.Value.Count - extractions.Count >= 1)
         {
-            return Results.Accepted("", new Message(Status202Accepted, "The request is already running."));
+            return Results.Accepted("", new Message(Status202Accepted, "One or more extractions are already running."));
         }
 
         var extractionIds = extractions.Select(x => x.Id);
@@ -154,7 +301,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
     public async Task<IResult> ExecutePull(IQueryCollection? filters, CancellationToken token)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "originId") &&
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
 
         if (invalidFilters?.Count > 0)
@@ -190,9 +337,9 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             e => !executingId.Any(l => l == e.Id)
         ).ToList();
 
-        if (fetch.Value.Count - extractions.Count == 1)
+        if (fetch.Value.Count - extractions.Count >= 1)
         {
-            return Results.Accepted("", new Message(Status202Accepted, "The request is already running."));
+            return Results.Accepted("", new Message(Status202Accepted, "One or more extractions are already running."));
         }
 
         var extractionIds = extractions.Select(x => x.Id);
@@ -325,8 +472,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 try
                 {
                     string finalConnectionString = DBExchange.SupportsMARS(res.Origin.DbType!)
-                        ? DBExchange.EnsureMARSEnabled(conStr, res.Origin.DbType!) 
-                        : conStr; 
+                        ? DBExchange.EnsureMARSEnabled(conStr, res.Origin.DbType!)
+                        : conStr;
 
                     connection = await connectionPoolManager.GetConnectionAsync(finalConnectionString, res.Origin.DbType!, token);
 
@@ -381,21 +528,68 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             .WithName("GetExtractions")
             .WithSummary("Fetches a list of extractions.")
             .WithDescription("""
-                Retrieves a list of extraction records with comprehensive filtering options.
+                Retrieves a list of extraction records with comprehensive filtering and sorting options.
                 
                 Supported query parameters:
                 - `name` (string): Filter by exact extraction name
                 - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
                 - `schedule` (string): Filter by exact schedule name
                 - `scheduleId` (uint): Filter by schedule ID
+                - `originId` (uint): Filter by origin ID
+                - `destinationId` (uint): Filter by destination ID
                 - `origin` (string): Filter by exact origin name
                 - `destination` (string): Filter by exact destination name
+                - `sourceType` (string): Filter by source type
+                - `isIncremental` (bool): Filter by incremental flag
+                - `isVirtual` (bool): Filter by virtual flag
+                - `search` (string): Search across name, alias, and index name
+                - `skip` (uint): Number of records to skip for pagination
                 - `take` (uint): Limit the number of results returned
+                - `sortBy` (string): Sort by field (name, sourcetype, origin, destination, schedule, isincremental, or id)
+                - `sortDirection` (string): Sort direction (asc or desc)
                 
-                Results are ordered by ID in descending order and include related Schedule, Origin, and Destination entities.
-                Returns 400 if `scheduleId` or `take` parameters are not valid unsigned integers.
+                Results include related Schedule, Origin, and Destination entities.
+                Returns 400 if numeric or boolean parameters are invalid.
                 """)
             .Produces<Message<Extraction>>(Status200OK, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+
+        group.MapGet("/count", async (ExtractionController controller, HttpRequest request) =>
+            await controller.GetCount(request.Query))
+            .WithName("GetExtractionsCount")
+            .WithSummary("Gets the count of extractions matching the filter criteria.")
+            .WithDescription("""
+                Returns the total count of extractions that match the specified filter criteria.
+                
+                Supported query parameters (same as GET /extractions but without skip, take, sortBy, sortDirection):
+                - `name` (string): Filter by exact extraction name
+                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `scheduleId` (uint): Filter by schedule ID
+                - `originId` (uint): Filter by origin ID
+                - `destinationId` (uint): Filter by destination ID
+                - `sourceType` (string): Filter by source type
+                - `isIncremental` (bool): Filter by incremental flag
+                - `isVirtual` (bool): Filter by virtual flag
+                - `search` (string): Search across name, alias, and index name
+                """)
+            .Produces<Message<int>>(Status200OK, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+
+        group.MapGet("/names", async (ExtractionController controller, HttpRequest request) =>
+            await controller.GetNames(request.Query))
+            .WithName("GetExtractionNames")
+            .WithSummary("Gets simple extraction name/ID pairs.")
+            .WithDescription("""
+                Returns a list of simple extraction DTOs containing only ID and Name.
+                
+                Supported query parameters:
+                - `ids` (string): Comma-separated list of extraction IDs to filter by
+                
+                If no IDs are provided, returns all extraction names.
+                """)
+            .Produces<Message<SimpleExtractionDto>>(Status200OK, "application/json")
             .Produces<Message>(Status400BadRequest, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
@@ -406,6 +600,16 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             .WithDescription("Retrieves a single extraction record by numeric ID, including related Schedule, Origin, and Destination entities.")
             .Produces<Message<Extraction>>(Status200OK, "application/json")
             .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+
+        group.MapGet("/{id}/dependencies", async (ExtractionController controller, string id) =>
+            await controller.GetDependencies(id))
+            .WithName("GetExtractionDependencies")
+            .WithSummary("Gets the dependencies for an extraction.")
+            .WithDescription("Retrieves all extractions that the specified extraction depends on, with connection strings decrypted.")
+            .Produces<Message<Extraction>>(Status200OK, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message>(Status404NotFound, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         group.MapPost("/", async (ExtractionController controller, HttpRequest request) =>
@@ -449,8 +653,15 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
                 - `schedule` (string): Filter by exact schedule name  
                 - `scheduleId` (uint): Filter by schedule ID
+                - `originId` (uint): Filter by origin ID
+                - `destinationId` (uint): Filter by destination ID
                 - `origin` (string): Filter by exact origin name
                 - `destination` (string): Filter by exact destination name
+                - `sourceType` (string): Filter by source type
+                - `isIncremental` (bool): Filter by incremental flag
+                - `isVirtual` (bool): Filter by virtual flag
+                - `search` (string): Search across name, alias, and index name
+                - `skip` (uint): Number of records to skip
                 - `take` (uint): Limit the number of extractions to process
                 - `overrideTime` (uint): Override the default filter time for the extraction
                 
@@ -460,7 +671,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 - Automatically skips extractions that are already running
                 - Connection strings are automatically decrypted during processing
                 
-                Returns 202 if the request is already running, 200 on successful completion.
+                Returns 202 if extractions are already running, 200 on successful completion.
                 """)
             .Produces<Message>(Status200OK, "application/json")
             .Produces<Message>(Status202Accepted, "application/json")
@@ -479,8 +690,15 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
                 - `schedule` (string): Filter by exact schedule name
                 - `scheduleId` (uint): Filter by schedule ID
+                - `originId` (uint): Filter by origin ID
+                - `destinationId` (uint): Filter by destination ID
                 - `origin` (string): Filter by exact origin name
                 - `destination` (string): Filter by exact destination name
+                - `sourceType` (string): Filter by source type
+                - `isIncremental` (bool): Filter by incremental flag
+                - `isVirtual` (bool): Filter by virtual flag
+                - `search` (string): Search across name, alias, and index name
+                - `skip` (uint): Number of records to skip
                 - `take` (uint): Limit the number of extractions to process
                 - `overrideTime` (uint): Override the default filter time for the extraction
                 
@@ -489,7 +707,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 - Automatically skips extractions that are already running
                 - Connection strings are automatically decrypted during processing
                 
-                Returns 202 if the request is already running, 200 on successful completion.
+                Returns 202 if extractions are already running, 200 on successful completion.
                 """)
             .Produces<Message>(Status200OK, "application/json")
             .Produces<Message>(Status202Accepted, "application/json")
@@ -508,20 +726,23 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
                 - `schedule` (string): Filter by exact schedule name
                 - `scheduleId` (uint): Filter by schedule ID
+                - `originId` (uint): Filter by origin ID
+                - `destinationId` (uint): Filter by destination ID
                 - `origin` (string): Filter by exact origin name
                 - `destination` (string): Filter by exact destination name
-                - `take` (uint): Limit the number of extractions to consider
-                - `page` (uint): Page number for pagination of results
-                
-                Functionality:
-                - Uses the first extraction found after applying filters
-                - Automatically decrypts connection strings
-                - Supports both HTTP and database origins
-                - Returns paginated results as dictionaries with column names and values
-                - Tracks byte usage for the extraction
-                
-                Returns 200 with data rows or a message if no resource found.
-                """)
+                - `sourceType` (string): Filter by source type
+                - `isIncremental` (bool): Filter by incremental flag
+                - `isVirtual` (bool): Filter by virtual flag
+                - `search` (string): Search across name, alias, and index name
+                - `skip` (uint): Number of records to skip
+                - `take` (uint): Limit the number of extractions to process
+                - `page` (uint): Page number for pagination
+                - `overrideTime` (uint): Override the default filter time for the extraction
+                Requirements:
+                - All origins must have a valid connection string and database type
+                - Returns a preview of the data in a paginated format
+                - Connection strings are automatically decrypted during processing
+            """)
             .Produces<Message<Dictionary<string, object>>>(Status200OK, "application/json")
             .Produces<Message>(Status400BadRequest, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");

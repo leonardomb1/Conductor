@@ -4,11 +4,12 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [sveltekit()],
   server: {
-    host: true, 
+    host: true,
     port: 3000,
     proxy: {
       '/api': {
-        target: `http://conductor-api:${process.env.PORT_NUMBER || 8080}`,
+        // target: `http://conductor-api:${process.env.PORT_NUMBER || 8080}`,
+        target: `http://localhost:10000`,
         changeOrigin: true,
         secure: false,
         // CRITICAL: Configure the proxy to forward all headers including Authorization
@@ -18,12 +19,12 @@ export default defineConfig({
             if (req.headers.authorization) {
               proxyReq.setHeader('Authorization', req.headers.authorization);
             }
-            
+
             // Forward other important headers
             if (req.headers['content-type']) {
               proxyReq.setHeader('Content-Type', req.headers['content-type']);
             }
-            
+
             if (req.headers['user-agent']) {
               proxyReq.setHeader('User-Agent', req.headers['user-agent']);
             }
@@ -37,7 +38,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: `http://conductor-api:${process.env.PORT_NUMBER || 8080}`,
+        // target: `http://conductor-api:${process.env.PORT_NUMBER || 8080}`,
         target: `http://localhost:10000`,
         changeOrigin: true,
         secure: false,
@@ -47,7 +48,7 @@ export default defineConfig({
             if (req.headers.authorization) {
               proxyReq.setHeader('Authorization', req.headers.authorization);
             }
-            
+
             if (req.headers['content-type']) {
               proxyReq.setHeader('Content-Type', req.headers['content-type']);
             }

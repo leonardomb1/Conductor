@@ -1,73 +1,71 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import type { Destination } from '$lib/types.js';
-  import PageHeader from '$lib/components/layout/PageHeader.svelte';
-  import Table from '$lib/components/ui/Table.svelte';
-  import Button from '$lib/components/ui/Button.svelte';
-  import Input from '$lib/components/ui/Input.svelte';
-  import Modal from '$lib/components/ui/Modal.svelte';
-  import Select from '$lib/components/ui/Select.svelte';
-  import Toast from '$lib/components/ui/Toast.svelte';
-  import { Plus, Edit, Trash2, Upload } from '@lucide/svelte';
+  import { onMount } from "svelte"
+  import { api } from "$lib/api.js"
+  import type { Destination } from "$lib/types.js"
+  import PageHeader from "$lib/components/layout/PageHeader.svelte"
+  import Table from "$lib/components/ui/Table.svelte"
+  import Button from "$lib/components/ui/Button.svelte"
+  import Input from "$lib/components/ui/Input.svelte"
+  import Modal from "$lib/components/ui/Modal.svelte"
+  import Select from "$lib/components/ui/Select.svelte"
+  import Toast from "$lib/components/ui/Toast.svelte"
+  import { Plus, Edit, Trash2, Upload } from "@lucide/svelte"
 
-  let destinations = $state<Destination[]>([]);
-  let loading = $state(true);
-  let searchTerm = $state('');
-  let showModal = $state(false);
-  let modalMode = $state<'create' | 'edit'>('create');
-  let selectedDestination = $state<Destination | null>(null);
-  let saving = $state(false);
+  let destinations = $state<Destination[]>([])
+  let loading = $state(true)
+  let searchTerm = $state("")
+  let showModal = $state(false)
+  let modalMode = $state<"create" | "edit">("create")
+  let selectedDestination = $state<Destination | null>(null)
+  let saving = $state(false)
 
-  // Pagination
-  let currentPage = $state(1);
-  let totalPages = $state(1);
-  let totalItems = $state(0);
-  let pageSize = $state(20);
-  let sortKey = $state('');
-  let sortDirection = $state<'asc' | 'desc'>('asc');
+  let currentPage = $state(1)
+  let totalPages = $state(1)
+  let totalItems = $state(0)
+  let pageSize = $state(20)
+  let sortKey = $state("")
+  let sortDirection = $state<"asc" | "desc">("asc")
 
-  // Toast notifications
-  let toastMessage = $state('');
-  let toastType = $state<'success' | 'error' | 'info'>('info');
-  let showToast = $state(false);
+  let toastMessage = $state("")
+  let toastType = $state<"success" | "error" | "info">("info")
+  let showToast = $state(false)
 
-  // Form data
   let formData = $state({
-    destinationName: '',
-    destinationDbType: '',
-    destinationConStr: '',
-    destinationTimeZoneOffSet: 0
-  });
+    destinationName: "",
+    destinationDbType: "",
+    destinationConStr: "",
+    destinationTimeZoneOffSet: 0,
+  })
 
-  let errors = $state<Record<string, string>>({});
+  let errors = $state<Record<string, string>>({})
 
   const columns = [
-    { key: 'id', label: 'ID', sortable: true, width: '80px' },
-    { key: 'destinationName', label: 'Name', sortable: true },
-    { 
-      key: 'destinationDbType', 
-      label: 'Database Type',
+    { key: "id", label: "ID", sortable: true, width: "80px" },
+    { key: "destinationName", label: "Name", sortable: true },
+    {
+      key: "destinationDbType",
+      label: "Database Type",
       sortable: true,
       render: (value: string) => {
         const colors = {
-          'PostgreSQL': 'bg-blue-100 text-blue-800',
-          'MySQL': 'bg-orange-100 text-orange-800',
-          'SqlServer': 'bg-green-100 text-green-800'
-        };
-        const colorClass = colors[value as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-        return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}">${value}</span>`;
-      }
-    },
-    { 
-      key: 'destinationTimeZoneOffSet', 
-      label: 'Timezone Offset', 
-      sortable: true,
-      render: (value: number) => `${value > 0 ? '+' : ''}${value}` 
+          PostgreSQL: "bg-blue-100 text-blue-800",
+          MySQL: "bg-orange-100 text-orange-800",
+          SqlServer: "bg-green-100 text-green-800",
+        }
+        const colorClass =
+          colors[value as keyof typeof colors] || "bg-gray-100 text-gray-800"
+        return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}">${value}</span>`
+      },
     },
     {
-      key: 'actions',
-      label: 'Actions',
+      key: "destinationTimeZoneOffSet",
+      label: "Timezone Offset",
+      sortable: true,
+      render: (value: number) => `${value > 0 ? "+" : ""}${value}`,
+    },
+    {
+      key: "actions",
+      label: "Actions",
       render: (value: any, row: Destination) => {
         return `
           <div class="flex space-x-2">
@@ -78,169 +76,177 @@
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
             </button>
           </div>
-        `;
-      }
-    }
-  ];
+        `
+      },
+    },
+  ]
 
-  function showToastMessage(message: string, type: 'success' | 'error' | 'info' = 'info') {
-    toastMessage = message;
-    toastType = type;
-    showToast = true;
-    setTimeout(() => showToast = false, 5000);
+  function showToastMessage(
+    message: string,
+    type: "success" | "error" | "info" = "info",
+  ) {
+    toastMessage = message
+    toastType = type
+    showToast = true
+    setTimeout(() => (showToast = false), 5000)
   }
 
   onMount(async () => {
-    await loadDestinations();
-  });
+    await loadDestinations()
+  })
 
   async function loadDestinations() {
     try {
-      loading = true;
+      loading = true
       const filters: Record<string, string> = {
         take: pageSize.toString(),
-        skip: ((currentPage - 1) * pageSize).toString()
-      };
-      
-      if (searchTerm) filters.name = searchTerm;
-      if (sortKey) {
-        filters.sortBy = sortKey;
-        filters.sortDirection = sortDirection;
+        skip: ((currentPage - 1) * pageSize).toString(),
       }
 
-      const response = await api.getDestinations(filters);
-      destinations = response.content || [];
-      
+      if (searchTerm) filters.name = searchTerm
+      if (sortKey) {
+        filters.sortBy = sortKey
+        filters.sortDirection = sortDirection
+      }
+
+      const response = await api.getDestinations(filters)
+      destinations = response.content || []
+
       // Calculate pagination
-      totalItems = response.entityCount || 0;
-      totalPages = Math.ceil(totalItems / pageSize);
+      totalItems = response.entityCount || 0
+      totalPages = Math.ceil(totalItems / pageSize)
     } catch (error) {
-      console.error('Failed to load destinations:', error);
-      showToastMessage('Failed to load destinations. Please check your connection and try again.', 'error');
+      console.error("Failed to load destinations:", error)
+      showToastMessage(
+        "Failed to load destinations. Please check your connection and try again.",
+        "error",
+      )
     } finally {
-      loading = false;
+      loading = false
     }
   }
 
   function openCreateModal() {
-    modalMode = 'create';
-    selectedDestination = null;
+    modalMode = "create"
+    selectedDestination = null
     formData = {
-      destinationName: '',
-      destinationDbType: '',
-      destinationConStr: '',
-      destinationTimeZoneOffSet: 0
-    };
-    errors = {};
-    showModal = true;
+      destinationName: "",
+      destinationDbType: "",
+      destinationConStr: "",
+      destinationTimeZoneOffSet: 0,
+    }
+    errors = {}
+    showModal = true
   }
 
   function openEditModal(destination: Destination) {
-    modalMode = 'edit';
-    selectedDestination = destination;
+    modalMode = "edit"
+    selectedDestination = destination
     formData = {
       destinationName: destination.destinationName,
       destinationDbType: destination.destinationDbType,
-      destinationConStr: '••••••••', // Don't show actual connection string
-      destinationTimeZoneOffSet: destination.destinationTimeZoneOffSet
-    };
-    errors = {};
-    showModal = true;
+      destinationConStr: "••••••••", // Don't show actual connection string
+      destinationTimeZoneOffSet: destination.destinationTimeZoneOffSet,
+    }
+    errors = {}
+    showModal = true
   }
 
   function validateForm(): boolean {
-    errors = {};
+    errors = {}
 
     if (!formData.destinationName.trim()) {
-      errors.destinationName = 'Name is required';
+      errors.destinationName = "Name is required"
     }
 
     if (!formData.destinationDbType) {
-      errors.destinationDbType = 'Database type is required';
+      errors.destinationDbType = "Database type is required"
     }
 
     if (!formData.destinationConStr.trim()) {
-      errors.destinationConStr = 'Connection string is required';
+      errors.destinationConStr = "Connection string is required"
     }
 
-    return Object.keys(errors).length === 0;
+    return Object.keys(errors).length === 0
   }
 
   async function handleSubmit() {
-    if (!validateForm()) return;
+    if (!validateForm()) return
 
     try {
-      saving = true;
-      
+      saving = true
+
       const destinationData = {
         destinationName: formData.destinationName,
         destinationDbType: formData.destinationDbType,
         destinationConStr: formData.destinationConStr,
-        destinationTimeZoneOffSet: formData.destinationTimeZoneOffSet
-      };
-
-      if (modalMode === 'create') {
-        await api.createDestination(destinationData);
-        showToastMessage('Destination created successfully', 'success');
-      } else if (selectedDestination) {
-        await api.updateDestination(selectedDestination.id, destinationData);
-        showToastMessage('Destination updated successfully', 'success');
+        destinationTimeZoneOffSet: formData.destinationTimeZoneOffSet,
       }
 
-      showModal = false;
-      await loadDestinations();
+      if (modalMode === "create") {
+        await api.createDestination(destinationData)
+        showToastMessage("Destination created successfully", "success")
+      } else if (selectedDestination) {
+        await api.updateDestination(selectedDestination.id, destinationData)
+        showToastMessage("Destination updated successfully", "success")
+      }
+
+      showModal = false
+      await loadDestinations()
     } catch (error) {
-      console.error(`Failed to ${modalMode} destination:`, error);
-      showToastMessage(`Failed to ${modalMode} destination: ${error.message}`, 'error');
+      console.error(`Failed to ${modalMode} destination:`, error)
+      showToastMessage(
+        `Failed to ${modalMode} destination: ${error.message}`,
+        "error",
+      )
     } finally {
-      saving = false;
+      saving = false
     }
   }
 
   function handlePageChange(page: number) {
-    currentPage = page;
-    loadDestinations();
+    currentPage = page
+    loadDestinations()
   }
 
   function handlePageSizeChange(newPageSize: number) {
-    pageSize = newPageSize;
-    currentPage = 1;
-    loadDestinations();
+    pageSize = newPageSize
+    currentPage = 1
+    loadDestinations()
   }
 
-  function handleSort(key: string, direction: 'asc' | 'desc') {
-    sortKey = key;
-    sortDirection = direction;
-    currentPage = 1;
-    loadDestinations();
+  function handleSort(key: string, direction: "asc" | "desc") {
+    sortKey = key
+    sortDirection = direction
+    currentPage = 1
+    loadDestinations()
   }
 
   // Global functions for table actions
-  if (typeof window !== 'undefined') {
-    (window as any).editDestination = (id: number) => {
-      const destination = destinations.find(d => d.id === id);
-      if (destination) openEditModal(destination);
-    };
-    
-    (window as any).deleteDestination = async (id: number) => {
-      if (confirm('Are you sure you want to delete this destination?')) {
+  if (typeof window !== "undefined") {
+    ;(window as any).editDestination = (id: number) => {
+      const destination = destinations.find((d) => d.id === id)
+      if (destination) openEditModal(destination)
+    }
+    ;(window as any).deleteDestination = async (id: number) => {
+      if (confirm("Are you sure you want to delete this destination?")) {
         try {
-          await api.deleteDestination(id);
-          await loadDestinations();
-          showToastMessage('Destination deleted successfully', 'success');
+          await api.deleteDestination(id)
+          await loadDestinations()
+          showToastMessage("Destination deleted successfully", "success")
         } catch (error) {
-          console.error('Failed to delete destination:', error);
-          showToastMessage('Failed to delete destination', 'error');
+          console.error("Failed to delete destination:", error)
+          showToastMessage("Failed to delete destination", "error")
         }
       }
-    };
+    }
   }
 
   // Auto-reload when search term changes
   $effect(() => {
-    currentPage = 1;
-    loadDestinations();
-  });
+    currentPage = 1
+    loadDestinations()
+  })
 </script>
 
 <svelte:head>
@@ -248,8 +254,8 @@
 </svelte:head>
 
 <div class="space-y-6">
-  <PageHeader 
-    title="Destinations" 
+  <PageHeader
+    title="Destinations"
     description="Manage data destination connections"
   >
     {#snippet actions()}
@@ -263,10 +269,7 @@
   <!-- Filters -->
   <div class="bg-white p-4 rounded-lg shadow">
     <div class="max-w-md">
-      <Input
-        placeholder="Search destinations..."
-        bind:value={searchTerm}
-      />
+      <Input placeholder="Search destinations..." bind:value={searchTerm} />
     </div>
   </div>
 
@@ -287,7 +290,7 @@
           pageSize,
           totalItems,
           onPageChange: handlePageChange,
-          onPageSizeChange: handlePageSizeChange
+          onPageSizeChange: handlePageSizeChange,
         }}
       />
     </div>
@@ -295,8 +298,12 @@
 </div>
 
 <!-- Create/Edit Modal -->
-<Modal bind:open={showModal} title={modalMode === 'create' ? 'New Destination' : 'Edit Destination'}>
-  <form on:submit|preventDefault={handleSubmit} class="space-y-4">
+<Modal
+  bind:open={showModal}
+  title={modalMode === "create" ? "New Destination" : "Edit Destination"}
+>
+  <!-- Fixed: Changed from on:submit to onsubmit -->
+  <form onsubmit={handleSubmit} class="space-y-4">
     <Input
       label="Name"
       bind:value={formData.destinationName}
@@ -312,18 +319,23 @@
       required
       placeholder="Select database type"
       options={[
-        { value: 'PostgreSQL', label: 'PostgreSQL' },
-        { value: 'MySQL', label: 'MySQL' },
-        { value: 'SqlServer', label: 'SQL Server' }
+        { value: "PostgreSQL", label: "PostgreSQL" },
+        { value: "MySQL", label: "MySQL" },
+        { value: "SqlServer", label: "SQL Server" },
       ]}
     />
 
+    <!-- Fixed: Added proper id and for attributes for form label -->
     <div>
-      <label class="block text-sm font-medium text-supabase-gray-700 mb-1">
+      <label
+        for="destinationConnectionString"
+        class="block text-sm font-medium text-supabase-gray-700 mb-1"
+      >
         Connection String
         <span class="text-red-500">*</span>
       </label>
       <textarea
+        id="destinationConnectionString"
         bind:value={formData.destinationConStr}
         class="form-textarea"
         class:border-red-300={errors.destinationConStr}
@@ -345,11 +357,11 @@
     />
 
     <div class="flex justify-end space-x-3 pt-4">
-      <Button variant="secondary" onclick={() => showModal = false}>
+      <Button variant="secondary" onclick={() => (showModal = false)}>
         Cancel
       </Button>
       <Button variant="primary" type="submit" loading={saving}>
-        {modalMode === 'create' ? 'Create' : 'Save'} Destination
+        {modalMode === "create" ? "Create" : "Save"} Destination
       </Button>
     </div>
   </form>
