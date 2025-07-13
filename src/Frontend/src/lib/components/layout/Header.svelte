@@ -52,8 +52,7 @@
 
 <header class="bg-white border-b border-supabase-gray-200">
   <div class="flex items-center justify-between h-16 px-6">
-    <!-- Left side - Brand/Logo -->
-    <div class="flex items-center" />
+    <div class="flex items-center"></div>
 
     <!-- Right side - System status and user menu -->
     <div class="flex items-center space-x-6">

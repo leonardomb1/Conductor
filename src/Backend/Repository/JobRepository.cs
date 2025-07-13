@@ -36,8 +36,53 @@ public class JobRepository(EfContext context) : IRepository<Job>
                             => jobExtractionsQuery.Where(x => x.j.EndTime >= DateTime.Now.AddSeconds(-time)),
                         "status" => jobExtractionsQuery.Where(x => x.j.Status.ToString() == value),
                         "type" => jobExtractionsQuery.Where(x => x.j.JobType.ToString() == value),
+                        "extractionName" => jobExtractionsQuery.Where(x => x.e.Name.Contains(value)),
+                        "skip" => jobExtractionsQuery,
+                        "take" => jobExtractionsQuery,
+                        "sortBy" => jobExtractionsQuery,
+                        "sortDirection" => jobExtractionsQuery,
                         _ => jobExtractionsQuery
                     };
+                }
+            }
+
+            // Apply sorting
+            var sortBy = filters?["sortBy"].FirstOrDefault() ?? "startTime";
+            var sortDirection = filters?["sortDirection"].FirstOrDefault() ?? "desc";
+
+            jobExtractionsQuery = sortBy.ToLowerInvariant() switch
+            {
+                "name" => sortDirection == "asc" ?
+                    jobExtractionsQuery.OrderBy(x => x.e.Name) :
+                    jobExtractionsQuery.OrderByDescending(x => x.e.Name),
+                "jobtype" => sortDirection == "asc" ?
+                    jobExtractionsQuery.OrderBy(x => x.j.JobType) :
+                    jobExtractionsQuery.OrderByDescending(x => x.j.JobType),
+                "status" => sortDirection == "asc" ?
+                    jobExtractionsQuery.OrderBy(x => x.j.Status) :
+                    jobExtractionsQuery.OrderByDescending(x => x.j.Status),
+                "timespentms" => sortDirection == "asc" ?
+                    jobExtractionsQuery.OrderBy(x => x.j.EndTime.HasValue ? (x.j.EndTime.Value - x.j.StartTime).TotalMilliseconds : 0) :
+                    jobExtractionsQuery.OrderByDescending(x => x.j.EndTime.HasValue ? (x.j.EndTime.Value - x.j.StartTime).TotalMilliseconds : 0),
+                "megabytes" => sortDirection == "asc" ?
+                    jobExtractionsQuery.OrderBy(x => x.je.BytesAccumulated) :
+                    jobExtractionsQuery.OrderByDescending(x => x.je.BytesAccumulated),
+                _ => sortDirection == "asc" ?
+                    jobExtractionsQuery.OrderBy(x => x.j.StartTime) :
+                    jobExtractionsQuery.OrderByDescending(x => x.j.StartTime)
+            };
+
+            // Apply pagination
+            if (filters != null)
+            {
+                if (uint.TryParse(filters["skip"], out uint skip))
+                {
+                    jobExtractionsQuery = jobExtractionsQuery.Skip((int)skip);
+                }
+
+                if (uint.TryParse(filters["take"], out uint take))
+                {
+                    jobExtractionsQuery = jobExtractionsQuery.Take((int)take);
                 }
             }
 
@@ -59,6 +104,46 @@ public class JobRepository(EfContext context) : IRepository<Job>
                 .ToList();
 
             return jobDtos;
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
+    // Add method to get total count for pagination
+    public async Task<Result<int>> GetJobsCount(IQueryCollection? filters = null)
+    {
+        try
+        {
+            var jobExtractionsQuery =
+                from j in context.Jobs
+                join je in context.JobExtractions on j.JobGuid equals je.JobGuid
+                join e in context.Extractions on je.ExtractionId equals e.Id
+                select new { j, je, e };
+
+            if (filters is not null)
+            {
+                foreach (var filter in filters)
+                {
+                    string key = filter.Key;
+                    string value = filter.Value!;
+                    jobExtractionsQuery = key switch
+                    {
+                        "relativeStart" when int.TryParse(value, out var time)
+                            => jobExtractionsQuery.Where(x => x.j.StartTime >= DateTime.Now.AddSeconds(-time)),
+                        "relativeEnd" when int.TryParse(value, out var time)
+                            => jobExtractionsQuery.Where(x => x.j.EndTime >= DateTime.Now.AddSeconds(-time)),
+                        "status" => jobExtractionsQuery.Where(x => x.j.Status.ToString() == value),
+                        "type" => jobExtractionsQuery.Where(x => x.j.JobType.ToString() == value),
+                        "extractionName" => jobExtractionsQuery.Where(x => x.e.Name.Contains(value)),
+                        "skip" or "take" or "sortBy" or "sortDirection" => jobExtractionsQuery,
+                        _ => jobExtractionsQuery
+                    };
+                }
+            }
+
+            return await jobExtractionsQuery.CountAsync();
         }
         catch (Exception ex)
         {
@@ -91,6 +176,10 @@ public class JobRepository(EfContext context) : IRepository<Job>
                         "status" => extractionQuery.Where(x => x.j.Status.ToString() == value),
                         "type" => extractionQuery.Where(x => x.j.JobType.ToString() == value),
                         "extractionName" => extractionQuery.Where(x => x.e.Name.Contains(value)),
+                        "skip" => extractionQuery,
+                        "take" => extractionQuery,
+                        "sortBy" => extractionQuery,
+                        "sortDirection" => extractionQuery,
                         _ => extractionQuery
                     };
                 }
@@ -98,7 +187,7 @@ public class JobRepository(EfContext context) : IRepository<Job>
 
             var results = await extractionQuery.ToListAsync();
 
-            var aggregatedExtractions = results
+            IEnumerable<ExtractionAggregatedDto> aggregatedExtractions = results
                 .GroupBy(x => new { x.e.Id, x.e.Name })
                 .Select(extractionGroup => new ExtractionAggregatedDto(
                     extractionGroup.Key.Id,
@@ -110,10 +199,92 @@ public class JobRepository(EfContext context) : IRepository<Job>
                     extractionGroup.Where(x => x.j.Status == JobStatus.Failed).Count(),
                     extractionGroup.Where(x => x.j.Status == JobStatus.Running).Count()
                 ))
-                .OrderByDescending(x => x.LastEndTime)
-                .ToList();
+                .AsEnumerable()
+                .OrderByDescending(x => x.LastEndTime);
 
-            return aggregatedExtractions;
+            var sortBy = filters?["sortBy"].FirstOrDefault() ?? "lastEndTime";
+            var sortDirection = filters?["sortDirection"].FirstOrDefault() ?? "desc";
+
+            aggregatedExtractions = sortBy.ToLowerInvariant() switch
+            {
+                "extractionname" => sortDirection == "asc" ?
+                    aggregatedExtractions.OrderBy(x => x.ExtractionName) :
+                    aggregatedExtractions.OrderByDescending(x => x.ExtractionName),
+                "totaljobs" => sortDirection == "asc" ?
+                    aggregatedExtractions.OrderBy(x => x.TotalJobs) :
+                    aggregatedExtractions.OrderByDescending(x => x.TotalJobs),
+                "totalsizemb" => sortDirection == "asc" ?
+                    aggregatedExtractions.OrderBy(x => x.TotalSizeMB) :
+                    aggregatedExtractions.OrderByDescending(x => x.TotalSizeMB),
+                "completedjobs" => sortDirection == "asc" ?
+                    aggregatedExtractions.OrderBy(x => x.CompletedJobs) :
+                    aggregatedExtractions.OrderByDescending(x => x.CompletedJobs),
+                "failedjobs" => sortDirection == "asc" ?
+                    aggregatedExtractions.OrderBy(x => x.FailedJobs) :
+                    aggregatedExtractions.OrderByDescending(x => x.FailedJobs),
+                _ => sortDirection == "asc" ?
+                    aggregatedExtractions.OrderBy(x => x.LastEndTime) :
+                    aggregatedExtractions.OrderByDescending(x => x.LastEndTime)
+            };
+
+            if (filters != null)
+            {
+                if (uint.TryParse(filters["skip"], out uint skip))
+                {
+                    aggregatedExtractions = aggregatedExtractions.Skip((int)skip);
+                }
+
+                if (uint.TryParse(filters["take"], out uint take))
+                {
+                    aggregatedExtractions = aggregatedExtractions.Take((int)take);
+                }
+            }
+
+            return aggregatedExtractions.ToList();
+        }
+        catch (Exception ex)
+        {
+            return new Error(ex.Message, ex.StackTrace);
+        }
+    }
+
+    // Add method to get aggregated count
+    public async Task<Result<int>> GetAggregatedJobsCount(IQueryCollection? filters = null)
+    {
+        try
+        {
+            var extractionQuery =
+                from e in context.Extractions
+                join je in context.JobExtractions on e.Id equals je.ExtractionId
+                join j in context.Jobs on je.JobGuid equals j.JobGuid
+                select new { e, je, j };
+
+            if (filters is not null)
+            {
+                foreach (var filter in filters)
+                {
+                    string key = filter.Key;
+                    string value = filter.Value!;
+                    extractionQuery = key switch
+                    {
+                        "relativeStart" when int.TryParse(value, out var time)
+                            => extractionQuery.Where(x => x.j.StartTime >= DateTime.Now.AddSeconds(-time)),
+                        "relativeEnd" when int.TryParse(value, out var time)
+                            => extractionQuery.Where(x => x.j.EndTime >= DateTime.Now.AddSeconds(-time)),
+                        "status" => extractionQuery.Where(x => x.j.Status.ToString() == value),
+                        "type" => extractionQuery.Where(x => x.j.JobType.ToString() == value),
+                        "extractionName" => extractionQuery.Where(x => x.e.Name.Contains(value)),
+                        // Skip pagination and sorting parameters for count
+                        "skip" or "take" or "sortBy" or "sortDirection" => extractionQuery,
+                        _ => extractionQuery
+                    };
+                }
+            }
+
+            var results = await extractionQuery.ToListAsync();
+            var uniqueExtractions = results.GroupBy(x => new { x.e.Id, x.e.Name }).Count();
+
+            return uniqueExtractions;
         }
         catch (Exception ex)
         {

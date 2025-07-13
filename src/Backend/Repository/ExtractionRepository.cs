@@ -25,6 +25,17 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
                     string value = filter.Value.ToString();
                     string[] arrayVal = filter.Value.ToString().Split(Settings.SplitterChar);
 
+                    if (key == "ids" && !string.IsNullOrEmpty(value))
+                    {
+                        var parsedIds = value.Split(',')
+                            .Select(id => uint.TryParse(id.Trim(), out uint parsedId) ? parsedId : 0)
+                            .Where(id => id > 0)
+                            .ToList();
+
+                        select = select.Where(e => parsedIds.Contains(e.Id));
+                        continue;
+                    }
+
                     select = key switch
                     {
                         "name" => select.Where(e => e.Name == value),
@@ -104,7 +115,6 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
             return new Error(ex.Message, ex.StackTrace);
         }
     }
-
     public async Task<Result<int>> GetCount(IQueryCollection? filters)
     {
         try

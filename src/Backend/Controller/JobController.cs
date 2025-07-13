@@ -12,10 +12,10 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
     public async Task<IResult> GetJobs(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "relativeStart" || f.Key == "relativeEnd" || f.Key == "take" || f.Key == "mbs") &&
+            (f.Key == "relativeStart" || f.Key == "relativeEnd" || f.Key == "take" || f.Key == "skip" || f.Key == "mbs") &&
                 (
-                    !int.TryParse(f.Value, out _) ||
-                    !uint.TryParse(f.Value, out _) ||
+                    !int.TryParse(f.Value, out _) &&
+                    !uint.TryParse(f.Value, out _) &&
                     !float.TryParse(f.Value, out _)
                 )
             ).ToList();
@@ -27,8 +27,15 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
             );
         }
 
-        var result = await jobRepository.SearchJob(filters);
+        var countResult = await jobRepository.GetJobsCount(filters);
+        if (!countResult.IsSuccessful)
+        {
+            return Results.InternalServerError(
+                ErrorMessage(countResult.Error)
+            );
+        }
 
+        var result = await jobRepository.SearchJob(filters);
         if (!result.IsSuccessful)
         {
             return Results.InternalServerError(
@@ -44,10 +51,10 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
     public async Task<IResult> GetAggreggatedView(IQueryCollection? filters)
     {
         var invalidFilters = filters?.Where(f =>
-            (f.Key == "relativeStart" || f.Key == "relativeEnd" || f.Key == "take" || f.Key == "mbs") &&
+            (f.Key == "relativeStart" || f.Key == "relativeEnd" || f.Key == "take" || f.Key == "skip" || f.Key == "mbs") &&
                 (
-                    !int.TryParse(f.Value, out _) ||
-                    !uint.TryParse(f.Value, out _) ||
+                    !int.TryParse(f.Value, out _) &&
+                    !uint.TryParse(f.Value, out _) &&
                     !float.TryParse(f.Value, out _)
                 )
             ).ToList();
@@ -59,8 +66,15 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
             );
         }
 
-        var result = await jobRepository.GetExtractionAggregatedView(filters);
+        var countResult = await jobRepository.GetAggregatedJobsCount(filters);
+        if (!countResult.IsSuccessful)
+        {
+            return Results.InternalServerError(
+                ErrorMessage(countResult.Error)
+            );
+        }
 
+        var result = await jobRepository.GetExtractionAggregatedView(filters);
         if (!result.IsSuccessful)
         {
             return Results.InternalServerError(
@@ -170,15 +184,21 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
 
         group.MapGet("/search", (JobController controller, HttpRequest request) => controller.GetJobs(request.Query))
             .WithName("SearchJobs")
-            .WithSummary("Searches past jobs using query parameters.")
+            .WithSummary("Searches past jobs using query parameters with pagination.")
             .WithDescription("""
-                Retrieves a filtered list of past job records.
+                Retrieves a filtered and paginated list of past job records.
                 Accepts the following optional query parameters:
-                - `relativeStart` (int)
-                - `relativeEnd` (int)
-                - `take` (uint)
-                - `mbs` (float)
+                - `relativeStart` (int): Time in seconds from now to filter jobs (e.g., 86400 for last 24 hours)
+                - `relativeEnd` (int): End time filter in seconds
+                - `status` (string): Filter by job status (Completed, Failed, Running)
+                - `type` (string): Filter by job type (Transfer, Fetch)
+                - `extractionName` (string): Filter by extraction name (contains search)
+                - `take` (uint): Number of records to return (default: 20)
+                - `skip` (uint): Number of records to skip for pagination (default: 0)
+                - `sortBy` (string): Field to sort by (name, jobtype, status, timespentms, megabytes, starttime)
+                - `sortDirection` (string): Sort direction (asc or desc, default: desc)
 
+                Returns results with entityCount for proper pagination.
                 If any of these parameters are present with invalid formats, a 400 Bad Request is returned.
                 """)
             .Produces<Message<JobDto>>(Status200OK, "application/json")
@@ -187,15 +207,21 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
 
         group.MapGet("/total", (JobController controller, HttpRequest request) => controller.GetAggreggatedView(request.Query))
             .WithName("GetAggregatedJobs")
-            .WithSummary("Gets an aggreagted view of past jobs using query parameters.")
+            .WithSummary("Gets an aggregated view of past jobs using query parameters with pagination.")
             .WithDescription("""
-                Retrieves a filtered aggregated view of job records.
+                Retrieves a filtered and paginated aggregated view of job records grouped by extraction.
                 Accepts the following optional query parameters:
-                - `relativeStart` (int)
-                - `relativeEnd` (int)
-                - `take` (uint)
-                - `mbs` (float)
+                - `relativeStart` (int): Time in seconds from now to filter jobs (e.g., 86400 for last 24 hours)
+                - `relativeEnd` (int): End time filter in seconds
+                - `status` (string): Filter by job status (Completed, Failed, Running)
+                - `type` (string): Filter by job type (Transfer, Fetch)
+                - `extractionName` (string): Filter by extraction name (contains search)
+                - `take` (uint): Number of records to return (default: 20)
+                - `skip` (uint): Number of records to skip for pagination (default: 0)
+                - `sortBy` (string): Field to sort by (extractionname, totaljobs, totalsizemb, completedjobs, failedjobs, lastendtime)
+                - `sortDirection` (string): Sort direction (asc or desc, default: desc)
 
+                Returns aggregated statistics with entityCount for proper pagination.
                 If any of these parameters are present with invalid formats, a 400 Bad Request is returned.
                 """)
             .Produces<Message<ExtractionAggregatedDto>>(Status200OK, "application/json")

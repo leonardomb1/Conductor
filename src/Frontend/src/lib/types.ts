@@ -94,8 +94,79 @@ export interface ExtractionAggregatedDto {
   runningJobs: number;
 }
 
+// New backend-specific types
+export interface SimpleExtractionDto {
+  id: number;
+  name: string;
+}
+
+export interface SearchSuggestion {
+  type: 'extraction' | 'origin' | 'destination' | 'schedule';
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface ExtractionAggregations {
+  totalCount: number;
+  withoutDestination: number;
+  bySourceType: Array<{ category: string; count: number }>;
+  byOrigin: Array<{ category: string; count: number }>;
+  byDestination: Array<{ category: string; count: number }>;
+  bySchedule: Array<{ category: string; count: number }>;
+}
+
 export interface AuthStore {
   isAuthenticated: boolean;
   token: string | null;
   user: string | null;
+}
+
+// Filter types for better type safety
+export interface ExtractionFilters {
+  // Basic filters
+  name?: string;
+  contains?: string;
+  search?: string;
+  
+  // Entity filters
+  origin?: string;
+  destination?: string;
+  schedule?: string;
+  
+  // ID filters
+  originId?: string;
+  destinationId?: string;
+  scheduleId?: string;
+  
+  // Type filters
+  sourceType?: string;
+  isIncremental?: string;
+  isVirtual?: string;
+  
+  // Pagination
+  skip?: string;
+  take?: string;
+  
+  // Sorting
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+}
+
+export interface JobFilters {
+  // Time filters
+  relativeStart?: string;
+  
+  // Content filters
+  extractionName?: string;
+  status?: string;
+  type?: string;
+  
+  // Pagination
+  skip?: string;
+  take?: string;
+  
+  // Sorting
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
 }
