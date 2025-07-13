@@ -190,33 +190,70 @@
       sortDirection: sortDirection,
     }
 
-    // Add string filters
-    if (filters.search?.trim()) apiFilters.search = filters.search.trim()
-    if (filters.name?.trim()) apiFilters.name = filters.name.trim()
-    if (filters.contains?.trim()) apiFilters.contains = filters.contains.trim()
-    if (filters.origin?.trim()) apiFilters.origin = filters.origin.trim()
-    if (filters.destination?.trim())
-      apiFilters.destination = filters.destination.trim()
-    if (filters.schedule?.trim()) apiFilters.schedule = filters.schedule.trim()
+    // Add string filters - safely handle all filter values
+    if (filters.search) {
+      const searchStr = String(filters.search).trim()
+      if (searchStr) apiFilters.search = searchStr
+    }
+    if (filters.name) {
+      const nameStr = String(filters.name).trim()
+      if (nameStr) apiFilters.name = nameStr
+    }
+    if (filters.contains) {
+      const containsStr = String(filters.contains).trim()
+      if (containsStr) apiFilters.contains = containsStr
+    }
+    if (filters.origin) {
+      const originStr = String(filters.origin).trim()
+      if (originStr) apiFilters.origin = originStr
+    }
+    if (filters.destination) {
+      const destinationStr = String(filters.destination).trim()
+      if (destinationStr) apiFilters.destination = destinationStr
+    }
+    if (filters.schedule) {
+      const scheduleStr = String(filters.schedule).trim()
+      if (scheduleStr) apiFilters.schedule = scheduleStr
+    }
 
-    // Add numeric ID filters
-    if (filters.scheduleId?.trim() && !isNaN(Number(filters.scheduleId))) {
-      apiFilters.scheduleId = filters.scheduleId.trim()
+    // Add numeric ID filters - safely convert and validate
+    if (filters.scheduleId) {
+      const scheduleIdStr = String(filters.scheduleId).trim()
+      if (
+        scheduleIdStr &&
+        scheduleIdStr !== "" &&
+        !isNaN(Number(scheduleIdStr))
+      ) {
+        apiFilters.scheduleId = scheduleIdStr
+      }
     }
-    if (filters.originId?.trim() && !isNaN(Number(filters.originId))) {
-      apiFilters.originId = filters.originId.trim()
+    if (filters.originId) {
+      const originIdStr = String(filters.originId).trim()
+      if (originIdStr && originIdStr !== "" && !isNaN(Number(originIdStr))) {
+        apiFilters.originId = originIdStr
+      }
     }
-    if (
-      filters.destinationId?.trim() &&
-      !isNaN(Number(filters.destinationId))
-    ) {
-      apiFilters.destinationId = filters.destinationId.trim()
+    if (filters.destinationId) {
+      const destinationIdStr = String(filters.destinationId).trim()
+      if (
+        destinationIdStr &&
+        destinationIdStr !== "" &&
+        !isNaN(Number(destinationIdStr))
+      ) {
+        apiFilters.destinationId = destinationIdStr
+      }
     }
 
-    // Add select filters
-    if (filters.sourceType) apiFilters.sourceType = filters.sourceType
-    if (filters.isIncremental) apiFilters.isIncremental = filters.isIncremental
-    if (filters.isVirtual) apiFilters.isVirtual = filters.isVirtual
+    // Add select filters - ensure they're strings
+    if (filters.sourceType && String(filters.sourceType) !== "") {
+      apiFilters.sourceType = String(filters.sourceType)
+    }
+    if (filters.isIncremental && String(filters.isIncremental) !== "") {
+      apiFilters.isIncremental = String(filters.isIncremental)
+    }
+    if (filters.isVirtual && String(filters.isVirtual) !== "") {
+      apiFilters.isVirtual = String(filters.isVirtual)
+    }
 
     return apiFilters
   }

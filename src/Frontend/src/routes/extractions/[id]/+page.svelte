@@ -238,15 +238,15 @@
         <Card title="Basic Information">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Name</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Name</span>
               <p class="mt-1 text-sm text-supabase-gray-900">{extraction.extractionName}</p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Alias</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Alias</span>
               <p class="mt-1 text-sm text-supabase-gray-900">{extraction.extractionAlias || '-'}</p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Source Type</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Source Type</span>
               <p class="mt-1">
                 <Badge variant={extraction.sourceType === 'http' ? 'info' : 'success'}>
                   {extraction.sourceType || 'db'}
@@ -254,7 +254,7 @@
               </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Index Name</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Index Name</span>
               <p class="mt-1 text-sm text-supabase-gray-900">{extraction.indexName || '-'}</p>
             </div>
           </div>
@@ -263,7 +263,7 @@
         <Card title="Configuration">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Incremental</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Incremental</span>
               <p class="mt-1">
                 <Badge variant={extraction.isIncremental ? 'success' : 'default'}>
                   {extraction.isIncremental ? 'Yes' : 'No'}
@@ -271,7 +271,7 @@
               </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Virtual</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Virtual</span>
               <p class="mt-1">
                 <Badge variant={extraction.isVirtual ? 'success' : 'default'}>
                   {extraction.isVirtual ? 'Yes' : 'No'}
@@ -279,7 +279,7 @@
               </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Filter Time</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Filter Time</span>
               <p class="mt-1 text-sm text-supabase-gray-900">{extraction.filterTime || '-'}</p>
             </div>
           </div>
@@ -289,18 +289,18 @@
           <Card title="HTTP Configuration">
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-supabase-gray-700">Endpoint</label>
+                <span class="block text-sm font-medium text-supabase-gray-700">Endpoint</span>
                 <p class="mt-1 text-sm text-supabase-gray-900 break-all">{extraction.endpointFullName || '-'}</p>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-medium text-supabase-gray-700">HTTP Method</label>
+                  <span class="block text-sm font-medium text-supabase-gray-700">HTTP Method</span>
                   <p class="mt-1">
                     <Badge variant="info">{extraction.httpMethod || 'GET'}</Badge>
                   </p>
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-supabase-gray-700">Pagination Type</label>
+                  <span class="block text-sm font-medium text-supabase-gray-700">Pagination Type</span>
                   <p class="mt-1 text-sm text-supabase-gray-900">{extraction.paginationType || '-'}</p>
                 </div>
               </div>
@@ -326,19 +326,19 @@
         <Card title="Relations">
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Origin</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Origin</span>
               <p class="mt-1 text-sm text-supabase-gray-900">
                 {extraction.origin?.originName || '-'}
               </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Destination</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Destination</span>
               <p class="mt-1 text-sm text-supabase-gray-900">
                 {extraction.destination?.destinationName || '-'}
               </p>
             </div>
             <div>
-              <label class="block text-sm font-medium text-supabase-gray-700">Schedule</label>
+              <span class="block text-sm font-medium text-supabase-gray-700">Schedule</span>
               <p class="mt-1 text-sm text-supabase-gray-900">
                 {extraction.schedule?.scheduleName || '-'}
               </p>
@@ -350,12 +350,12 @@
           <Card title="Filtering">
             <div class="space-y-3">
               <div>
-                <label class="block text-sm font-medium text-supabase-gray-700">Filter Column</label>
+                <span class="block text-sm font-medium text-supabase-gray-700">Filter Column</span>
                 <p class="mt-1 text-sm text-supabase-gray-900">{extraction.filterColumn}</p>
               </div>
               {#if extraction.filterCondition}
                 <div>
-                  <label class="block text-sm font-medium text-supabase-gray-700">Filter Condition</label>
+                  <span class="block text-sm font-medium text-supabase-gray-700">Filter Condition</span>
                   <p class="mt-1 text-sm text-supabase-gray-900">{extraction.filterCondition}</p>
                 </div>
               {/if}

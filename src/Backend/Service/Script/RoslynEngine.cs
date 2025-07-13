@@ -107,35 +107,73 @@ public class RoslynScriptEngine : IScriptEngine, IDisposable
         return sb.ToString();
     }
 
+    private static MetadataReference? TryCreateAssemblyReference(Assembly assembly)
+    {
+        if (assembly.IsDynamic)
+            return null;
+
+        try
+        {
+            // Suppress the single-file warning as we handle the fallback case
+#pragma warning disable IL3000
+            var location = assembly.Location;
+#pragma warning restore IL3000
+
+            if (!string.IsNullOrEmpty(location))
+                return MetadataReference.CreateFromFile(location);
+
+            // Fallback for single-file apps
+            var assemblyName = assembly.GetName().Name;
+            if (!string.IsNullOrEmpty(assemblyName))
+            {
+                var path = Path.Combine(AppContext.BaseDirectory, assemblyName + ".dll");
+                if (File.Exists(path))
+                    return MetadataReference.CreateFromFile(path);
+            }
+        }
+        catch
+        {
+            // Ignore failures
+        }
+
+        return null;
+    }
+
     private CSharpCompilation CreateCompilation(string sourceCode)
     {
         var syntaxTree = CSharpSyntaxTree.ParseText(sourceCode);
 
-        var references = new List<MetadataReference>
+        var references = new List<MetadataReference>();
+
+        // Add core system references by finding them in the loaded assemblies
+        var coreTypes = new[]
         {
-            MetadataReference.CreateFromFile(typeof(object).Assembly.Location), // System.Runtime
-            MetadataReference.CreateFromFile(typeof(Console).Assembly.Location), // System.Console
-            MetadataReference.CreateFromFile(typeof(DataTable).Assembly.Location), // System.Data
-            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location), // System.Linq
-            MetadataReference.CreateFromFile(typeof(Task).Assembly.Location), // System.Threading.Tasks
-            MetadataReference.CreateFromFile(typeof(CancellationToken).Assembly.Location), // System.Threading
-            MetadataReference.CreateFromFile(Assembly.GetExecutingAssembly().Location), // Current assembly for BaseScript
+            typeof(object),           // System.Runtime
+            typeof(Console),          // System.Console  
+            typeof(DataTable),        // System.Data
+            typeof(Enumerable),       // System.Linq
+            typeof(Task),            // System.Threading.Tasks
+            typeof(CancellationToken) // System.Threading
         };
 
-        // Add references to assemblies that are currently loaded
+        foreach (var type in coreTypes)
+        {
+            var reference = TryCreateAssemblyReference(type.Assembly);
+            if (reference != null)
+                references.Add(reference);
+        }
+
+        // Add current assembly reference
+        var currentAssemblyRef = TryCreateAssemblyReference(Assembly.GetExecutingAssembly());
+        if (currentAssemblyRef != null)
+            references.Add(currentAssemblyRef);
+
+        // Add references to other loaded assemblies
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
-            if (!assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location))
-            {
-                try
-                {
-                    references.Add(MetadataReference.CreateFromFile(assembly.Location));
-                }
-                catch
-                {
-                    // Ignore assemblies that can't be referenced
-                }
-            }
+            var reference = TryCreateAssemblyReference(assembly);
+            if (reference != null)
+                references.Add(reference);
         }
 
         return CSharpCompilation.Create(

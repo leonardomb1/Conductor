@@ -8,7 +8,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: `http://conductor-api:${process.env.PORT_NUMBER || 8080}`,
+        target: `http://${process.env.API_HOST}`,
         changeOrigin: true,
         secure: false,
         // CRITICAL: Configure the proxy to forward all headers including Authorization
@@ -37,7 +37,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: `http://conductor-api:${process.env.PORT_NUMBER || 8080}`,
+        target: `http://${process.env.API_HOST}`,
         changeOrigin: true,
         secure: false,
         // Same configuration for preview mode
