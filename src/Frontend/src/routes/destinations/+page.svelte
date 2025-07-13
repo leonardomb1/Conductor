@@ -9,6 +9,7 @@
   import Modal from "$lib/components/ui/Modal.svelte"
   import Select from "$lib/components/ui/Select.svelte"
   import Toast from "$lib/components/ui/Toast.svelte"
+  import ConfirmationModal from "$lib/components/ui/ConfirmationModal.svelte"
   import { Plus, Edit, Trash2, Upload } from "@lucide/svelte"
 
   let destinations = $state<Destination[]>([])
@@ -25,6 +26,13 @@
   let pageSize = $state(20)
   let sortKey = $state("")
   let sortDirection = $state<"asc" | "desc">("asc")
+
+  // Confirmation modal state
+  let showConfirmModal = $state(false)
+  let confirmAction = $state<() => Promise<void>>(() => Promise.resolve())
+  let confirmMessage = $state("")
+  let confirmTitle = $state("")
+  let confirmLoading = $state(false)
 
   let toastMessage = $state("")
   let toastType = $state<"success" | "error" | "info">("info")
@@ -88,7 +96,6 @@
     toastMessage = message
     toastType = type
     showToast = true
-    setTimeout(() => (showToast = false), 5000)
   }
 
   onMount(async () => {
@@ -222,23 +229,35 @@
     loadDestinations()
   }
 
+  function showDeleteConfirmation(id: number) {
+    const destination = destinations.find((d) => d.id === id)
+    confirmTitle = "Delete Destination"
+    confirmMessage = `Are you sure you want to delete "${destination?.destinationName || "this destination"}"? This action cannot be undone.`
+    confirmAction = async () => {
+      confirmLoading = true
+      try {
+        await api.deleteDestination(id)
+        await loadDestinations()
+        showToastMessage("Destination deleted successfully", "success")
+      } catch (error) {
+        console.error("Failed to delete destination:", error)
+        showToastMessage("Failed to delete destination", "error")
+        throw error
+      } finally {
+        confirmLoading = false
+      }
+    }
+    showConfirmModal = true
+  }
+
   // Global functions for table actions
   if (typeof window !== "undefined") {
     ;(window as any).editDestination = (id: number) => {
       const destination = destinations.find((d) => d.id === id)
       if (destination) openEditModal(destination)
     }
-    ;(window as any).deleteDestination = async (id: number) => {
-      if (confirm("Are you sure you want to delete this destination?")) {
-        try {
-          await api.deleteDestination(id)
-          await loadDestinations()
-          showToastMessage("Destination deleted successfully", "success")
-        } catch (error) {
-          console.error("Failed to delete destination:", error)
-          showToastMessage("Failed to delete destination", "error")
-        }
-      }
+    ;(window as any).deleteDestination = (id: number) => {
+      showDeleteConfirmation(id)
     }
   }
 
@@ -302,7 +321,6 @@
   bind:open={showModal}
   title={modalMode === "create" ? "New Destination" : "Edit Destination"}
 >
-  <!-- Fixed: Changed from on:submit to onsubmit -->
   <form onsubmit={handleSubmit} class="space-y-4">
     <Input
       label="Name"
@@ -325,7 +343,6 @@
       ]}
     />
 
-    <!-- Fixed: Added proper id and for attributes for form label -->
     <div>
       <label
         for="destinationConnectionString"
@@ -366,6 +383,16 @@
     </div>
   </form>
 </Modal>
+
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  bind:open={showConfirmModal}
+  title={confirmTitle}
+  message={confirmMessage}
+  type="danger"
+  loading={confirmLoading}
+  onConfirm={confirmAction}
+/>
 
 <!-- Toast Notifications -->
 <Toast bind:show={showToast} type={toastType} message={toastMessage} />

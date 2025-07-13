@@ -7,9 +7,9 @@
   import Button from "$lib/components/ui/Button.svelte"
   import Input from "$lib/components/ui/Input.svelte"
   import Select from "$lib/components/ui/Select.svelte"
-  import Badge from "$lib/components/ui/Badge.svelte"
   import Card from "$lib/components/ui/Card.svelte"
   import Toast from "$lib/components/ui/Toast.svelte"
+  import ConfirmationModal from "$lib/components/ui/ConfirmationModal.svelte"
   import {
     Trash2,
     RefreshCw,
@@ -46,6 +46,13 @@
   let relativeTime = $state("86400") // Last 24 hours
   let sortKey = $state("")
   let sortDirection = $state<"asc" | "desc">("desc")
+
+  // Confirmation modal state
+  let showConfirmModal = $state(false)
+  let confirmAction = $state<() => Promise<void>>(() => Promise.resolve())
+  let confirmMessage = $state("")
+  let confirmTitle = $state("")
+  let confirmLoading = $state(false)
 
   // Toast notifications
   let toastMessage = $state("")
@@ -154,7 +161,6 @@
     toastMessage = message
     toastType = type
     showToast = true
-    setTimeout(() => (showToast = false), 5000)
   }
 
   // Build filters for recent jobs API call
@@ -298,12 +304,12 @@
     }
   }
 
-  async function clearAllJobs() {
-    if (
-      confirm(
-        "Are you sure you want to clear all job history? This action cannot be undone.",
-      )
-    ) {
+  function showClearJobsConfirmation() {
+    confirmTitle = "Clear Job History"
+    confirmMessage =
+      "Are you sure you want to clear all job history? This action cannot be undone and will permanently delete all job records."
+    confirmAction = async () => {
+      confirmLoading = true
       try {
         await api.clearJobs()
         await loadJobs()
@@ -311,8 +317,12 @@
       } catch (error) {
         console.error("Failed to clear jobs:", error)
         showToastMessage("Failed to clear job history", "error")
+        throw error
+      } finally {
+        confirmLoading = false
       }
     }
+    showConfirmModal = true
   }
 
   function handleRecentJobsPageChange(page: number) {
@@ -409,7 +419,7 @@
           <RefreshCw size={16} class="mr-2" />
           Refresh
         </Button>
-        <Button variant="danger" onclick={clearAllJobs}>
+        <Button variant="danger" onclick={showClearJobsConfirmation}>
           <Trash2 size={16} class="mr-2" />
           Clear History
         </Button>
@@ -665,6 +675,16 @@
     </div>
   </div>
 </div>
+
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  bind:open={showConfirmModal}
+  title={confirmTitle}
+  message={confirmMessage}
+  type="danger"
+  loading={confirmLoading}
+  onConfirm={confirmAction}
+/>
 
 <!-- Toast Notifications -->
 <Toast bind:show={showToast} type={toastType} message={toastMessage} />

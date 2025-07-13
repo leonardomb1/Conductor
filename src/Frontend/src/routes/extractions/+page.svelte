@@ -10,6 +10,7 @@
   import Badge from "$lib/components/ui/Badge.svelte"
   import Modal from "$lib/components/ui/Modal.svelte"
   import Toast from "$lib/components/ui/Toast.svelte"
+  import ConfirmationModal from "$lib/components/ui/ConfirmationModal.svelte"
   import {
     Plus,
     Play,
@@ -30,20 +31,29 @@
   let loading = $state(true)
   let totalCount = $state(0)
 
-  // Enhanced filters matching backend capabilities - with proper initialization
-  let searchTerm = $state("")
-  let filterName = $state("")
-  let filterContains = $state("")
-  let filterOrigin = $state("")
-  let filterDestination = $state("")
-  let filterSchedule = $state("")
-  let filterScheduleId = $state("")
-  let filterOriginId = $state("")
-  let filterDestinationId = $state("")
-  let filterSourceType = $state("")
-  let filterIncremental = $state("")
-  let filterVirtual = $state("")
-  let showAdvancedFilters = $state(false)
+  // Single filter state object to reduce reactive complexity
+  let filters = $state({
+    // Text filters
+    search: "",
+    name: "",
+    contains: "",
+    origin: "",
+    destination: "",
+    schedule: "",
+
+    // ID filters
+    scheduleId: "",
+    originId: "",
+    destinationId: "",
+
+    // Select filters
+    sourceType: "",
+    isIncremental: "",
+    isVirtual: "",
+
+    // UI state
+    showAdvanced: false,
+  })
 
   // Pagination - use server-side
   let currentPage = $state(1)
@@ -60,6 +70,13 @@
   let executeLoading = $state(false)
   let selectedExtractions = $state<number[]>([])
 
+  // Confirmation modal state
+  let showConfirmModal = $state(false)
+  let confirmAction = $state<() => Promise<void>>(() => Promise.resolve())
+  let confirmMessage = $state("")
+  let confirmTitle = $state("")
+  let confirmLoading = $state(false)
+
   // Toast notifications
   let toastMessage = $state("")
   let toastType = $state<"success" | "error" | "info">("info")
@@ -69,6 +86,10 @@
   let availableOrigins = $state<{ id: number; name: string }[]>([])
   let availableDestinations = $state<{ id: number; name: string }[]>([])
   let availableSchedules = $state<{ id: number; name: string }[]>([])
+
+  // Single derived state for tracking filter changes
+  let lastFiltersState = $state("")
+  let filterDebounceTimer: NodeJS.Timeout | null = null
 
   const columns = [
     {
@@ -158,101 +179,55 @@
     toastMessage = message
     toastType = type
     showToast = true
-    setTimeout(() => (showToast = false), 5000)
   }
 
-  // Build filters object for API call - with better numeric handling
+  // Build filters object for API call
   function buildFilters(): Record<string, string> {
-    const filters: Record<string, string> = {
+    const apiFilters: Record<string, string> = {
       skip: ((currentPage - 1) * pageSize).toString(),
       take: pageSize.toString(),
       sortBy: sortBy,
       sortDirection: sortDirection,
     }
 
-    // Helper function to safely add string filters
-    function addStringFilter(key: string, value: string) {
-      if (value && value.trim && value.trim() !== "") {
-        filters[key] = value.trim()
-        console.log(`Added string filter: ${key} = ${value.trim()}`)
-      }
+    // Add string filters
+    if (filters.search?.trim()) apiFilters.search = filters.search.trim()
+    if (filters.name?.trim()) apiFilters.name = filters.name.trim()
+    if (filters.contains?.trim()) apiFilters.contains = filters.contains.trim()
+    if (filters.origin?.trim()) apiFilters.origin = filters.origin.trim()
+    if (filters.destination?.trim())
+      apiFilters.destination = filters.destination.trim()
+    if (filters.schedule?.trim()) apiFilters.schedule = filters.schedule.trim()
+
+    // Add numeric ID filters
+    if (filters.scheduleId?.trim() && !isNaN(Number(filters.scheduleId))) {
+      apiFilters.scheduleId = filters.scheduleId.trim()
+    }
+    if (filters.originId?.trim() && !isNaN(Number(filters.originId))) {
+      apiFilters.originId = filters.originId.trim()
+    }
+    if (
+      filters.destinationId?.trim() &&
+      !isNaN(Number(filters.destinationId))
+    ) {
+      apiFilters.destinationId = filters.destinationId.trim()
     }
 
-    // Helper function to safely add numeric filters - FIXED
-    function addNumericFilter(key: string, value: string) {
-      console.log(
-        `Checking numeric filter: ${key} = "${value}" (type: ${typeof value})`,
-      )
+    // Add select filters
+    if (filters.sourceType) apiFilters.sourceType = filters.sourceType
+    if (filters.isIncremental) apiFilters.isIncremental = filters.isIncremental
+    if (filters.isVirtual) apiFilters.isVirtual = filters.isVirtual
 
-      if (value !== undefined && value !== null && value !== "") {
-        const stringValue = String(value).trim()
-        console.log(`After string conversion and trim: "${stringValue}"`)
-
-        // Validate that it's actually a number
-        if (!isNaN(Number(stringValue)) && stringValue !== "") {
-          filters[key] = stringValue
-          console.log(`✅ Added numeric filter: ${key} = ${stringValue}`)
-        } else {
-          console.log(
-            `❌ Skipped invalid numeric filter: ${key} = ${stringValue} (not a number)`,
-          )
-        }
-      } else {
-        console.log(`❌ Skipped empty numeric filter: ${key} = ${value}`)
-      }
-    }
-
-    // Add active filters with proper validation
-    addStringFilter("search", searchTerm)
-    addStringFilter("name", filterName)
-    addStringFilter("contains", filterContains)
-    addStringFilter("origin", filterOrigin)
-    addStringFilter("destination", filterDestination)
-    addStringFilter("schedule", filterSchedule)
-
-    // Add numeric ID filters with validation
-    addNumericFilter("scheduleId", filterScheduleId)
-    addNumericFilter("originId", filterOriginId)
-    addNumericFilter("destinationId", filterDestinationId)
-
-    // Add select filters (these should never be null/undefined from selects)
-    if (filterSourceType && filterSourceType !== "") {
-      filters.sourceType = filterSourceType
-      console.log(`Added select filter: sourceType = ${filterSourceType}`)
-    }
-    if (filterIncremental && filterIncremental !== "") {
-      filters.isIncremental = filterIncremental
-      console.log(`Added select filter: isIncremental = ${filterIncremental}`)
-    }
-    if (filterVirtual && filterVirtual !== "") {
-      filters.isVirtual = filterVirtual
-      console.log(`Added select filter: isVirtual = ${filterVirtual}`)
-    }
-
-    console.log("=== FINAL FILTERS ===")
-    console.log("Built filters:", filters)
-    console.log("Filter values check:", {
-      filterScheduleId: `"${filterScheduleId}"`,
-      filterOriginId: `"${filterOriginId}"`,
-      filterDestinationId: `"${filterDestinationId}"`,
-      types: {
-        filterScheduleId: typeof filterScheduleId,
-        filterOriginId: typeof filterOriginId,
-        filterDestinationId: typeof filterDestinationId,
-      },
-    })
-
-    return filters
+    return apiFilters
   }
 
   async function loadExtractions() {
     try {
       loading = true
-      const filters = buildFilters()
+      const apiFilters = buildFilters()
+      console.log("Loading extractions with filters:", apiFilters)
 
-      console.log("Loading extractions with filters:", filters)
-
-      const response = await api.getExtractions(filters)
+      const response = await api.getExtractions(apiFilters)
 
       if (response.error) {
         throw new Error(response.information || "Failed to load extractions")
@@ -315,63 +290,42 @@
   }
 
   function clearAllFilters() {
-    // Reset all filters to empty strings
-    searchTerm = ""
-    filterName = ""
-    filterContains = ""
-    filterOrigin = ""
-    filterDestination = ""
-    filterSchedule = ""
-    filterScheduleId = ""
-    filterOriginId = ""
-    filterDestinationId = ""
-    filterSourceType = ""
-    filterIncremental = ""
-    filterVirtual = ""
+    filters = {
+      search: "",
+      name: "",
+      contains: "",
+      origin: "",
+      destination: "",
+      schedule: "",
+      scheduleId: "",
+      originId: "",
+      destinationId: "",
+      sourceType: "",
+      isIncremental: "",
+      isVirtual: "",
+      showAdvanced: filters.showAdvanced,
+    }
     currentPage = 1
-
-    // Reload with cleared filters
+    selectedExtractions = []
     loadExtractions()
   }
 
   function hasActiveFilters(): boolean {
     return !!(
-      searchTerm ||
-      filterName ||
-      filterContains ||
-      filterOrigin ||
-      filterDestination ||
-      filterSchedule ||
-      filterScheduleId ||
-      filterOriginId ||
-      filterDestinationId ||
-      filterSourceType ||
-      filterIncremental ||
-      filterVirtual
+      filters.search ||
+      filters.name ||
+      filters.contains ||
+      filters.origin ||
+      filters.destination ||
+      filters.schedule ||
+      filters.scheduleId ||
+      filters.originId ||
+      filters.destinationId ||
+      filters.sourceType ||
+      filters.isIncremental ||
+      filters.isVirtual
     )
   }
-
-  // Simplified validation - just allow execution
-  function validateExecutionSelection(): { valid: boolean; issues: string[] } {
-    if (selectedExtractions.length === 0) {
-      return { valid: false, issues: ["No extractions selected"] }
-    }
-
-    // Always return valid for now since ID-based execution is working
-    return { valid: true, issues: [] }
-  }
-
-  // Reactive validation for the modal - ensure it updates when execute type changes
-  const executionValidation = $derived(() => {
-    try {
-      const result = validateExecutionSelection()
-      console.log("Reactive validation triggered:", result)
-      return result
-    } catch (error) {
-      console.error("Validation error:", error)
-      return { valid: false, issues: ["Validation error occurred"] }
-    }
-  })
 
   async function executeExtractions() {
     if (selectedExtractions.length === 0) {
@@ -381,7 +335,6 @@
 
     executeLoading = true
     try {
-      // Get the actual extraction objects for validation and display
       const selectedExtractionsData = selectedExtractions
         .map((id) => extractions.find((e) => e.id === id))
         .filter(Boolean) as Extraction[]
@@ -415,20 +368,20 @@
       }
 
       // Use the new ID-based filtering approach
-      const filters = {
+      const apiFilters = {
         ids: selectedExtractions.join(","),
       }
 
-      console.log("Executing with ID filters:", filters)
+      console.log("Executing with ID filters:", apiFilters)
 
       if (executeType === "transfer") {
-        await api.executeTransfer(filters)
+        await api.executeTransfer(apiFilters)
         showToastMessage(
           `Transfer job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}: ${selectedExtractionsData.map((e) => e.extractionName).join(", ")}`,
           "success",
         )
       } else {
-        await api.executePull(filters)
+        await api.executePull(apiFilters)
         showToastMessage(
           `Pull job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}: ${selectedExtractionsData.map((e) => e.extractionName).join(", ")}`,
           "success",
@@ -492,87 +445,55 @@
     loadExtractions()
   }
 
-  // Debounce filter changes with null safety
-  let filterTimeout: NodeJS.Timeout | null = null
-  function debounceFilterChange() {
-    if (filterTimeout) clearTimeout(filterTimeout)
-    filterTimeout = setTimeout(() => {
+  // Unified filter change handler with debouncing
+  function handleFilterChange() {
+    if (filterDebounceTimer) clearTimeout(filterDebounceTimer)
+
+    filterDebounceTimer = setTimeout(() => {
       currentPage = 1
+      selectedExtractions = []
       loadExtractions()
     }, 500)
   }
 
-  // Watch filter changes with proper null checking and immediate filtering for IDs
+  // Single effect to watch all filter changes
   $effect(() => {
-    if (searchTerm !== undefined && searchTerm !== null) debounceFilterChange()
+    const currentFiltersState = JSON.stringify(filters)
+    if (currentFiltersState !== lastFiltersState && lastFiltersState !== "") {
+      console.log("Filters changed, triggering reload")
+      handleFilterChange()
+    }
+    lastFiltersState = currentFiltersState
   })
 
+  // Initialize lastFiltersState on mount
   $effect(() => {
-    if (filterName !== undefined && filterName !== null) debounceFilterChange()
-  })
-
-  $effect(() => {
-    if (filterContains !== undefined && filterContains !== null)
-      debounceFilterChange()
-  })
-
-  $effect(() => {
-    if (filterOrigin !== undefined && filterOrigin !== null)
-      debounceFilterChange()
-  })
-
-  $effect(() => {
-    if (filterDestination !== undefined && filterDestination !== null)
-      debounceFilterChange()
-  })
-
-  $effect(() => {
-    if (filterSchedule !== undefined && filterSchedule !== null)
-      debounceFilterChange()
-  })
-
-  // ID filters should trigger immediate filtering (not debounced) for better UX
-  $effect(() => {
-    if (filterScheduleId !== undefined && filterScheduleId !== null) {
-      currentPage = 1
-      loadExtractions()
+    if (lastFiltersState === "") {
+      lastFiltersState = JSON.stringify(filters)
     }
   })
 
-  $effect(() => {
-    if (filterOriginId !== undefined && filterOriginId !== null) {
-      currentPage = 1
-      loadExtractions()
+  function showDeleteConfirmation(id: number) {
+    const extraction = extractions.find((e) => e.id === id)
+    confirmTitle = "Delete Extraction"
+    confirmMessage = `Are you sure you want to delete "${extraction?.extractionName || "this extraction"}"? This action cannot be undone.`
+    confirmAction = async () => {
+      confirmLoading = true
+      try {
+        await api.deleteExtraction(id)
+        selectedExtractions = selectedExtractions.filter((eid) => eid !== id)
+        await loadExtractions()
+        showToastMessage("Extraction deleted successfully", "success")
+      } catch (error) {
+        console.error("Failed to delete extraction:", error)
+        showToastMessage("Failed to delete extraction", "error")
+        throw error
+      } finally {
+        confirmLoading = false
+      }
     }
-  })
-
-  $effect(() => {
-    if (filterDestinationId !== undefined && filterDestinationId !== null) {
-      currentPage = 1
-      loadExtractions()
-    }
-  })
-
-  $effect(() => {
-    if (filterSourceType !== undefined && filterSourceType !== null) {
-      currentPage = 1
-      loadExtractions()
-    }
-  })
-
-  $effect(() => {
-    if (filterIncremental !== undefined && filterIncremental !== null) {
-      currentPage = 1
-      loadExtractions()
-    }
-  })
-
-  $effect(() => {
-    if (filterVirtual !== undefined && filterVirtual !== null) {
-      currentPage = 1
-      loadExtractions()
-    }
-  })
+    showConfirmModal = true
+  }
 
   // Global functions for table actions
   if (typeof window !== "undefined") {
@@ -582,18 +503,8 @@
     ;(window as any).editExtraction = (id: number) => {
       window.location.href = `/extractions/${id}/edit`
     }
-    ;(window as any).deleteExtraction = async (id: number) => {
-      if (confirm("Are you sure you want to delete this extraction?")) {
-        try {
-          await api.deleteExtraction(id)
-          selectedExtractions = selectedExtractions.filter((eid) => eid !== id)
-          await loadExtractions() // Reload to get updated count
-          showToastMessage("Extraction deleted successfully", "success")
-        } catch (error) {
-          console.error("Failed to delete extraction:", error)
-          showToastMessage("Failed to delete extraction", "error")
-        }
-      }
+    ;(window as any).deleteExtraction = (id: number) => {
+      showDeleteConfirmation(id)
     }
     ;(window as any).toggleSelection = (id: number) => {
       toggleExtractionSelection(id)
@@ -647,14 +558,14 @@
         </div>
         <input
           type="text"
-          bind:value={searchTerm}
+          bind:value={filters.search}
           placeholder="Search across name, alias, and index name..."
           class="block w-full pl-10 pr-10 py-3 border border-supabase-gray-300 rounded-md leading-5 bg-white placeholder-supabase-gray-500 focus:outline-none focus:ring-1 focus:ring-supabase-green focus:border-supabase-green"
         />
-        {#if searchTerm}
+        {#if filters.search}
           <button
             onclick={() => {
-              searchTerm = ""
+              filters.search = ""
             }}
             class="absolute inset-y-0 right-0 pr-3 flex items-center text-supabase-gray-400 hover:text-supabase-gray-600"
           >
@@ -667,7 +578,7 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Select
           placeholder="Source Type"
-          bind:value={filterSourceType}
+          bind:value={filters.sourceType}
           options={[
             { value: "", label: "All Types" },
             { value: "db", label: "Database" },
@@ -676,7 +587,7 @@
         />
         <Select
           placeholder="Incremental"
-          bind:value={filterIncremental}
+          bind:value={filters.isIncremental}
           options={[
             { value: "", label: "All" },
             { value: "true", label: "Incremental" },
@@ -685,7 +596,7 @@
         />
         <Select
           placeholder="Virtual"
-          bind:value={filterVirtual}
+          bind:value={filters.isVirtual}
           options={[
             { value: "", label: "All" },
             { value: "true", label: "Virtual" },
@@ -694,15 +605,15 @@
         />
       </div>
 
-      <!-- Simplified Filter Controls -->
+      <!-- Filter Controls -->
       <div class="flex justify-between items-center">
         <Button
           variant="ghost"
-          onclick={() => (showAdvancedFilters = !showAdvancedFilters)}
+          onclick={() => (filters.showAdvanced = !filters.showAdvanced)}
         >
           <Filter size={16} class="mr-2" />
           Advanced Filters
-          {#if showAdvancedFilters}
+          {#if filters.showAdvanced}
             <ChevronUp size={16} class="ml-1" />
           {:else}
             <ChevronDown size={16} class="ml-1" />
@@ -718,7 +629,7 @@
       </div>
 
       <!-- Advanced Filters -->
-      {#if showAdvancedFilters}
+      {#if filters.showAdvanced}
         <div class="border-t border-supabase-gray-200 pt-4 mt-4">
           <h4 class="text-sm font-medium text-supabase-gray-900 mb-4">
             Advanced Filters
@@ -733,12 +644,12 @@
               </h5>
               <Input
                 placeholder="Exact extraction name"
-                bind:value={filterName}
+                bind:value={filters.name}
                 size="sm"
               />
               <Input
                 placeholder="Contains names (comma-separated)"
-                bind:value={filterContains}
+                bind:value={filters.contains}
                 size="sm"
               />
             </div>
@@ -752,17 +663,17 @@
               </h5>
               <Input
                 placeholder="Origin name"
-                bind:value={filterOrigin}
+                bind:value={filters.origin}
                 size="sm"
               />
               <Input
                 placeholder="Destination name"
-                bind:value={filterDestination}
+                bind:value={filters.destination}
                 size="sm"
               />
               <Input
                 placeholder="Schedule name"
-                bind:value={filterSchedule}
+                bind:value={filters.schedule}
                 size="sm"
               />
             </div>
@@ -777,19 +688,19 @@
               <Input
                 placeholder="Origin ID"
                 type="number"
-                bind:value={filterOriginId}
+                bind:value={filters.originId}
                 size="sm"
               />
               <Input
                 placeholder="Destination ID"
                 type="number"
-                bind:value={filterDestinationId}
+                bind:value={filters.destinationId}
                 size="sm"
               />
               <Input
                 placeholder="Schedule ID"
                 type="number"
-                bind:value={filterScheduleId}
+                bind:value={filters.scheduleId}
                 size="sm"
               />
             </div>
@@ -808,19 +719,23 @@
           </span>
           {#if hasActiveFilters()}
             <div class="flex flex-wrap gap-1 mt-1">
-              {#if searchTerm}
-                <Badge variant="info" size="sm">Search: {searchTerm}</Badge>
+              {#if filters.search}
+                <Badge variant="info" size="sm">Search: {filters.search}</Badge>
               {/if}
-              {#if filterSourceType}
-                <Badge variant="info" size="sm">Type: {filterSourceType}</Badge>
-              {/if}
-              {#if filterIncremental}
+              {#if filters.sourceType}
                 <Badge variant="info" size="sm"
-                  >Incremental: {filterIncremental}</Badge
+                  >Type: {filters.sourceType}</Badge
                 >
               {/if}
-              {#if filterVirtual}
-                <Badge variant="info" size="sm">Virtual: {filterVirtual}</Badge>
+              {#if filters.isIncremental}
+                <Badge variant="info" size="sm"
+                  >Incremental: {filters.isIncremental}</Badge
+                >
+              {/if}
+              {#if filters.isVirtual}
+                <Badge variant="info" size="sm"
+                  >Virtual: {filters.isVirtual}</Badge
+                >
               {/if}
             </div>
           {/if}
@@ -881,7 +796,7 @@
   </div>
 </div>
 
-<!-- Simplified Execute Modal -->
+<!-- Execute Modal -->
 <Modal bind:open={showExecuteModal} title="Execute Extractions">
   <div class="space-y-4">
     <p class="text-sm text-supabase-gray-600">
@@ -928,6 +843,16 @@
     </div>
   </div>
 </Modal>
+
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  bind:open={showConfirmModal}
+  title={confirmTitle}
+  message={confirmMessage}
+  type="danger"
+  loading={confirmLoading}
+  onConfirm={confirmAction}
+/>
 
 <!-- Toast Notifications -->
 <Toast bind:show={showToast} type={toastType} message={toastMessage} />

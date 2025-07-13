@@ -60,6 +60,16 @@ class ApiClient {
         throw new Error(errorMessage);
       }
 
+      // Handle 204 No Content - return empty success response
+      if (response.status === 204) {
+        return {
+          statusCode: 204,
+          information: 'Success',
+          error: false,
+          content: []
+        } as ApiResponse<T>;
+      }
+
       const data = await response.json();
       console.log(`API Success:`, {
         endpoint,
@@ -277,15 +287,15 @@ class ApiClient {
     });
   }
 
-  async updateExtraction(id: number, extraction: Omit<Extraction, 'id'>): Promise<void> {
-    await this.request(`/extractions/${id}`, {
+  async updateExtraction(id: number, extraction: Omit<Extraction, 'id'>): Promise<ApiResponse<never>> {
+    return this.request<never>(`/extractions/${id}`, {
       method: 'PUT',
       body: JSON.stringify(extraction),
     });
   }
 
-  async deleteExtraction(id: number): Promise<void> {
-    await this.request(`/extractions/${id}`, {
+  async deleteExtraction(id: number): Promise<ApiResponse<never>> {
+    return this.request<never>(`/extractions/${id}`, {
       method: 'DELETE',
     });
   }
@@ -338,15 +348,15 @@ class ApiClient {
     });
   }
 
-  async updateDestination(id: number, destination: Omit<Destination, 'id'>): Promise<void> {
-    await this.request(`/destinations/${id}`, {
+  async updateDestination(id: number, destination: Omit<Destination, 'id'>): Promise<ApiResponse<never>> {
+    return this.request<never>(`/destinations/${id}`, {
       method: 'PUT',
       body: JSON.stringify(destination),
     });
   }
 
-  async deleteDestination(id: number): Promise<void> {
-    await this.request(`/destinations/${id}`, {
+  async deleteDestination(id: number): Promise<ApiResponse<never>> {
+    return this.request<never>(`/destinations/${id}`, {
       method: 'DELETE',
     });
   }
@@ -369,15 +379,15 @@ class ApiClient {
     });
   }
 
-  async updateOrigin(id: number, origin: Omit<Origin, 'id'>): Promise<void> {
-    await this.request(`/origins/${id}`, {
+  async updateOrigin(id: number, origin: Omit<Origin, 'id'>): Promise<ApiResponse<never>> {
+    return this.request<never>(`/origins/${id}`, {
       method: 'PUT',
       body: JSON.stringify(origin),
     });
   }
 
-  async deleteOrigin(id: number): Promise<void> {
-    await this.request(`/origins/${id}`, {
+  async deleteOrigin(id: number): Promise<ApiResponse<never>> {
+    return this.request<never>(`/origins/${id}`, {
       method: 'DELETE',
     });
   }
@@ -400,15 +410,15 @@ class ApiClient {
     });
   }
 
-  async updateSchedule(id: number, schedule: Omit<Schedule, 'id'>): Promise<void> {
-    await this.request(`/schedules/${id}`, {
+  async updateSchedule(id: number, schedule: Omit<Schedule, 'id'>): Promise<ApiResponse<never>> {
+    return this.request<never>(`/schedules/${id}`, {
       method: 'PUT',
       body: JSON.stringify(schedule),
     });
   }
 
-  async deleteSchedule(id: number): Promise<void> {
-    await this.request(`/schedules/${id}`, {
+  async deleteSchedule(id: number): Promise<ApiResponse<never>> {
+    return this.request<never>(`/schedules/${id}`, {
       method: 'DELETE',
     });
   }
@@ -431,15 +441,15 @@ class ApiClient {
     });
   }
 
-  async updateUser(id: number, user: Omit<User, 'id'>): Promise<void> {
-    await this.request(`/users/${id}`, {
+  async updateUser(id: number, user: Omit<User, 'id'>): Promise<ApiResponse<never>> {
+    return this.request<never>(`/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify(user),
     });
   }
 
-  async deleteUser(id: number): Promise<void> {
-    await this.request(`/users/${id}`, {
+  async deleteUser(id: number): Promise<ApiResponse<never>> {
+    return this.request<never>(`/users/${id}`, {
       method: 'DELETE',
     });
   }
@@ -481,8 +491,8 @@ class ApiClient {
     return this.request<ExtractionAggregatedDto>(`/jobs/total?${queryString}`);
   }
 
-  async clearJobs(): Promise<void> {
-    await this.request('/jobs', {
+  async clearJobs(): Promise<ApiResponse<never>> {
+    return this.request<never>('/jobs', {
       method: 'DELETE',
     });
   }

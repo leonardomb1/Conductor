@@ -126,7 +126,7 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
                         job.StartTime,
                         job.EndTime,
                         ((job.EndTime ?? DateTime.Now) - job.StartTime).TotalMilliseconds,
-                        job.JobExtractions.Sum(x => x.BytesAccumulated) / (1024f * 1024f)
+                        je.BytesAccumulated / (1024f * 1024f)
                     ))
                 )
                 .OrderByDescending(j => j.StartTime)

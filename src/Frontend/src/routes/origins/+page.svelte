@@ -7,8 +7,9 @@
   import Button from "$lib/components/ui/Button.svelte"
   import Input from "$lib/components/ui/Input.svelte"
   import Modal from "$lib/components/ui/Modal.svelte"
-  import Card from "$lib/components/ui/Card.svelte"
   import Select from "$lib/components/ui/Select.svelte"
+  import Toast from "$lib/components/ui/Toast.svelte"
+  import ConfirmationModal from "$lib/components/ui/ConfirmationModal.svelte"
   import { Plus, Edit, Trash2, Database } from "@lucide/svelte"
 
   let origins = $state<Origin[]>([])
@@ -20,7 +21,20 @@
   let saving = $state(false)
   let currentPage = $state(1)
   let totalPages = $state(1)
-  const pageSize = 20
+  let totalItems = $state(0)
+  let pageSize = $state(20)
+
+  // Confirmation modal state
+  let showConfirmModal = $state(false)
+  let confirmAction = $state<() => Promise<void>>(() => Promise.resolve())
+  let confirmMessage = $state("")
+  let confirmTitle = $state("")
+  let confirmLoading = $state(false)
+
+  // Toast state
+  let toastMessage = $state("")
+  let toastType = $state<"success" | "error" | "info">("info")
+  let showToast = $state(false)
 
   // Form data
   let formData = $state({
@@ -80,6 +94,15 @@
     },
   ]
 
+  function showToastMessage(
+    message: string,
+    type: "success" | "error" | "info" = "info",
+  ) {
+    toastMessage = message
+    toastType = type
+    showToast = true
+  }
+
   onMount(async () => {
     await loadOrigins()
   })
@@ -89,6 +112,7 @@
       loading = true
       const filters: Record<string, string> = {
         take: pageSize.toString(),
+        skip: ((currentPage - 1) * pageSize).toString(),
       }
       if (searchTerm) filters.name = searchTerm
 
@@ -96,13 +120,13 @@
       origins = response.content || []
 
       // Calculate pagination
-      totalPages = Math.ceil(
-        (response.entityCount || origins.length) / pageSize,
-      )
+      totalItems = response.entityCount || 0
+      totalPages = Math.ceil(totalItems / pageSize)
     } catch (error) {
       console.error("Failed to load origins:", error)
-      alert(
+      showToastMessage(
         "Failed to load origins. Please check your connection and try again.",
+        "error",
       )
     } finally {
       loading = false
@@ -171,15 +195,20 @@
 
       if (modalMode === "create") {
         await api.createOrigin(originData)
+        showToastMessage("Origin created successfully", "success")
       } else if (selectedOrigin) {
         await api.updateOrigin(selectedOrigin.id, originData)
+        showToastMessage("Origin updated successfully", "success")
       }
 
       showModal = false
       await loadOrigins()
     } catch (error) {
       console.error(`Failed to ${modalMode} origin:`, error)
-      alert(`Failed to ${modalMode} origin`)
+      showToastMessage(
+        `Failed to ${modalMode} origin: ${error.message}`,
+        "error",
+      )
     } finally {
       saving = false
     }
@@ -190,22 +219,41 @@
     loadOrigins()
   }
 
+  function handlePageSizeChange(newPageSize: number) {
+    pageSize = newPageSize
+    currentPage = 1
+    loadOrigins()
+  }
+
+  function showDeleteConfirmation(id: number) {
+    const origin = origins.find((o) => o.id === id)
+    confirmTitle = "Delete Origin"
+    confirmMessage = `Are you sure you want to delete "${origin?.originName || "this origin"}"? This action cannot be undone.`
+    confirmAction = async () => {
+      confirmLoading = true
+      try {
+        await api.deleteOrigin(id)
+        await loadOrigins()
+        showToastMessage("Origin deleted successfully", "success")
+      } catch (error) {
+        console.error("Failed to delete origin:", error)
+        showToastMessage("Failed to delete origin", "error")
+        throw error
+      } finally {
+        confirmLoading = false
+      }
+    }
+    showConfirmModal = true
+  }
+
   // Global functions for table actions
   if (typeof window !== "undefined") {
     ;(window as any).editOrigin = (id: number) => {
       const origin = origins.find((o) => o.id === id)
       if (origin) openEditModal(origin)
     }
-    ;(window as any).deleteOrigin = async (id: number) => {
-      if (confirm("Are you sure you want to delete this origin?")) {
-        try {
-          await api.deleteOrigin(id)
-          await loadOrigins()
-        } catch (error) {
-          console.error("Failed to delete origin:", error)
-          alert("Failed to delete origin")
-        }
-      }
+    ;(window as any).deleteOrigin = (id: number) => {
+      showDeleteConfirmation(id)
     }
   }
 
@@ -247,8 +295,9 @@
           currentPage,
           totalPages,
           pageSize,
-          totalItems: origins.length,
+          totalItems,
           onPageChange: handlePageChange,
+          onPageSizeChange: handlePageSizeChange,
         }}
       />
     </div>
@@ -288,7 +337,6 @@
       ]}
     />
 
-    <!-- Fixed: Added proper id and for attributes for form label -->
     <div>
       <label
         for="connectionString"
@@ -329,3 +377,16 @@
     </div>
   </form>
 </Modal>
+
+<!-- Confirmation Modal -->
+<ConfirmationModal
+  bind:open={showConfirmModal}
+  title={confirmTitle}
+  message={confirmMessage}
+  type="danger"
+  loading={confirmLoading}
+  onConfirm={confirmAction}
+/>
+
+<!-- Toast Notifications -->
+<Toast bind:show={showToast} type={toastType} message={toastMessage} />
