@@ -79,6 +79,7 @@
       const response = await api.getExtraction(extractionId);
       extraction = response.content?.[0] || null;
     } catch (error) {
+      console.error('Failed to load extraction:', error);
       showToastMessage('Failed to load extraction details', 'error');
     } finally {
       loading = false;
@@ -90,27 +91,59 @@
 
     try {
       previewLoading = true;
+      console.log('Fetching preview data for:', extraction.extractionName);
+      
       const response = await api.fetchData({ 
         name: extraction.extractionName,
         page: '1'
       });
       
-      previewData = response.content || [];
+      console.log('Preview response:', response);
       
-      if (previewData.length > 0) {
-        previewColumns = Object.keys(previewData[0]).map(key => ({
-          key,
-          label: key,
-          sortable: false,
-          width: '150px' // Fixed width for better scrolling
-        }));
+      // Handle successful response (200 or 204)
+      if (!response.error && (response.statusCode === 200 || response.statusCode === 204)) {
+        previewData = response.content || [];
+        
+        if (previewData.length > 0) {
+          previewColumns = Object.keys(previewData[0]).map(key => ({
+            key,
+            label: key,
+            sortable: false,
+            width: '150px' // Fixed width for better scrolling
+          }));
+          
+          showPreviewModal = true;
+          showToastMessage(`Loaded ${previewData.length} rows for preview`, 'success');
+        } else {
+          showToastMessage('No data returned from the source', 'info');
+        }
+      } else {
+        // Handle API error response
+        const errorMessage = response.information || 'Unknown error occurred';
+        showToastMessage(`Failed to fetch preview data: ${errorMessage}`, 'error');
       }
       
-      showPreviewModal = true;
-      showToastMessage(`Loaded ${previewData.length} rows for preview`, 'success');
     } catch (error) {
-      error('Failed to fetch preview:', error);
-      showToastMessage('Failed to fetch preview data', 'error');
+      console.error('Failed to fetch preview:', error);
+      
+      // Improved error message handling
+      let errorMessage = 'Failed to fetch preview data';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object') {
+        if ('message' in error) {
+          errorMessage = error.message;
+        } else if ('information' in error) {
+          errorMessage = error.information;
+        } else {
+          errorMessage = 'An unexpected error occurred';
+        }
+      }
+      
+      showToastMessage(errorMessage, 'error');
     } finally {
       previewLoading = false;
     }
@@ -137,6 +170,7 @@
 
     try {
       executeConfirmLoading = true;
+      console.log(`Starting ${executeType} job for:`, extraction.extractionName);
       
       // Use the extraction name for the API call (now all use programTransfer/programPull)
       const apiFilters = { name: extraction.extractionName };
@@ -148,28 +182,57 @@
         response = await api.executePull(apiFilters);
       }
 
-      // Extract job GUID from the response
-      let jobGuid = null;
-      if (response && response.information) {
-        jobGuid = response.information;
-      }
+      console.log('Execute response:', response);
 
-      // Show success message with job GUID
-      if (jobGuid) {
-        showToastMessage(
-          `${executeType === 'transfer' ? 'Transfer' : 'Pull'} job started successfully for "${extraction.extractionName}". Job ID: ${jobGuid}`,
-          'success'
-        );
+      // Check if the response indicates success (200 or 204)
+      if (!response.error && (response.statusCode === 200 || response.statusCode === 204)) {
+        // Extract job GUID from the response
+        let jobGuid = null;
+        if (response && response.information) {
+          jobGuid = response.information;
+        }
+
+        // Show success message with job GUID
+        if (jobGuid) {
+          showToastMessage(
+            `${executeType === 'transfer' ? 'Transfer' : 'Pull'} job started successfully for "${extraction.extractionName}". Job ID: ${jobGuid}`,
+            'success'
+          );
+        } else {
+          showToastMessage(
+            `${executeType === 'transfer' ? 'Transfer' : 'Pull'} job started successfully for "${extraction.extractionName}"`,
+            'success'
+          );
+        }
+
+        showExecuteModal = false;
       } else {
-        showToastMessage(
-          `${executeType === 'transfer' ? 'Transfer' : 'Pull'} job started successfully for "${extraction.extractionName}"`,
-          'success'
-        );
+        // Handle API error response
+        const errorMessage = response.information || 'Unknown error occurred';
+        showToastMessage(`Failed to start ${executeType} job: ${errorMessage}`, 'error');
       }
-
-      showExecuteModal = false;
+      
     } catch (error) {
-      showToastMessage(`Failed to start ${executeType} job: ${error.message}`, 'error');
+      console.error(`Failed to execute ${executeType} job:`, error);
+      
+      // Improved error message handling
+      let errorMessage = `Failed to start ${executeType} job`;
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object') {
+        if ('message' in error) {
+          errorMessage = error.message;
+        } else if ('information' in error) {
+          errorMessage = error.information;
+        } else {
+          errorMessage = 'An unexpected error occurred';
+        }
+      }
+      
+      showToastMessage(errorMessage, 'error');
     } finally {
       executeConfirmLoading = false;
     }
@@ -212,6 +275,7 @@
 
       showToastMessage(`CSV exported successfully (${previewData.length} rows)`, 'success');
     } catch (error) {
+      console.error('Failed to export CSV:', error);
       showToastMessage('Failed to export CSV file', 'error');
     }
   }
@@ -237,6 +301,7 @@
 
       showToastMessage(`JSON exported successfully (${previewData.length} rows)`, 'success');
     } catch (error) {
+      console.error('Failed to export JSON:', error);
       showToastMessage('Failed to export JSON file', 'error');
     }
   }
@@ -415,40 +480,6 @@
 
         <!-- Quick Actions Card -->
         <Card title="Quick Actions">
-          <div class="space-y-3">
-            <Button 
-              variant="primary" 
-              size="sm" 
-              class="w-full" 
-              onclick={() => openExecuteModal('transfer')}
-              disabled={!extraction.originId || !extraction.destinationId}
-            >
-              <Play size={14} class="mr-2" />
-              Transfer to Destination
-            </Button>
-            <Button 
-              variant="secondary" 
-              size="sm" 
-              class="w-full" 
-              onclick={() => openExecuteModal('pull')}
-              disabled={!extraction.originId}
-            >
-              <Download size={14} class="mr-2" />
-              Pull to CSV
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              class="w-full" 
-              onclick={fetchPreview}
-              loading={previewLoading}
-              disabled={!extraction.originId}
-            >
-              <Eye size={14} class="mr-2" />
-              Preview Data
-            </Button>
-          </div>
-          
           {#if !extraction.originId || !extraction.destinationId}
             <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
               <h4 class="text-sm font-medium text-yellow-800">Configuration Required</h4>
@@ -587,7 +618,7 @@
         variant="primary"
         loading={executeConfirmLoading}
         onclick={executeJob}
-        disabled={executeConfirmLoading}
+        disabled={executeConfirmLoading || (executeType === 'transfer' && !extraction.destinationId)}
       >
         {#if executeConfirmLoading}
           <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
@@ -660,7 +691,7 @@
 </Modal>
 
 <!-- Toast Notifications -->
-<Toast bind:show={showToast} type={toastType} message={toastMessage} />
+<Toast bind:show={showToast} type={toastType} message={toastMessage} allowHtml={true} />
 
 <style>
   /* Enhanced toast styling for job notifications */

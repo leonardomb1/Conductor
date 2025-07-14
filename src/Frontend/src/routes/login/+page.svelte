@@ -20,7 +20,7 @@
     error = ""
 
     try {
-      const success = await auth.login(username, password, loginType === "ldap")
+      const success = await auth.login(username.toLowerCase(), password, loginType === "ldap")
       if (success) {
         goto("/dashboard")
       } else {
