@@ -35,23 +35,47 @@ class ApiClient {
 
       if (!response.ok) {
         let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
-        const errorText = await response.text();
-        if (errorText) {
-          errorMessage += ` - ${errorText}`;
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            errorMessage += ` - ${errorText}`;
+          }
+        } catch (e) {
+          // Ignore error reading response text
         }
         throw new Error(errorMessage);
       }
 
+      // Handle 204 No Content - return standardized success response
       if (response.status === 204) {
+        // Try to read any response text (like job GUID) but don't fail if there isn't any
+        let responseText = '';
+        try {
+          responseText = await response.text();
+        } catch (e) {
+          // Ignore error reading response text for 204
+        }
+        
         return {
           statusCode: 204,
-          information: 'Operation completed successfully',
+          information: responseText || 'Operation completed successfully',
           error: false,
           content: []
         } as ApiResponse<T>;
       }
 
-      return await response.json();
+      // For other successful responses, parse as JSON
+      try {
+        return await response.json();
+      } catch (parseError) {
+        // If JSON parsing fails, create a success response
+        return {
+          statusCode: response.status,
+          information: 'Operation completed successfully',
+          error: false,
+          content: []
+        } as ApiResponse<T>;
+      }
     } catch (error) {
       if (error instanceof TypeError && error.message.includes('fetch')) {
         throw new Error('Network error - please check your connection');
