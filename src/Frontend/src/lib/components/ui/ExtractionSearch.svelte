@@ -96,26 +96,18 @@
   })
 
   async function loadQuickAccessData() {
-    try {
-      const [recent, popular] = await Promise.all([
+    const [recent, popular] = await Promise.all([
         api.getRecentExtractions(5),
         api.getPopularExtractions(5),
       ])
 
-      recentExtractions = recent.content || []
-      popularExtractions = popular.content || []
-    } catch (error) {
-      console.error("Failed to load quick access data:", error)
-    }
+    recentExtractions = recent.content || []
+    popularExtractions = popular.content || []
   }
 
   async function loadAggregations() {
-    try {
-      const response = await api.getExtractionAggregations()
-      aggregations = response.content?.[0] || null
-    } catch (error) {
-      console.error("Failed to load aggregations:", error)
-    }
+    const response = await api.getExtractionAggregations()
+    aggregations = response.content?.[0] || null
   }
 
   // Debounced search function
@@ -159,13 +151,11 @@
 
       onSearchResults(searchResults, totalCount)
 
-      // Reload aggregations with current filters
       if (hasActiveFilters()) {
         const aggResponse = await api.getExtractionAggregations(searchParams)
         aggregations = aggResponse.content?.[0] || null
       }
     } catch (error) {
-      console.error("Search failed:", error)
       searchResults = []
       totalCount = 0
       onSearchResults([], 0)
@@ -186,7 +176,6 @@
       suggestions = response.content || []
       showSuggestions = suggestions.length > 0
     } catch (error) {
-      console.error("Failed to get suggestions:", error)
       suggestions = []
       showSuggestions = false
     }

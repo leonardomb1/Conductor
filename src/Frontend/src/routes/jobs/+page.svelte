@@ -221,31 +221,22 @@
   }
 
   async function loadHealthData() {
-    try {
-      const [health, metrics] = await Promise.all([
+    const [health, metrics] = await Promise.all([
         api.getHealth(),
         api.getMetrics(),
       ])
       healthData = health
       metricsData = metrics
-    } catch (error) {
-      console.error("Failed to load health/metrics data:", error)
-    }
   }
 
   async function loadActiveJobs() {
-    try {
-      const response = await api.getActiveJobs()
-      activeJobs = response.content || []
-    } catch (error) {
-      console.error("Failed to load active jobs:", error)
-    }
+    const response = await api.getActiveJobs()
+    activeJobs = response.content || []
   }
 
   async function loadRecentJobs() {
     try {
       const filters = buildRecentJobsFilters()
-      console.log("Loading recent jobs with filters:", filters)
 
       const response = await api.searchJobs(filters)
 
@@ -256,15 +247,7 @@
       recentJobs = response.content || []
       totalItems = response.entityCount || 0
       totalPages = Math.ceil(totalItems / pageSize)
-
-      console.log("Loaded recent jobs:", {
-        count: recentJobs.length,
-        totalItems,
-        totalPages,
-        currentPage,
-      })
     } catch (error) {
-      console.error("Failed to load recent jobs:", error)
       showToastMessage("Failed to load recent jobs", "error")
       recentJobs = []
       totalItems = 0
@@ -274,8 +257,6 @@
   async function loadAggregatedJobs() {
     try {
       const filters = buildAggregatedJobsFilters()
-      console.log("Loading aggregated jobs with filters:", filters)
-
       const response = await api.getAggregatedJobs(filters)
 
       if (response.error) {
@@ -289,15 +270,7 @@
       aggregatedTotalPages = Math.ceil(
         aggregatedTotalItems / aggregatedPageSize,
       )
-
-      console.log("Loaded aggregated jobs:", {
-        count: aggregatedJobs.length,
-        totalItems: aggregatedTotalItems,
-        totalPages: aggregatedTotalPages,
-        currentPage: aggregatedCurrentPage,
-      })
     } catch (error) {
-      console.error("Failed to load aggregated jobs:", error)
       showToastMessage("Failed to load aggregated jobs", "error")
       aggregatedJobs = []
       aggregatedTotalItems = 0
@@ -315,7 +288,6 @@
         await loadJobs()
         showToastMessage("Job history cleared successfully", "success")
       } catch (error) {
-        console.error("Failed to clear jobs:", error)
         showToastMessage("Failed to clear job history", "error")
         throw error
       } finally {

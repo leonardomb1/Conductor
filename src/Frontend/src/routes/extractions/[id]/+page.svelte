@@ -52,15 +52,11 @@
           toastElement.style.cursor = 'pointer';
           toastElement.onclick = () => {
             navigator.clipboard.writeText(jobGuid).then(() => {
-              console.log('Job GUID copied to clipboard:', jobGuid);
-              // Show a brief confirmation
               const originalText = toastElement.textContent;
               toastElement.textContent = 'Copied!';
               setTimeout(() => {
                 toastElement.textContent = originalText;
               }, 1000);
-            }).catch(err => {
-              console.error('Failed to copy job GUID:', err);
             });
           };
         }
@@ -83,7 +79,6 @@
       const response = await api.getExtraction(extractionId);
       extraction = response.content?.[0] || null;
     } catch (error) {
-      console.error('Failed to load extraction:', error);
       showToastMessage('Failed to load extraction details', 'error');
     } finally {
       loading = false;
@@ -114,7 +109,7 @@
       showPreviewModal = true;
       showToastMessage(`Loaded ${previewData.length} rows for preview`, 'success');
     } catch (error) {
-      console.error('Failed to fetch preview:', error);
+      error('Failed to fetch preview:', error);
       showToastMessage('Failed to fetch preview data', 'error');
     } finally {
       previewLoading = false;
@@ -174,7 +169,6 @@
 
       showExecuteModal = false;
     } catch (error) {
-      console.error(`Failed to execute ${executeType}:`, error);
       showToastMessage(`Failed to start ${executeType} job: ${error.message}`, 'error');
     } finally {
       executeConfirmLoading = false;
@@ -218,7 +212,6 @@
 
       showToastMessage(`CSV exported successfully (${previewData.length} rows)`, 'success');
     } catch (error) {
-      console.error('Failed to export CSV:', error);
       showToastMessage('Failed to export CSV file', 'error');
     }
   }
@@ -244,7 +237,6 @@
 
       showToastMessage(`JSON exported successfully (${previewData.length} rows)`, 'success');
     } catch (error) {
-      console.error('Failed to export JSON:', error);
       showToastMessage('Failed to export JSON file', 'error');
     }
   }

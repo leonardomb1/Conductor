@@ -7,21 +7,10 @@
 
   let showUserMenu = $state(false)
   let healthData = $state<any>(null)
-  let activeJobsCount = $state(0)
 
   onMount(async () => {
     if (auth.isAuthenticated) {
-      try {
-        // Get health data for system status
-        healthData = await api.getHealth()
-
-        // Get active jobs count
-        const activeJobsResponse = await api.getActiveJobs()
-        activeJobsCount = activeJobsResponse.content?.length || 0
-      } catch (error) {
-        // Silently fail - health check is optional
-        console.debug("Health check failed:", error)
-      }
+      healthData = await api.getHealth()
     }
   })
 
@@ -34,7 +23,6 @@
     showUserMenu = !showUserMenu
   }
 
-  // Close user menu when clicking outside
   function handleClickOutside(event: MouseEvent) {
     if (
       showUserMenu &&
@@ -63,13 +51,6 @@
           <div class="flex items-center space-x-2">
             <div class="w-2 h-2 bg-green-500 rounded-full"></div>
             <span>System Healthy</span>
-          </div>
-
-          <!-- Active Jobs Count -->
-          <div class="flex items-center space-x-2">
-            <span class="text-supabase-gray-400">•</span>
-            <span class="font-medium">{activeJobsCount}</span>
-            <span>active job{activeJobsCount !== 1 ? "s" : ""}</span>
           </div>
         </div>
       {:else if auth.isAuthenticated}

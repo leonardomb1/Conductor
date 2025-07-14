@@ -123,7 +123,6 @@
       totalItems = response.entityCount || 0
       totalPages = Math.ceil(totalItems / pageSize)
     } catch (error) {
-      console.error("Failed to load origins:", error)
       showToastMessage(
         "Failed to load origins. Please check your connection and try again.",
         "error",
@@ -204,7 +203,7 @@
       showModal = false
       await loadOrigins()
     } catch (error) {
-      console.error(`Failed to ${modalMode} origin:`, error)
+      error(`Failed to ${modalMode} origin:`, error)
       showToastMessage(
         `Failed to ${modalMode} origin: ${error.message}`,
         "error",
@@ -236,7 +235,6 @@
         await loadOrigins()
         showToastMessage("Origin deleted successfully", "success")
       } catch (error) {
-        console.error("Failed to delete origin:", error)
         showToastMessage("Failed to delete origin", "error")
         throw error
       } finally {

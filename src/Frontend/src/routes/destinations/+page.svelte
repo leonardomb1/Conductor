@@ -123,7 +123,6 @@
       totalItems = response.entityCount || 0
       totalPages = Math.ceil(totalItems / pageSize)
     } catch (error) {
-      console.error("Failed to load destinations:", error)
       showToastMessage(
         "Failed to load destinations. Please check your connection and try again.",
         "error",
@@ -201,7 +200,6 @@
       showModal = false
       await loadDestinations()
     } catch (error) {
-      console.error(`Failed to ${modalMode} destination:`, error)
       showToastMessage(
         `Failed to ${modalMode} destination: ${error.message}`,
         "error",
@@ -240,7 +238,6 @@
         await loadDestinations()
         showToastMessage("Destination deleted successfully", "success")
       } catch (error) {
-        console.error("Failed to delete destination:", error)
         showToastMessage("Failed to delete destination", "error")
         throw error
       } finally {

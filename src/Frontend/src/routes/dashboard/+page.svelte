@@ -36,8 +36,6 @@
       metricsData = metrics;
       activeJobs = activeJobsRes.content || [];
       recentJobs = recentJobsRes.content?.slice(0, 10) || [];
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
     } finally {
       loading = false;
     }

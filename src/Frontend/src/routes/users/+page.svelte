@@ -94,7 +94,6 @@
       totalItems = response.entityCount || 0
       totalPages = Math.ceil(totalItems / pageSize)
     } catch (error) {
-      console.error("Failed to load users:", error)
       showToastMessage(
         "Failed to load users. Please check your connection and try again.",
         "error",
@@ -183,7 +182,6 @@
       showModal = false
       await loadUsers()
     } catch (error) {
-      console.error(`Failed to ${modalMode} user:`, error)
       showToastMessage(`Failed to ${modalMode} user: ${error.message}`, "error")
     } finally {
       saving = false
@@ -201,7 +199,6 @@
         await loadUsers()
         showToastMessage("User deleted successfully", "success")
       } catch (error) {
-        console.error("Failed to delete user:", error)
         showToastMessage("Failed to delete user", "error")
         throw error
       } finally {

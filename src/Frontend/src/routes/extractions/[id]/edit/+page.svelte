@@ -111,7 +111,6 @@
         }
       }
     } catch (error) {
-      console.error("Failed to load extraction:", error)
       showToastMessage("Failed to load extraction details", "error")
     }
   }
@@ -128,7 +127,6 @@
       destinations = destinationsRes.content || []
       schedules = schedulesRes.content || []
     } catch (error) {
-      console.error("Failed to load related data:", error)
       showToastMessage("Failed to load form options", "error")
     } finally {
       loading = false
@@ -200,15 +198,15 @@
         script: formData.script || undefined,
       }
 
-      await api.updateExtraction(extractionId, extractionData)
-      showToastMessage("Extraction updated successfully", "success")
+      const response = await api.updateExtraction(extractionId, extractionData)
 
-      // Redirect to view page after successful update
-      setTimeout(() => {
-        window.location.href = `/extractions/${extractionId}`
-      }, 1500)
+     if (!response.error && (response.statusCode === 200 || response.statusCode === 204)) {
+        showToastMessage("Extraction updated successfully", "success")
+     } else {
+        const errorMessage = response.information || "Unknown error occurred"
+        showToastMessage(`Failed to update extraction: ${errorMessage}`, "error")
+      }
     } catch (error) {
-      console.error("Failed to update extraction:", error)
       showToastMessage(`Failed to update extraction: ${error.message}`, "error")
     } finally {
       saving = false

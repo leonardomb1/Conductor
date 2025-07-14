@@ -14,6 +14,9 @@
   let schedules = $state<Schedule[]>([])
   let loading = $state(false)
   let saving = $state(false)
+  let toastMessage = $state("")
+  let toastType = $state<"success" | "error" | "info">("info")
+  let showToast = $state(false)
 
   // Form data
   let formData = $state({
@@ -53,6 +56,15 @@
     await loadRelatedData()
   })
 
+  function showToastMessage(
+    message: string,
+    type: "success" | "error" | "info" = "info",
+  ) {
+    toastMessage = message
+    toastType = type
+    showToast = true
+  }
+
   async function loadRelatedData() {
     try {
       loading = true
@@ -65,8 +77,6 @@
       origins = originsRes.content || []
       destinations = destinationsRes.content || []
       schedules = schedulesRes.content || []
-    } catch (error) {
-      console.error("Failed to load related data:", error)
     } finally {
       loading = false
     }
@@ -140,8 +150,10 @@
       await api.createExtraction(extractionData)
       window.location.href = "/extractions"
     } catch (error) {
-      console.error("Failed to create extraction:", error)
-      alert("Failed to create extraction")
+      showToastMessage(
+        "Failed to save extraction.",
+        "error",
+      )
     } finally {
       saving = false
     }
@@ -602,3 +614,5 @@
     </div>
   </form>
 </div>
+
+<Toast bind:show={showToast} type={toastType} message={toastMessage} />

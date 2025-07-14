@@ -41,11 +41,7 @@ class ExtractionsStore {
   }
 
   async loadExtractions(force = false): Promise<boolean> {
-    console.log('ExtractionsStore.loadExtractions called', { force, isStale: this.isStale, dataLength: this.state.data.length });
-    
-    // Don't reload if we have fresh data and not forcing
     if (!force && !this.isStale && this.state.data.length > 0) {
-      console.log('Using cached data');
       return true;
     }
 
@@ -53,24 +49,15 @@ class ExtractionsStore {
     this.state.error = null;
 
     try {
-      console.log('Making API call to load extractions...');
-      
-      // Try different API call strategies
       let response;
       
-      // Strategy 1: Try with no filters first
       try {
-        console.log('Trying API call with no filters...');
         response = await api.getExtractions();
-        console.log('API response received:', response);
       } catch (noFilterError) {
-        console.log('No filter call failed, trying with basic pagination...');
-        // Strategy 2: Try with basic pagination
         response = await api.getExtractions({ 
           take: "1000",
           skip: "0"
         });
-        console.log('Pagination API response received:', response);
       }
       
       if (!response) {
@@ -82,7 +69,6 @@ class ExtractionsStore {
       }
       
       const extractions = response.content || [];
-      console.log('Extractions loaded:', extractions.length);
       
       this.state.data = extractions;
       this.state.lastLoaded = new Date();
@@ -90,9 +76,6 @@ class ExtractionsStore {
       
       return true;
     } catch (error) {
-      console.error('Failed to load extractions:', error);
-      
-      // Provide more detailed error information
       let errorMessage = 'Failed to load extractions';
       
       if (error instanceof Error) {
@@ -105,7 +88,6 @@ class ExtractionsStore {
       
       this.state.error = errorMessage;
       
-      // Don't clear existing data on error - allow user to work with stale data
       if (this.state.data.length === 0) {
         this.state.data = [];
       }
@@ -117,17 +99,14 @@ class ExtractionsStore {
   }
 
   async refreshExtractions(): Promise<boolean> {
-    console.log('Refreshing extractions...');
     return this.loadExtractions(true);
   }
 
   addExtraction(extraction: Extraction) {
-    console.log('Adding extraction:', extraction.extractionName);
     this.state.data = [...this.state.data, extraction];
   }
 
   updateExtraction(id: number, extraction: Extraction) {
-    console.log('Updating extraction:', id);
     const index = this.state.data.findIndex(e => e.id === id);
     if (index !== -1) {
       this.state.data[index] = { ...extraction, id };
@@ -135,12 +114,10 @@ class ExtractionsStore {
   }
 
   removeExtraction(id: number) {
-    console.log('Removing extraction:', id);
     this.state.data = this.state.data.filter(e => e.id !== id);
   }
 
   clearCache() {
-    console.log('Clearing extractions cache');
     this.state.data = [];
     this.state.lastLoaded = null;
     this.state.error = null;

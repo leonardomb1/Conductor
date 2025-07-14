@@ -124,15 +124,11 @@
         if (toastElement) {
           toastElement.onclick = () => {
             navigator.clipboard.writeText(jobGuid).then(() => {
-              console.log('Job GUID copied to clipboard:', jobGuid);
-              // Show a brief confirmation
               const originalText = toastElement.textContent;
               toastElement.textContent = 'Copied!';
               setTimeout(() => {
                 toastElement.textContent = originalText;
               }, 1000);
-            }).catch(err => {
-              console.error('Failed to copy job GUID:', err);
             });
           };
         }
@@ -170,7 +166,6 @@
       totalItems = response.entityCount || 0
       totalPages = Math.ceil(totalItems / pageSize)
     } catch (error) {
-      console.error("Failed to load schedules:", error)
       showToastMessage(
         "Failed to load schedules. Please check your connection and try again.",
         "error",
@@ -221,8 +216,6 @@
         scheduleId: selectedScheduleId.toString(),
       }
 
-      console.log("Running schedule with filters:", apiFilters)
-
       let response
       if (runType === "transfer") {
         response = await api.executeTransfer(apiFilters)
@@ -252,7 +245,6 @@
       showRunModal = false
       selectedScheduleId = null
     } catch (error) {
-      console.error(`Failed to run ${runType} for schedule:`, error)
       showToastMessage(
         `Failed to start ${runType} job for schedule: ${error.message}`,
         "error",
@@ -323,7 +315,6 @@
       showModal = false
       await loadSchedules()
     } catch (error) {
-      console.error(`Failed to ${modalMode} schedule:`, error)
       showToastMessage(
         `Failed to ${modalMode} schedule: ${error.message}`,
         "error",
@@ -371,8 +362,6 @@
           throw new Error(response?.information || "Unexpected response from server")
         }
       } catch (error) {
-        console.error("Failed to delete schedule:", error)
-        
         let errorMessage = "Failed to delete schedule"
         if (error instanceof Error) {
           if (error.message.includes('404')) {

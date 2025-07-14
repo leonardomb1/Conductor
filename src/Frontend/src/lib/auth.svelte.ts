@@ -60,7 +60,6 @@ class AuthManager {
       
       return true;
     } catch (error) {
-      console.error('Login failed:', error);
       this.logout();
       return false;
     }

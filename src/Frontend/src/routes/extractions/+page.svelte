@@ -193,15 +193,11 @@
         if (toastElement) {
           toastElement.onclick = () => {
             navigator.clipboard.writeText(jobGuid).then(() => {
-              console.log('Job GUID copied to clipboard:', jobGuid);
-              // Show a brief confirmation
               const originalText = toastElement.textContent;
               toastElement.textContent = 'Copied!';
               setTimeout(() => {
                 toastElement.textContent = originalText;
               }, 1000);
-            }).catch(err => {
-              console.error('Failed to copy job GUID:', err);
             });
           };
         }
@@ -299,8 +295,6 @@
     try {
       loading = true
       const apiFilters = buildFilters()
-      console.log("Loading extractions with filters:", apiFilters)
-
       const response = await api.getExtractions(apiFilters)
 
       if (response.error) {
@@ -310,14 +304,7 @@
       extractions = response.content || []
       totalCount = response.entityCount || 0
       totalPages = Math.ceil(totalCount / pageSize)
-
-      console.log("Loaded extractions:", {
-        count: extractions.length,
-        totalCount,
-        totalPages,
-      })
     } catch (error) {
-      console.error("Failed to load extractions:", error)
       showToastMessage(`Failed to load extractions: ${error.message}`, "error")
       extractions = []
       totalCount = 0
@@ -326,10 +313,8 @@
     }
   }
 
-  // Load filter options
   async function loadFilterOptions() {
-    try {
-      const [originsRes, destinationsRes, schedulesRes] = await Promise.all([
+    const [originsRes, destinationsRes, schedulesRes] = await Promise.all([
         api.getOrigins({ take: "1000" }),
         api.getDestinations({ take: "1000" }),
         api.getSchedules({ take: "1000" }),
@@ -349,9 +334,6 @@
         id: s.id,
         name: s.scheduleName,
       }))
-    } catch (error) {
-      console.error("Failed to load filter options:", error)
-    }
   }
 
   onMount(async () => {
@@ -425,7 +407,7 @@
         )
         if (withoutDestination.length > 0) {
           showToastMessage(
-            `Cannot transfer ${withoutDestination.length} extraction(s) without destinations: ${withoutDestination.map((e) => e.extractionName).join(", ")}`,
+            `Cannot transfer ${withoutDestination.length} extraction(\s) without destinations: ${withoutDestination.map((e) => e.extractionName).join(", ")}`,
             "error",
           )
           return
@@ -446,7 +428,6 @@
         ids: selectedExtractions.join(","),
       }
 
-      console.log("Executing with ID filters:", apiFilters)
 
       let response
       if (executeType === "transfer") {
@@ -478,7 +459,6 @@
       showExecuteModal = false
       selectedExtractions = []
     } catch (error) {
-      console.error(`Failed to execute ${executeType}:`, error)
       showToastMessage(
         `Failed to start ${executeType} job: ${error.message}`,
         "error",
@@ -547,7 +527,6 @@
   $effect(() => {
     const currentFiltersState = JSON.stringify(filters)
     if (currentFiltersState !== lastFiltersState && lastFiltersState !== "") {
-      console.log("Filters changed, triggering reload")
       handleFilterChange()
     }
     lastFiltersState = currentFiltersState
@@ -586,9 +565,6 @@
           throw new Error(response?.information || "Unexpected response from server")
         }
       } catch (error) {
-        console.error("Failed to delete extraction:", error)
-        
-        // Provide more specific error messaging
         let errorMessage = "Failed to delete extraction"
         
         if (error instanceof Error) {
