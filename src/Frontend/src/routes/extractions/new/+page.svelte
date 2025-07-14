@@ -291,20 +291,21 @@
               </label>
             </div>
 
-            {#if formData.isVirtual}
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Virtual ID"
-                  bind:value={formData.virtualId}
-                  placeholder="Virtual identifier"
-                />
-                <Input
-                  label="Virtual ID Group"
-                  bind:value={formData.virtualIdGroup}
-                  placeholder="Virtual group identifier"
-                />
-              </div>
-            {/if}
+            <!-- Virtual fields - always visible -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Virtual ID"
+                bind:value={formData.virtualId}
+                placeholder="Virtual identifier"
+                help="Unique identifier for virtual extractions"
+              />
+              <Input
+                label="Virtual ID Group"
+                bind:value={formData.virtualIdGroup}
+                placeholder="Virtual group identifier"
+                help="Group identifier for related virtual extractions"
+              />
+            </div>
           </div>
         </Card>
 
@@ -367,7 +368,6 @@
               {/if}
 
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Fixed: Added proper id and for attributes for form labels -->
                 <div>
                   <label
                     for="headerStructure"
@@ -443,7 +443,6 @@
               placeholder="password,secret_key"
             />
 
-            <!-- Fixed: Added proper id and for attributes for form labels -->
             <div>
               <label
                 for="overrideQuery"
@@ -548,6 +547,16 @@
               </span>
             </div>
             <div class="flex items-center justify-between">
+              <span class="text-supabase-gray-700">Virtual Template</span>
+              <span
+                class={formData.isVirtualTemplate
+                  ? "text-green-600"
+                  : "text-supabase-gray-400"}
+              >
+                {formData.isVirtualTemplate ? "Yes" : "No"}
+              </span>
+            </div>
+            <div class="flex items-center justify-between">
               <span class="text-supabase-gray-700">Has Filter</span>
               <span
                 class={formData.filterColumn
@@ -565,6 +574,26 @@
                   : "text-supabase-gray-400"}
               >
                 {formData.script ? "Yes" : "No"}
+              </span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-supabase-gray-700">Virtual ID</span>
+              <span
+                class={formData.virtualId
+                  ? "text-green-600"
+                  : "text-supabase-gray-400"}
+              >
+                {formData.virtualId ? "Set" : "Not set"}
+              </span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-supabase-gray-700">Virtual Group</span>
+              <span
+                class={formData.virtualIdGroup
+                  ? "text-green-600"
+                  : "text-supabase-gray-400"}
+              >
+                {formData.virtualIdGroup ? "Set" : "Not set"}
               </span>
             </div>
           </div>

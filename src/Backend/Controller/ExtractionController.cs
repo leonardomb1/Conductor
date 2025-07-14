@@ -766,8 +766,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
         group.MapPut("/programTransfer", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
             await controller.ExecuteTrasferNoWait(request.Query, token))
-            .WithName("ExecuteTransfer")
-            .WithSummary("Executes a transfer extraction job.")
+            .WithName("ExecuteProgramedTransfer")
+            .WithSummary("Executes a a no waited transfer extraction job.")
             .WithDescription("""
                 Starts a transfer job for one or more extractions based on the same filtering criteria as the GET endpoint.
                 
@@ -803,8 +803,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
         group.MapPost("/programPull", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
             await controller.ExecutePullNoWait(request.Query, token))
-            .WithName("ExecutePull")
-            .WithSummary("Executes a pull extraction job.")
+            .WithName("ExecuteProgramedPull")
+            .WithSummary("Executes a no waited pull extraction job.")
             .WithDescription("""
                 Starts a pull job to export data to CSV from the origin system based on the same filtering criteria as the GET endpoint.
                 
