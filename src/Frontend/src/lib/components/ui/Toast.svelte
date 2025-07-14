@@ -6,6 +6,7 @@
     type?: "success" | "error" | "info" | "warning"
     message: string
     duration?: number
+    allowHtml?: boolean
     onClose?: () => void
   }
 
@@ -14,6 +15,7 @@
     type = "info",
     message,
     duration = 5000,
+    allowHtml = false,
     onClose,
   }: Props = $props()
 
@@ -82,9 +84,15 @@
           <IconComponent class="h-5 w-5 {typeConfig[type].iconColor}" />
         </div>
         <div class="ml-3 w-0 flex-1">
-          <p class="text-sm font-medium {typeConfig[type].textColor}">
-            {message}
-          </p>
+          {#if allowHtml}
+            <div class="text-sm font-medium {typeConfig[type].textColor}">
+              {@html message}
+            </div>
+          {:else}
+            <p class="text-sm font-medium {typeConfig[type].textColor}">
+              {message}
+            </p>
+          {/if}
         </div>
         <div class="ml-4 flex flex-shrink-0">
           <button
@@ -101,3 +109,29 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* Enhanced styling for HTML content in toasts */
+  :global(.toast-content .job-guid-highlight) {
+    background-color: #fef3c7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #92400e;
+    border: 1px solid #fbbf24;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+  }
+  
+  :global(.toast-content .job-guid-highlight:hover) {
+    background-color: #fed7aa;
+    border-color: #f97316;
+    transform: scale(1.02);
+  }
+  
+  :global(.toast-content small) {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    font-style: italic;
+  }
+</style>

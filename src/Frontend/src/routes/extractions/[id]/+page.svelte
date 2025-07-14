@@ -10,6 +10,7 @@
   import Table from '$lib/components/ui/Table.svelte';
   import Modal from '$lib/components/ui/Modal.svelte';
   import Toast from '$lib/components/ui/Toast.svelte';
+  import ConfirmationModal from '$lib/components/ui/ConfirmationModal.svelte';
   import { Edit, Play, Download, Eye, ArrowLeft, FileDown } from '@lucide/svelte';
 
   let extraction = $state<Extraction | null>(null);
@@ -20,6 +21,11 @@
   let previewColumns = $state<any[]>([]);
   let executeLoading = $state(false);
 
+  // Execute confirmation modal state
+  let showExecuteModal = $state(false);
+  let executeType = $state<'transfer' | 'pull'>('transfer');
+  let executeConfirmLoading = $state(false);
+
   // Toast notifications
   let toastMessage = $state('');
   let toastType = $state<'success' | 'error' | 'info'>('info');
@@ -28,10 +34,43 @@
   const extractionId = $derived(+$page.params.id);
 
   function showToastMessage(message: string, type: 'success' | 'error' | 'info' = 'info') {
-    toastMessage = message;
+    // Check if message contains a job GUID pattern
+    const jobGuidPattern = /Job ID: ([a-f0-9-]{36})/i;
+    const match = message.match(jobGuidPattern);
+    
+    if (match && type === 'success') {
+      // Format the message with highlighted job GUID
+      const jobGuid = match[1];
+      const baseMessage = message.replace(jobGuidPattern, "");
+      
+      toastMessage = `${baseMessage}<br><span class="job-guid-highlight">Job ID: ${jobGuid}</span><br><small>Click to copy job ID</small>`;
+      
+      // Add click handler to copy job GUID
+      setTimeout(() => {
+        const toastElement = document.querySelector('.job-guid-highlight');
+        if (toastElement) {
+          toastElement.style.cursor = 'pointer';
+          toastElement.onclick = () => {
+            navigator.clipboard.writeText(jobGuid).then(() => {
+              console.log('Job GUID copied to clipboard:', jobGuid);
+              // Show a brief confirmation
+              const originalText = toastElement.textContent;
+              toastElement.textContent = 'Copied!';
+              setTimeout(() => {
+                toastElement.textContent = originalText;
+              }, 1000);
+            }).catch(err => {
+              console.error('Failed to copy job GUID:', err);
+            });
+          };
+        }
+      }, 100);
+    } else {
+      toastMessage = message;
+    }
+    
     toastType = type;
     showToast = true;
-    setTimeout(() => showToast = false, 5000);
   }
 
   onMount(async () => {
@@ -82,33 +121,63 @@
     }
   }
 
-  async function executeTransfer() {
-    if (!extraction) return;
-
-    try {
-      executeLoading = true;
-      await api.executeTransfer({ name: extraction.extractionName });
-      showToastMessage(`Transfer job started successfully for "${extraction.extractionName}"`, 'success');
-    } catch (error) {
-      console.error('Failed to execute transfer:', error);
-      showToastMessage(`Failed to start transfer job: ${error.message}`, 'error');
-    } finally {
-      executeLoading = false;
-    }
+  function openExecuteModal(type: 'transfer' | 'pull') {
+    executeType = type;
+    showExecuteModal = true;
   }
 
-  async function executePull() {
+  async function executeJob() {
     if (!extraction) return;
 
+    // Validate execution requirements
+    if (executeType === 'transfer' && !extraction.destinationId) {
+      showToastMessage('Cannot execute transfer: No destination configured for this extraction', 'error');
+      return;
+    }
+
+    if (!extraction.originId) {
+      showToastMessage('Cannot execute: No origin configured for this extraction', 'error');
+      return;
+    }
+
     try {
-      executeLoading = true;
-      await api.executePull({ name: extraction.extractionName });
-      showToastMessage(`Pull job started successfully for "${extraction.extractionName}"`, 'success');
+      executeConfirmLoading = true;
+      
+      // Use the extraction name for the API call (now all use programTransfer/programPull)
+      const apiFilters = { name: extraction.extractionName };
+      
+      let response;
+      if (executeType === 'transfer') {
+        response = await api.executeTransfer(apiFilters);
+      } else {
+        response = await api.executePull(apiFilters);
+      }
+
+      // Extract job GUID from the response
+      let jobGuid = null;
+      if (response && response.information) {
+        jobGuid = response.information;
+      }
+
+      // Show success message with job GUID
+      if (jobGuid) {
+        showToastMessage(
+          `${executeType === 'transfer' ? 'Transfer' : 'Pull'} job started successfully for "${extraction.extractionName}". Job ID: ${jobGuid}`,
+          'success'
+        );
+      } else {
+        showToastMessage(
+          `${executeType === 'transfer' ? 'Transfer' : 'Pull'} job started successfully for "${extraction.extractionName}"`,
+          'success'
+        );
+      }
+
+      showExecuteModal = false;
     } catch (error) {
-      console.error('Failed to execute pull:', error);
-      showToastMessage(`Failed to start pull job: ${error.message}`, 'error');
+      console.error(`Failed to execute ${executeType}:`, error);
+      showToastMessage(`Failed to start ${executeType} job: ${error.message}`, 'error');
     } finally {
-      executeLoading = false;
+      executeConfirmLoading = false;
     }
   }
 
@@ -201,11 +270,11 @@
             <Eye size={16} class="mr-2" />
             Preview Data
           </Button>
-          <Button variant="secondary" onclick={executePull} loading={executeLoading}>
+          <Button variant="secondary" onclick={() => openExecuteModal('pull')} loading={executeLoading}>
             <Download size={16} class="mr-2" />
             Pull to CSV
           </Button>
-          <Button variant="primary" onclick={executeTransfer} loading={executeLoading}>
+          <Button variant="primary" onclick={() => openExecuteModal('transfer')} loading={executeLoading}>
             <Play size={16} class="mr-2" />
             Transfer to Destination
           </Button>
@@ -321,7 +390,7 @@
         {/if}
       </div>
 
-      <!-- Relations -->
+      <!-- Relations and Actions -->
       <div class="space-y-6">
         <Card title="Relations">
           <div class="space-y-4">
@@ -330,12 +399,18 @@
               <p class="mt-1 text-sm text-supabase-gray-900">
                 {extraction.origin?.originName || '-'}
               </p>
+              {#if !extraction.originId}
+                <p class="mt-1 text-xs text-red-600">⚠ No origin configured</p>
+              {/if}
             </div>
             <div>
               <span class="block text-sm font-medium text-supabase-gray-700">Destination</span>
               <p class="mt-1 text-sm text-supabase-gray-900">
                 {extraction.destination?.destinationName || '-'}
               </p>
+              {#if !extraction.destinationId}
+                <p class="mt-1 text-xs text-orange-600">⚠ No destination configured (Pull only)</p>
+              {/if}
             </div>
             <div>
               <span class="block text-sm font-medium text-supabase-gray-700">Schedule</span>
@@ -344,6 +419,57 @@
               </p>
             </div>
           </div>
+        </Card>
+
+        <!-- Quick Actions Card -->
+        <Card title="Quick Actions">
+          <div class="space-y-3">
+            <Button 
+              variant="primary" 
+              size="sm" 
+              class="w-full" 
+              onclick={() => openExecuteModal('transfer')}
+              disabled={!extraction.originId || !extraction.destinationId}
+            >
+              <Play size={14} class="mr-2" />
+              Transfer to Destination
+            </Button>
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              class="w-full" 
+              onclick={() => openExecuteModal('pull')}
+              disabled={!extraction.originId}
+            >
+              <Download size={14} class="mr-2" />
+              Pull to CSV
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              class="w-full" 
+              onclick={fetchPreview}
+              loading={previewLoading}
+              disabled={!extraction.originId}
+            >
+              <Eye size={14} class="mr-2" />
+              Preview Data
+            </Button>
+          </div>
+          
+          {#if !extraction.originId || !extraction.destinationId}
+            <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+              <h4 class="text-sm font-medium text-yellow-800">Configuration Required</h4>
+              <ul class="mt-2 text-xs text-yellow-700 space-y-1">
+                {#if !extraction.originId}
+                  <li>• Configure an origin to enable data operations</li>
+                {/if}
+                {#if !extraction.destinationId}
+                  <li>• Configure a destination to enable transfer operations</li>
+                {/if}
+              </ul>
+            </div>
+          {/if}
         </Card>
 
         {#if extraction.filterColumn}
@@ -378,6 +504,115 @@
     </div>
   {/if}
 </div>
+
+<!-- Execute Confirmation Modal -->
+<Modal bind:open={showExecuteModal} title="Execute Extraction" size="md">
+  <div class="space-y-6">
+    <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+      <div class="flex">
+        <div class="flex-shrink-0">
+          <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <h3 class="text-sm font-medium text-blue-800">
+            Execute {executeType === 'transfer' ? 'Transfer' : 'Pull'} Job
+          </h3>
+          <div class="mt-2 text-sm text-blue-700">
+            <p>This will start a background job for "{extraction?.extractionName}". You can monitor the job progress in the Jobs section.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-supabase-gray-50 p-4 rounded-md">
+      <h5 class="text-sm font-medium text-supabase-gray-700 mb-3">
+        Execution Details:
+      </h5>
+      <div class="space-y-3 text-sm">
+        <div class="flex justify-between">
+          <span class="text-supabase-gray-600">Extraction:</span>
+          <span class="font-medium text-supabase-gray-900">{extraction?.extractionName}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-supabase-gray-600">Source:</span>
+          <span class="text-supabase-gray-900">{extraction?.origin?.originName || 'Not configured'}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-supabase-gray-600">Target:</span>
+          <span class="text-supabase-gray-900">
+            {#if executeType === 'transfer'}
+              {extraction?.destination?.destinationName || 'Not configured'}
+            {:else}
+              CSV File Download
+            {/if}
+          </span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-supabase-gray-600">Type:</span>
+          <span class="text-supabase-gray-900">
+            <Badge variant={extraction?.sourceType === 'http' ? 'info' : 'success'}>
+              {extraction?.sourceType || 'db'}
+            </Badge>
+          </span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-supabase-gray-600">Incremental:</span>
+          <span class="text-supabase-gray-900">
+            <Badge variant={extraction?.isIncremental ? 'success' : 'default'}>
+              {extraction?.isIncremental ? 'Yes' : 'No'}
+            </Badge>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3">
+      <div class="flex">
+        <div class="flex-shrink-0">
+          <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <p class="text-sm text-yellow-700">
+            {#if executeType === 'transfer'}
+              <strong>Transfer mode:</strong> Data will be transferred from the source to the configured destination database.
+            {:else}
+              <strong>Pull mode:</strong> Data will be extracted from the source and made available as CSV files for download.
+            {/if}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex justify-end space-x-3 pt-4 border-t border-supabase-gray-200">
+      <Button variant="secondary" onclick={() => (showExecuteModal = false)} disabled={executeConfirmLoading}>
+        Cancel
+      </Button>
+      <Button
+        variant="primary"
+        loading={executeConfirmLoading}
+        onclick={executeJob}
+        disabled={executeConfirmLoading}
+      >
+        {#if executeConfirmLoading}
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Starting {executeType}...
+        {:else}
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m-9-4V8a3 3 0 016 0v2M5 12h14l-1 7H6l-1-7z"></path>
+          </svg>
+          Execute {executeType}
+        {/if}
+      </Button>
+    </div>
+  </div>
+</Modal>
 
 <!-- Enhanced Preview Modal -->
 <Modal bind:open={showPreviewModal} title="Data Preview" size="2xl" scrollable={true}>
@@ -434,3 +669,21 @@
 
 <!-- Toast Notifications -->
 <Toast bind:show={showToast} type={toastType} message={toastMessage} />
+
+<style>
+  /* Enhanced toast styling for job notifications */
+  :global(.job-guid-highlight) {
+    background-color: #fef3c7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #92400e;
+    border: 1px solid #fbbf24;
+    cursor: pointer;
+  }
+  
+  :global(.job-guid-highlight:hover) {
+    background-color: #fed7aa;
+    border-color: #f97316;
+  }
+</style>

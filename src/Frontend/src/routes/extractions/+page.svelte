@@ -176,9 +176,46 @@
     message: string,
     type: "success" | "error" | "info" = "info",
   ) {
-    toastMessage = message
-    toastType = type
-    showToast = true
+    // Check if message contains a job GUID pattern
+    const jobGuidPattern = /Job ID: ([a-f0-9-]{36})/i;
+    const match = message.match(jobGuidPattern);
+    
+    if (match && type === "success") {
+      // Format the message with highlighted job GUID
+      const jobGuid = match[1];
+      const baseMessage = message.replace(jobGuidPattern, "");
+      
+      toastMessage = `<div class="toast-content">${baseMessage}<br><span class="job-guid-highlight">Job ID: ${jobGuid}</span><br><small>Click to copy job ID</small></div>`;
+      
+      // Add click handler to copy job GUID
+      setTimeout(() => {
+        const toastElement = document.querySelector('.job-guid-highlight');
+        if (toastElement) {
+          toastElement.onclick = () => {
+            navigator.clipboard.writeText(jobGuid).then(() => {
+              console.log('Job GUID copied to clipboard:', jobGuid);
+              // Show a brief confirmation
+              const originalText = toastElement.textContent;
+              toastElement.textContent = 'Copied!';
+              setTimeout(() => {
+                toastElement.textContent = originalText;
+              }, 1000);
+            }).catch(err => {
+              console.error('Failed to copy job GUID:', err);
+            });
+          };
+        }
+      }, 100);
+      
+      // Use HTML mode for toast
+      showToast = true;
+      return;
+    }
+    
+    // Regular message without HTML
+    toastMessage = message;
+    toastType = type;
+    showToast = true;
   }
 
   // Build filters object for API call
@@ -404,23 +441,36 @@
         return
       }
 
-      // Use the new ID-based filtering approach
+      // Use the unified PUT endpoints with IDs parameter
       const apiFilters = {
         ids: selectedExtractions.join(","),
       }
 
       console.log("Executing with ID filters:", apiFilters)
 
+      let response
       if (executeType === "transfer") {
-        await api.executeTransfer(apiFilters)
+        response = await api.executeTransfer(apiFilters)
+      } else {
+        response = await api.executePull(apiFilters)
+      }
+
+      // Extract job GUID from the response
+      let jobGuid = null
+      if (response && response.information) {
+        // The job GUID should be in the information field
+        jobGuid = response.information
+      }
+
+      // Show success message with job GUID
+      if (jobGuid) {
         showToastMessage(
-          `Transfer job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}: ${selectedExtractionsData.map((e) => e.extractionName).join(", ")}`,
+          `${executeType === "transfer" ? "Transfer" : "Pull"} job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}. Job ID: ${jobGuid}`,
           "success",
         )
       } else {
-        await api.executePull(apiFilters)
         showToastMessage(
-          `Pull job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}: ${selectedExtractionsData.map((e) => e.extractionName).join(", ")}`,
+          `${executeType === "transfer" ? "Transfer" : "Pull"} job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}: ${selectedExtractionsData.map((e) => e.extractionName).join(", ")}`,
           "success",
         )
       }
@@ -513,17 +563,50 @@
   function showDeleteConfirmation(id: number) {
     const extraction = extractions.find((e) => e.id === id)
     confirmTitle = "Delete Extraction"
-    confirmMessage = `Are you sure you want to delete "${extraction?.extractionName || "this extraction"}"? This action cannot be undone.`
+    confirmMessage = `Are you sure you want to delete "${extraction?.extractionName || "this extraction"}"? This action cannot be undone and will permanently remove all associated configuration.`
     confirmAction = async () => {
       confirmLoading = true
       try {
-        await api.deleteExtraction(id)
-        selectedExtractions = selectedExtractions.filter((eid) => eid !== id)
-        await loadExtractions()
-        showToastMessage("Extraction deleted successfully", "success")
+        const response = await api.deleteExtraction(id)
+        
+        // Handle 204 No Content response (successful deletion)
+        if (response?.statusCode === 204 || !response?.error) {
+          // Remove from selected extractions if it was selected
+          selectedExtractions = selectedExtractions.filter((eid) => eid !== id)
+          
+          // Reload the extractions list to reflect the deletion
+          await loadExtractions()
+          
+          showToastMessage(
+            `Extraction "${extraction?.extractionName || `ID: ${id}`}" deleted successfully`, 
+            "success"
+          )
+        } else {
+          // Handle unexpected response format
+          throw new Error(response?.information || "Unexpected response from server")
+        }
       } catch (error) {
         console.error("Failed to delete extraction:", error)
-        showToastMessage("Failed to delete extraction", "error")
+        
+        // Provide more specific error messaging
+        let errorMessage = "Failed to delete extraction"
+        
+        if (error instanceof Error) {
+          // Check for specific error types
+          if (error.message.includes('404')) {
+            errorMessage = "Extraction not found - it may have already been deleted"
+          } else if (error.message.includes('403')) {
+            errorMessage = "You don't have permission to delete this extraction"
+          } else if (error.message.includes('409')) {
+            errorMessage = "Cannot delete extraction - it may be currently in use by running jobs"
+          } else if (error.message.includes('500')) {
+            errorMessage = "Server error occurred while deleting extraction"
+          } else {
+            errorMessage = `Failed to delete extraction: ${error.message}`
+          }
+        }
+        
+        showToastMessage(errorMessage, "error")
         throw error
       } finally {
         confirmLoading = false
@@ -833,55 +916,125 @@
   </div>
 </div>
 
-<!-- Execute Modal -->
-<Modal bind:open={showExecuteModal} title="Execute Extractions">
-  <div class="space-y-4">
-    <p class="text-sm text-supabase-gray-600">
-      Execute {selectedExtractions.length} selected extraction{selectedExtractions.length !==
-      1
-        ? "s"
-        : ""}.
-    </p>
+<!-- Enhanced Execute Modal -->
+<Modal bind:open={showExecuteModal} title="Execute Extractions" size="lg">
+  <div class="space-y-6">
+    <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+      <div class="flex">
+        <div class="flex-shrink-0">
+          <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <h3 class="text-sm font-medium text-blue-800">
+            Execute {selectedExtractions.length} selected extraction{selectedExtractions.length !== 1 ? "s" : ""}
+          </h3>
+          <div class="mt-2 text-sm text-blue-700">
+            <p>This will start a background job for the selected extractions. You can monitor the job progress in the Jobs section.</p>
+          </div>
+        </div>
+      </div>
+    </div>
 
-    <div class="bg-supabase-gray-50 p-3 rounded-md max-h-40 overflow-y-auto">
-      <h5 class="text-sm font-medium text-supabase-gray-700 mb-2">
-        Selected extractions:
+    <div class="bg-supabase-gray-50 p-4 rounded-md max-h-60 overflow-y-auto">
+      <h5 class="text-sm font-medium text-supabase-gray-700 mb-3">
+        Selected extractions ({selectedExtractions.length}):
       </h5>
-      <div class="text-sm text-supabase-gray-600 space-y-1">
+      <div class="text-sm text-supabase-gray-600 space-y-2">
         {#each selectedExtractions as id}
           {@const extraction = extractions.find((e) => e.id === id)}
-          <div class="flex items-center justify-between">
-            <span>• {extraction?.extractionName || `ID: ${id}`}</span>
+          <div class="flex items-center justify-between p-2 bg-white rounded border">
+            <div class="flex-1">
+              <span class="font-medium text-supabase-gray-900">
+                {extraction?.extractionName || `ID: ${id}`}
+              </span>
+              <div class="text-xs text-supabase-gray-500 mt-1">
+                {extraction?.origin?.originName || "No origin"} → 
+                {executeType === "transfer" 
+                  ? (extraction?.destination?.destinationName || "No destination")
+                  : "CSV File"
+                }
+              </div>
+            </div>
+            <div class="ml-3 flex-shrink-0">
+              {#if executeType === "transfer" && !extraction?.destinationId}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                  No Destination
+                </span>
+              {:else if !extraction?.originId}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                  No Origin
+                </span>
+              {:else}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Ready
+                </span>
+              {/if}
+            </div>
           </div>
         {/each}
       </div>
     </div>
 
-    <Select
-      label="Execution Type"
-      bind:value={executeType}
-      options={[
-        { value: "transfer", label: "Transfer (to destination)" },
-        { value: "pull", label: "Pull (to CSV)" },
-      ]}
-    />
+    <div class="space-y-4">
+      <Select
+        label="Execution Type"
+        bind:value={executeType}
+        options={[
+          { value: "transfer", label: "Transfer (to destination database)" },
+          { value: "pull", label: "Pull (to CSV files)" },
+        ]}
+      />
 
-    <div class="flex justify-end space-x-3">
-      <Button variant="secondary" onclick={() => (showExecuteModal = false)}>
+      <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm text-yellow-700">
+              {#if executeType === "transfer"}
+                <strong>Transfer mode:</strong> Data will be transferred to the configured destination databases.
+              {:else}
+                <strong>Pull mode:</strong> Data will be extracted and saved as CSV files for download.
+              {/if}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex justify-end space-x-3 pt-4 border-t border-supabase-gray-200">
+      <Button variant="secondary" onclick={() => (showExecuteModal = false)} disabled={executeLoading}>
         Cancel
       </Button>
       <Button
         variant="primary"
         loading={executeLoading}
         onclick={executeExtractions}
+        disabled={executeLoading}
       >
-        Execute {executeType}
+        {#if executeLoading}
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Starting {executeType}...
+        {:else}
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m-9-4V8a3 3 0 016 0v2M5 12h14l-1 7H6l-1-7z"></path>
+          </svg>
+          Execute {executeType}
+        {/if}
       </Button>
     </div>
   </div>
 </Modal>
 
-<!-- Confirmation Modal -->
+<!-- Enhanced Confirmation Modal -->
 <ConfirmationModal
   bind:open={showConfirmModal}
   title={confirmTitle}
@@ -889,7 +1042,27 @@
   type="danger"
   loading={confirmLoading}
   onConfirm={confirmAction}
+  confirmText="Delete Extraction"
+  cancelText="Cancel"
 />
 
-<!-- Toast Notifications -->
-<Toast bind:show={showToast} type={toastType} message={toastMessage} />
+<!-- Toast Notifications with HTML support -->
+<Toast bind:show={showToast} type={toastType} message={toastMessage} allowHtml={true} />
+
+<style>
+  /* Enhanced toast styling for job notifications */
+  :global(.job-guid-toast) {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background-color: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+  
+  :global(.job-guid-highlight) {
+    background-color: #fef3c7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #92400e;
+    border: 1px solid #fbbf24;
+  }
+</style>

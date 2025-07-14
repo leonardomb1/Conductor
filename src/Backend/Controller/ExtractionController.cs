@@ -111,12 +111,10 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         );
     }
 
-    // Add GetNames endpoint
     public async Task<IResult> GetNames(IQueryCollection? filters)
     {
         List<uint>? ids = null;
 
-        // Parse ids parameter if provided
         if (filters?.ContainsKey("ids") == true)
         {
             var idsParam = filters["ids"].FirstOrDefault();
@@ -155,7 +153,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         );
     }
 
-    // Add GetDependencies endpoint
     public async Task<IResult> GetDependencies(string id)
     {
         if (!uint.TryParse(id, out uint extractionId))
@@ -165,7 +162,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             );
         }
 
-        // First get the extraction
         var extractionResult = await extractionRepository.Search(extractionId);
         if (!extractionResult.IsSuccessful)
         {
@@ -181,7 +177,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             );
         }
 
-        // Get dependencies
         var dependenciesResult = await ExtractionRepository.GetDependencies(extractionResult.Value);
         if (!dependenciesResult.IsSuccessful)
         {
@@ -246,56 +241,31 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             return Results.Accepted("", new Message(Status202Accepted, "One or more extractions are already running."));
         }
 
-        var extractionIds = extractions.Select(x => x.Id);
-        var job = jobTracker.StartJob(extractionIds, JobType.Transfer);
-
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
         extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
+        
+        var extractionIds = extractions.Select(x => x.Id);
+        Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
-        try
+        var extractionResult = await ExtractionPipeline.ExecuteTransferJob(
+            jobTracker,
+            extractions,
+            httpFactory,
+            overrideFilter,
+            connectionPoolManager,
+            memoryManager,
+            job,
+            token
+        );
+
+        if (!extractionResult.IsSuccessful)
         {
-            Helper.DecryptConnectionStrings(extractions);
-
-            var useHttp = extractions.Any(e => (e.SourceType?.ToLowerInvariant() ?? "db") == "http");
-
-            await using var pipeline = new ExtractionPipeline(
-                DateTime.UtcNow,
-                httpFactory,
-                jobTracker,
-                overrideFilter,
-                connectionPoolManager,
-                memoryManager);
-
-            Func<List<Extraction>, Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> producer =
-                useHttp
-                    ? (ex, ch, rt, ct, sc) => pipeline.ProduceHttpData(ex, ch, ct)
-                    : pipeline.ProduceDBData;
-            Func<Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToDB;
-
-            var result = await pipeline.ChannelParallelize(
-                extractions,
-                producer,
-                consumer,
-                token,
-                true
-            );
-
-            if (!result.IsSuccessful)
-            {
-                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
-                return Results.InternalServerError(
-                    ErrorMessage(result.Error));
-            }
-
-            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
-            return Results.Ok(new Message(Status200OK, "OK"));
-        }
-        catch (Exception ex)
-        {
-            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
             return Results.InternalServerError(
-                ErrorMessage([new Error(ex.Message, ex.StackTrace)]));
+                ErrorMessage([.. extractionResult.Errors])
+            );
         }
+
+        return Results.Ok(new Message(Status200OK, "OK"));
     }
 
     public async Task<IResult> ExecutePull(IQueryCollection? filters, CancellationToken token)
@@ -343,53 +313,169 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         }
 
         var extractionIds = extractions.Select(x => x.Id);
-        var job = jobTracker.StartJob(extractionIds, JobType.Transfer);
+        Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
         extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
 
-        try
+        var extractionResult = await ExtractionPipeline.ExecutePullJob(
+            jobTracker,
+            extractions,
+            httpFactory,
+            overrideFilter,
+            connectionPoolManager,
+            memoryManager,
+            job,
+            token
+        );
+
+        if (!extractionResult.IsSuccessful)
         {
-            Helper.DecryptConnectionStrings(extractions);
+            return Results.InternalServerError(
+                ErrorMessage([.. extractionResult.Errors])
+            );
+        }
 
-            await using var pipeline = new ExtractionPipeline(
-                DateTime.UtcNow,
-                httpFactory,
-                jobTracker,
-                overrideFilter,
-                connectionPoolManager,
-                memoryManager);
+        return Results.Ok(new Message(Status200OK, "OK"));
+    }
 
-            var useHttp = extractions.Any(e => (e.SourceType?.ToLowerInvariant() ?? "db") == "http");
-            Func<List<Extraction>, Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> producer =
-                useHttp
-                    ? (ex, ch, rt, ct, sc) => pipeline.ProduceHttpData(ex, ch, ct)
-                    : pipeline.ProduceDBData;
-            Func<Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToCsv;
+    public async Task<IResult> ExecuteTrasferNoWait(IQueryCollection? filters, CancellationToken token)
+    {
+        var invalidFilters = filters?.Where(f =>
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
+            !uint.TryParse(f.Value, out _)).ToList();
 
-            var result = await pipeline.ChannelParallelize(
-                extractions,
-                producer,
-                consumer,
-                token,
-                false
+        if (invalidFilters?.Count > 0)
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid query parameters.", true)
+            );
+        }
+
+        var fetch = await extractionRepository.Search(filters);
+
+        if (!fetch.IsSuccessful)
+        {
+            return Results.InternalServerError(ErrorMessage(fetch.Error));
+        }
+
+        if (fetch.Value.Any(e => e.DestinationId is null))
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "All extractions need to have a destination defined.", true)
+            );
+        }
+
+        if (fetch.Value.Any(e => e.Origin!.ConnectionString is null || e.Origin.DbType is null))
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "All used origins need to have a Connection String and DbType.", true)
+            );
+        }
+
+        var executingId = jobTracker.GetActiveJobs()
+            .Where(j => j.Status == JobStatus.Running)
+            .SelectMany(
+                l => l.JobExtractions.Select(
+                    je => je.ExtractionId
+                )
             );
 
-            if (!result.IsSuccessful)
-            {
-                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
-                return Results.InternalServerError(ErrorMessage(result.Error));
-            }
+        var extractions = fetch.Value.Where(
+            e => !executingId.Any(l => l == e.Id)
+        ).ToList();
 
-            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
-            return Results.Ok(new Message(Status200OK, "OK"));
-        }
-        catch (Exception ex)
+        if (fetch.Value.Count - extractions.Count >= 1)
         {
-            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
-            return Results.InternalServerError(
-                ErrorMessage([new Error(ex.Message, ex.StackTrace)]));
+            return Results.Accepted("", new Message(Status202Accepted, "One or more extractions are already running."));
         }
+
+        int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
+        extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
+        
+        var extractionIds = extractions.Select(x => x.Id);
+        Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
+
+        _ = Task.Run(async () => await ExtractionPipeline.ExecuteTransferJob(
+            jobTracker,
+            extractions,
+            httpFactory,
+            overrideFilter,
+            connectionPoolManager,
+            memoryManager,
+            job,
+            token
+        ), token);
+        
+        return Results.Ok(
+            new Message(Status200OK, $"{job.JobGuid}")
+        );
+    }
+
+    public async Task<IResult> ExecutePullNoWait(IQueryCollection? filters, CancellationToken token)
+    {
+        var invalidFilters = filters?.Where(f =>
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
+            !uint.TryParse(f.Value, out _)).ToList();
+
+        if (invalidFilters?.Count > 0)
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid query parameters.", true)
+            );
+        }
+
+        var fetch = await extractionRepository.Search(filters);
+
+        if (!fetch.IsSuccessful)
+        {
+            return Results.InternalServerError(ErrorMessage(fetch.Error));
+        }
+
+        if (fetch.Value.Any(e => e.Origin!.ConnectionString is null || e.Origin.DbType is null))
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "All used origins need to have a Connection String and DbType.", true)
+            );
+        }
+
+        var executingId = jobTracker.GetActiveJobs()
+            .Where(j => j.Status == JobStatus.Running)
+            .SelectMany(
+                l => l.JobExtractions.Select(
+                    je => je.ExtractionId
+                )
+            );
+
+        var extractions = fetch.Value.Where(
+            e => !executingId.Any(l => l == e.Id)
+        ).ToList();
+
+        if (fetch.Value.Count - extractions.Count >= 1)
+        {
+            return Results.Accepted("", new Message(Status202Accepted, "One or more extractions are already running."));
+        }
+
+        var extractionIds = extractions.Select(x => x.Id);
+        Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
+
+        int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
+        extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
+
+        _ = Task.Run(async () => await ExtractionPipeline.ExecutePullJob(
+            jobTracker,
+            extractions,
+            httpFactory,
+            overrideFilter,
+            connectionPoolManager,
+            memoryManager,
+            job,
+            token
+        ), token);
+        
+        return Results.Ok(
+            new Message(Status200OK, $"{job.JobGuid}")
+        );
     }
 
     public async Task<IResult> FetchData(IQueryCollection? filters, CancellationToken token)
@@ -532,7 +618,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 
                 Supported query parameters:
                 - `name` (string): Filter by exact extraction name
-                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `contains` (string): Filter by extractions containing any of the specified values
                 - `schedule` (string): Filter by exact schedule name
                 - `scheduleId` (uint): Filter by schedule ID
                 - `originId` (uint): Filter by origin ID
@@ -564,7 +650,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 
                 Supported query parameters (same as GET /extractions but without skip, take, sortBy, sortDirection):
                 - `name` (string): Filter by exact extraction name
-                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `contains` (string): Filter by extractions containing any of the specified values
                 - `scheduleId` (uint): Filter by schedule ID
                 - `originId` (uint): Filter by origin ID
                 - `destinationId` (uint): Filter by destination ID
@@ -650,7 +736,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 
                 Supported query parameters for filtering:
                 - `name` (string): Filter by exact extraction name
-                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `contains` (string): Filter by extractions containing any of the specified values
                 - `schedule` (string): Filter by exact schedule name  
                 - `scheduleId` (uint): Filter by schedule ID
                 - `originId` (uint): Filter by origin ID
@@ -678,6 +764,79 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             .Produces<Message>(Status400BadRequest, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
+        group.MapPut("/programTransfer", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
+            await controller.ExecuteTrasferNoWait(request.Query, token))
+            .WithName("ExecuteTransfer")
+            .WithSummary("Executes a transfer extraction job.")
+            .WithDescription("""
+                Starts a transfer job for one or more extractions based on the same filtering criteria as the GET endpoint.
+                
+                Supported query parameters for filtering:
+                - `name` (string): Filter by exact extraction name
+                - `contains` (string): Filter by extractions containing any of the specified values
+                - `schedule` (string): Filter by exact schedule name  
+                - `scheduleId` (uint): Filter by schedule ID
+                - `originId` (uint): Filter by origin ID
+                - `destinationId` (uint): Filter by destination ID
+                - `origin` (string): Filter by exact origin name
+                - `destination` (string): Filter by exact destination name
+                - `sourceType` (string): Filter by source type
+                - `isIncremental` (bool): Filter by incremental flag
+                - `isVirtual` (bool): Filter by virtual flag
+                - `search` (string): Search across name, alias, and index name
+                - `skip` (uint): Number of records to skip
+                - `take` (uint): Limit the number of extractions to process
+                - `overrideTime` (uint): Override the default filter time for the extraction
+                
+                Requirements:
+                - All selected extractions must have a destination defined
+                - All origins must have a valid connection string and database type
+                - Automatically skips extractions that are already running
+                - Connection strings are automatically decrypted during processing
+                
+                Returns 202 if extractions are already running, 200 on successful completion.
+                """)
+            .Produces<Message>(Status200OK, "application/json")
+            .Produces<Message>(Status202Accepted, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+
+        group.MapPost("/programPull", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
+            await controller.ExecutePullNoWait(request.Query, token))
+            .WithName("ExecutePull")
+            .WithSummary("Executes a pull extraction job.")
+            .WithDescription("""
+                Starts a pull job to export data to CSV from the origin system based on the same filtering criteria as the GET endpoint.
+                
+                Supported query parameters for filtering:
+                - `name` (string): Filter by exact extraction name
+                - `contains` (string): Filter by extractions containing any of the specified values
+                - `schedule` (string): Filter by exact schedule name
+                - `scheduleId` (uint): Filter by schedule ID
+                - `originId` (uint): Filter by origin ID
+                - `destinationId` (uint): Filter by destination ID
+                - `origin` (string): Filter by exact origin name
+                - `destination` (string): Filter by exact destination name
+                - `sourceType` (string): Filter by source type
+                - `isIncremental` (bool): Filter by incremental flag
+                - `isVirtual` (bool): Filter by virtual flag
+                - `search` (string): Search across name, alias, and index name
+                - `skip` (uint): Number of records to skip
+                - `take` (uint): Limit the number of extractions to process
+                - `overrideTime` (uint): Override the default filter time for the extraction
+                
+                Requirements:
+                - All origins must have a valid connection string and database type
+                - Automatically skips extractions that are already running
+                - Connection strings are automatically decrypted during processing
+                
+                Returns 202 if extractions are already running, 200 on successful completion.
+                """)
+            .Produces<Message>(Status200OK, "application/json")
+            .Produces<Message>(Status202Accepted, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json")
+            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+
         group.MapPost("/pull", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
             await controller.ExecutePull(request.Query, token))
             .WithName("ExecutePull")
@@ -687,7 +846,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 
                 Supported query parameters for filtering:
                 - `name` (string): Filter by exact extraction name
-                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `contains` (string): Filter by extractions containing any of the specified values
                 - `schedule` (string): Filter by exact schedule name
                 - `scheduleId` (uint): Filter by schedule ID
                 - `originId` (uint): Filter by origin ID
@@ -723,7 +882,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 
                 Supported query parameters for filtering:
                 - `name` (string): Filter by exact extraction name
-                - `contains` (string): Filter by extractions containing any of the specified values (comma-separated)
+                - `contains` (string): Filter by extractions containing any of the specified values
                 - `schedule` (string): Filter by exact schedule name
                 - `scheduleId` (uint): Filter by schedule ID
                 - `originId` (uint): Filter by origin ID

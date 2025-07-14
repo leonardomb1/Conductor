@@ -67,6 +67,121 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
         return false;
     }
 
+    public static async ValueTask<Result> ExecuteTransferJob(
+        IJobTracker jobTracker,
+        List<Extraction> extractions,
+        IHttpClientFactory httpFactory,
+        int? overrideFilter,
+        IConnectionPoolManager connectionPoolManager,
+        IDataTableMemoryManager memoryManager,
+        Job job,
+        CancellationToken token)
+    {
+        await using var pipeline = new ExtractionPipeline(
+                DateTime.UtcNow,
+                httpFactory,
+                jobTracker,
+                overrideFilter,
+                connectionPoolManager,
+                memoryManager
+        );
+
+        try
+        {
+            Helper.DecryptConnectionStrings(extractions);
+            var useHttp = extractions.Any(e => (e.SourceType?.ToLowerInvariant() ?? "db") == "http");
+
+            Func<List<Extraction>, Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> producer =
+                useHttp
+                    ? (ex, ch, rt, ct, sc) => pipeline.ProduceHttpData(ex, ch, ct)
+                    : pipeline.ProduceDBData;
+            Func<Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToDB;
+
+            var result = await pipeline.ChannelParallelize(
+                extractions,
+                producer,
+                consumer,
+                token,
+                true
+            );
+
+            if (!result.IsSuccessful)
+            {
+                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+            }
+
+            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+            return new Error(ex.Message, ex.StackTrace);
+        }
+        finally
+        {
+            await pipeline.DisposeAsync();
+        }
+    }
+
+    public static async ValueTask<Result> ExecutePullJob(
+    IJobTracker jobTracker,
+    List<Extraction> extractions,
+    IHttpClientFactory httpFactory,
+    int? overrideFilter,
+    IConnectionPoolManager connectionPoolManager,
+    IDataTableMemoryManager memoryManager,
+    Job job,
+    CancellationToken token)
+    {
+        await using var pipeline = new ExtractionPipeline(
+            DateTime.UtcNow,
+            httpFactory,
+            jobTracker,
+            overrideFilter,
+            connectionPoolManager,
+            memoryManager
+        );
+
+        try
+        {
+            Helper.DecryptConnectionStrings(extractions);
+
+
+            var useHttp = extractions.Any(e => (e.SourceType?.ToLowerInvariant() ?? "db") == "http");
+            Func<List<Extraction>, Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, bool?, Task> producer =
+                useHttp
+                    ? (ex, ch, rt, ct, sc) => pipeline.ProduceHttpData(ex, ch, ct)
+                    : pipeline.ProduceDBData;
+            Func<Channel<(ManagedDataTable, Extraction)>, DateTime, CancellationToken, Task> consumer = pipeline.ConsumeDataToCsv;
+
+            var result = await pipeline.ChannelParallelize(
+                extractions,
+                producer,
+                consumer,
+                token,
+                false
+            );
+
+            if (!result.IsSuccessful)
+            {
+                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+            }
+
+            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+            return new Error(ex.Message, ex.StackTrace);
+        }
+        finally
+        {
+            await pipeline.DisposeAsync();
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryProcessOperation(Result operation, DbConnection? connection, CancellationTokenSource? cancellationTokenSource, out Error? error)
     {

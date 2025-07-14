@@ -60,11 +60,11 @@ class ApiClient {
         throw new Error(errorMessage);
       }
 
-      // Handle 204 No Content - return empty success response
+      // Handle 204 No Content - return standardized success response
       if (response.status === 204) {
         return {
           statusCode: 204,
-          information: 'Success',
+          information: 'Operation completed successfully',
           error: false,
           content: []
         } as ApiResponse<T>;
@@ -190,7 +190,7 @@ class ApiClient {
     return params;
   }
 
-  // ENHANCED EXTRACTION METHODS - utilizing all backend capabilities
+  // ENHANCED EXTRACTION METHODS
   
   /**
    * Get extractions with full filtering support matching backend capabilities
@@ -295,30 +295,50 @@ class ApiClient {
   }
 
   async deleteExtraction(id: number): Promise<ApiResponse<never>> {
-    return this.request<never>(`/extractions/${id}`, {
-      method: 'DELETE',
-    });
+    try {
+      const response = await this.request<never>(`/extractions/${id}`, {
+        method: 'DELETE',
+      });
+      
+      console.log(`Extraction ${id} deleted successfully`, response);
+      return response;
+    } catch (error) {
+      console.error(`Failed to delete extraction ${id}:`, error);
+      
+      // Enhance error message based on status code
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error('Extraction not found - it may have already been deleted');
+        } else if (error.message.includes('403')) {
+          throw new Error('You do not have permission to delete this extraction');
+        } else if (error.message.includes('409')) {
+          throw new Error('Cannot delete extraction - it may be in use by running jobs or have dependencies');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   /**
-   * Execute transfer with full filtering support including ID-based filtering
+   * Execute transfer using programTransfer - PUT method with no body
    */
   async executeTransfer(filters?: Record<string, string>): Promise<ApiResponse<never>> {
-    console.log('Executing transfer with filters:', filters);
+    console.log('Executing program transfer with filters:', filters);
     const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<never>(`/extractions/transfer${params}`, {
-      method: 'POST',
+    return this.request<never>(`/extractions/programTransfer${params}`, {
+      method: 'PUT',
     });
   }
 
   /**
-   * Execute pull with full filtering support including ID-based filtering
+   * Execute pull using programPull - PUT method with no body
    */
   async executePull(filters?: Record<string, string>): Promise<ApiResponse<never>> {
-    console.log('Executing pull with filters:', filters);
+    console.log('Executing program pull with filters:', filters);
     const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
-    return this.request<never>(`/extractions/pull${params}`, {
-      method: 'POST',
+    return this.request<never>(`/extractions/programPull${params}`, {
+      method: 'PUT',
     });
   }
 
@@ -356,9 +376,26 @@ class ApiClient {
   }
 
   async deleteDestination(id: number): Promise<ApiResponse<never>> {
-    return this.request<never>(`/destinations/${id}`, {
-      method: 'DELETE',
-    });
+    try {
+      const response = await this.request<never>(`/destinations/${id}`, {
+        method: 'DELETE',
+      });
+      
+      console.log(`Destination ${id} deleted successfully`, response);
+      return response;
+    } catch (error) {
+      console.error(`Failed to delete destination ${id}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error('Destination not found - it may have already been deleted');
+        } else if (error.message.includes('409')) {
+          throw new Error('Cannot delete destination - it is being used by one or more extractions');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   // ORIGINS
@@ -387,9 +424,26 @@ class ApiClient {
   }
 
   async deleteOrigin(id: number): Promise<ApiResponse<never>> {
-    return this.request<never>(`/origins/${id}`, {
-      method: 'DELETE',
-    });
+    try {
+      const response = await this.request<never>(`/origins/${id}`, {
+        method: 'DELETE',
+      });
+      
+      console.log(`Origin ${id} deleted successfully`, response);
+      return response;
+    } catch (error) {
+      console.error(`Failed to delete origin ${id}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error('Origin not found - it may have already been deleted');
+        } else if (error.message.includes('409')) {
+          throw new Error('Cannot delete origin - it is being used by one or more extractions');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   // SCHEDULES
@@ -418,9 +472,26 @@ class ApiClient {
   }
 
   async deleteSchedule(id: number): Promise<ApiResponse<never>> {
-    return this.request<never>(`/schedules/${id}`, {
-      method: 'DELETE',
-    });
+    try {
+      const response = await this.request<never>(`/schedules/${id}`, {
+        method: 'DELETE',
+      });
+      
+      console.log(`Schedule ${id} deleted successfully`, response);
+      return response;
+    } catch (error) {
+      console.error(`Failed to delete schedule ${id}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error('Schedule not found - it may have already been deleted');
+        } else if (error.message.includes('409')) {
+          throw new Error('Cannot delete schedule - it is being used by one or more extractions');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   // USERS
@@ -449,9 +520,26 @@ class ApiClient {
   }
 
   async deleteUser(id: number): Promise<ApiResponse<never>> {
-    return this.request<never>(`/users/${id}`, {
-      method: 'DELETE',
-    });
+    try {
+      const response = await this.request<never>(`/users/${id}`, {
+        method: 'DELETE',
+      });
+      
+      console.log(`User ${id} deleted successfully`, response);
+      return response;
+    } catch (error) {
+      console.error(`Failed to delete user ${id}:`, error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('404')) {
+          throw new Error('User not found - it may have already been deleted');
+        } else if (error.message.includes('403')) {
+          throw new Error('You do not have permission to delete this user');
+        }
+      }
+      
+      throw error;
+    }
   }
 
   // JOBS
@@ -459,7 +547,6 @@ class ApiClient {
     return this.request<JobDto>('/jobs/active');
   }
 
-  // JOBS - Enhanced with proper pagination support
   async searchJobs(filters?: Record<string, string>): Promise<ApiResponse<JobDto>> {
     console.log('Searching jobs with filters:', filters);
     
@@ -495,6 +582,75 @@ class ApiClient {
     return this.request<never>('/jobs', {
       method: 'DELETE',
     });
+  }
+
+  // Additional methods for enhanced functionality (if available in backend)
+  
+  /**
+   * Get recent extractions (if backend supports this endpoint)
+   */
+  async getRecentExtractions(limit = 5): Promise<ApiResponse<Extraction>> {
+    try {
+      return this.request<Extraction>(`/extractions/recent?take=${limit}`);
+    } catch (error) {
+      console.warn('Recent extractions endpoint not available:', error);
+      // Fallback to regular extractions with recent sorting
+      return this.getExtractions({ 
+        take: limit.toString(), 
+        sortBy: 'id', 
+        sortDirection: 'desc' 
+      });
+    }
+  }
+
+  /**
+   * Get popular extractions (if backend supports this endpoint)
+   */
+  async getPopularExtractions(limit = 5): Promise<ApiResponse<Extraction>> {
+    try {
+      return this.request<Extraction>(`/extractions/popular?take=${limit}`);
+    } catch (error) {
+      console.warn('Popular extractions endpoint not available:', error);
+      // Fallback to regular extractions
+      return this.getExtractions({ take: limit.toString() });
+    }
+  }
+
+  /**
+   * Get extraction aggregations (if backend supports this endpoint)
+   */
+  async getExtractionAggregations(filters?: Record<string, string>): Promise<ApiResponse<any>> {
+    try {
+      const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
+      return this.request<any>(`/extractions/aggregations${params}`);
+    } catch (error) {
+      console.warn('Extraction aggregations endpoint not available:', error);
+      // Return empty aggregations
+      return {
+        statusCode: 200,
+        information: 'Aggregations not available',
+        error: false,
+        content: []
+      } as ApiResponse<any>;
+    }
+  }
+
+  /**
+   * Get search suggestions (if backend supports this endpoint)
+   */
+  async getSearchSuggestions(query: string): Promise<ApiResponse<any>> {
+    try {
+      return this.request<any>(`/extractions/suggestions?q=${encodeURIComponent(query)}`);
+    } catch (error) {
+      console.warn('Search suggestions endpoint not available:', error);
+      // Return empty suggestions
+      return {
+        statusCode: 200,
+        information: 'Suggestions not available',
+        error: false,
+        content: []
+      } as ApiResponse<any>;
+    }
   }
 }
 
