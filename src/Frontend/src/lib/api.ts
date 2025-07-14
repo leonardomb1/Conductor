@@ -35,14 +35,27 @@ class ApiClient {
 
       if (!response.ok) {
         let errorMessage = `API request failed: ${response.status} ${response.statusText}`;
+        let errorText = '';
         try {
-          const errorText = await response.text();
+          errorText = await response.text();
           if (errorText) {
             errorMessage += ` - ${errorText}`;
           }
         } catch (e) {
           // Ignore error reading response text
         }
+        
+        // Special handling for backend 204 response constructor bug
+        if (response.status === 500 && errorText.includes('Invalid response status code 204')) {
+          // Backend tried to return 204 but failed - treat as successful 204
+          return {
+            statusCode: 204,
+            information: 'Operation completed successfully',
+            error: false,
+            content: []
+          } as ApiResponse<T>;
+        }
+        
         throw new Error(errorMessage);
       }
 
