@@ -909,37 +909,123 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         group.MapGet("/fetch", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
-            await controller.FetchData(request.Query, token))
-            .WithName("FetchData")
-            .WithSummary("Fetches preview data from an origin.")
-            .WithDescription("""
-                Fetches a preview of the data from the specified origin for extractions based on the same filtering criteria as the GET endpoint.
-                
-                Supported query parameters for filtering:
-                - `name` (string): Filter by exact extraction name
-                - `contains` (string): Filter by extractions containing any of the specified values
-                - `schedule` (string): Filter by exact schedule name
-                - `scheduleId` (uint): Filter by schedule ID
-                - `originId` (uint): Filter by origin ID
-                - `destinationId` (uint): Filter by destination ID
-                - `origin` (string): Filter by exact origin name
-                - `destination` (string): Filter by exact destination name
-                - `sourceType` (string): Filter by source type
-                - `isIncremental` (bool): Filter by incremental flag
-                - `isVirtual` (bool): Filter by virtual flag
-                - `search` (string): Search across name, alias, and index name
-                - `skip` (uint): Number of records to skip
-                - `take` (uint): Limit the number of extractions to process
-                - `page` (uint): Page number for pagination
-                - `overrideTime` (uint): Override the default filter time for the extraction
-                Requirements:
-                - All origins must have a valid connection string and database type
-                - Returns a preview of the data in a paginated format
-                - Connection strings are automatically decrypted during processing
-            """)
-            .Produces<Message<Dictionary<string, object>>>(Status200OK, "application/json")
-            .Produces<Message>(Status400BadRequest, "application/json")
-            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+    await controller.FetchData(request.Query, token))
+    .WithName("FetchData")
+    .WithSummary("Fetches preview data from an origin with intelligent JSON nesting.")
+    .WithDescription("""
+        Fetches a preview of the data from the specified origin for extractions with automatic JSON parsing and nesting capabilities.
+        
+        **Extraction Filtering Parameters:**
+        - `name` (string): Filter by exact extraction name
+        - `contains` (string): Filter by extractions containing any of the specified values
+        - `schedule` (string): Filter by exact schedule name
+        - `scheduleId` (uint): Filter by schedule ID
+        - `originId` (uint): Filter by origin ID
+        - `destinationId` (uint): Filter by destination ID
+        - `origin` (string): Filter by exact origin name
+        - `destination` (string): Filter by exact destination name
+        - `sourceType` (string): Filter by source type (db, http)
+        - `isIncremental` (bool): Filter by incremental flag
+        - `isVirtual` (bool): Filter by virtual flag
+        - `search` (string): Search across name, alias, and index name
+        
+        **Pagination Parameters:**
+        - `page` (uint): Page number for pagination (default: 1)
+        - `skip` (uint): Number of records to skip
+        - `take` (uint): Limit the number of extractions to process
+        
+        **Data Processing Parameters:**
+        - `overrideTime` (uint): Override the default filter time for the extraction
+        - `disableNesting` (bool): Disable automatic JSON nesting (default: false)
+        
+        **JSON Nesting Configuration:**
+        - `nestProperties` (string): Comma-separated list of properties to nest (e.g., "addresses,storekeeper,items")
+        - `nestPatterns` (string): Comma-separated regex patterns for auto-nesting (e.g., ".*List$,.*Array$")
+        - `excludeProperties` (string): Comma-separated list of properties to exclude from nesting
+        
+        **Default Nesting Behavior:**
+        The endpoint automatically detects and nests JSON strings in properties named:
+        - addresses, storekeeper, items, details
+        - Properties ending with "List" or "Array"
+        - Any property containing valid JSON array or object strings
+        
+        **Response Format:**
+        Returns an enhanced response with metadata including processing time, data size, and nesting information.
+        
+        **Requirements:**
+        - All origins must have a valid connection string and database type
+        - Connection strings are automatically decrypted during processing
+        - Supports both database and HTTP-based extractions
+        
+        **Examples:**
+        - Basic fetch: `/fetch?name=warehouse_data&page=1`
+        - Custom nesting: `/fetch?name=warehouse_data&nestProperties=addresses,storekeeper`
+        - Disable nesting: `/fetch?name=warehouse_data&disableNesting=true`
+        - Pattern-based: `/fetch?name=warehouse_data&nestPatterns=.*List$`
+        """)
+        .Produces<Message<Dictionary<string, object>>>(Status200OK, "application/json")
+        .Produces<Message>(Status400BadRequest, "application/json")
+        .Produces<Message<Error>>(Status500InternalServerError, "application/json")
+        .WithOpenApi(operation =>
+        {
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "name",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Filter by exact extraction name",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string" }
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "page",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Page number for pagination",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "integer", Minimum = 1, Default = new Microsoft.OpenApi.Any.OpenApiInteger(1) }
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "disableNesting",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Disable automatic JSON nesting",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "boolean", Default = new Microsoft.OpenApi.Any.OpenApiBoolean(false) }
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "nestProperties",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Comma-separated list of properties to nest (e.g., 'addresses,storekeeper')",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string" },
+                Example = new Microsoft.OpenApi.Any.OpenApiString("addresses,storekeeper,items")
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "nestPatterns",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Comma-separated regex patterns for auto-nesting (e.g., '.*List$,.*Array$')",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string" },
+                Example = new Microsoft.OpenApi.Any.OpenApiString(".*List$,.*Array$")
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "excludeProperties",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Comma-separated list of properties to exclude from nesting",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string" }
+            });
+
+            return operation;
+        });
 
         return group;
     }
