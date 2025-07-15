@@ -1,11 +1,18 @@
 using System.Data;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Conductor.Types;
 
 namespace Conductor.Shared;
 
 public static class Converter
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false
+    };
+
     public static async Task<Result<T>> TryDeserializeJson<T>(Stream data)
     {
         try
@@ -228,6 +235,85 @@ public static class Converter
         }
     }
 
+    public static Result<List<Dictionary<string, object>>> ProcessDataTableToNestedJson(DataTable dataTable, JsonNestingConfig? config = null)
+    {
+        config ??= JsonNestingConfig.Default;
+        var result = new List<Dictionary<string, object>>(dataTable.Rows.Count);
+
+        try
+        {
+            var nestedColumns = new HashSet<string>();
+            foreach (DataColumn column in dataTable.Columns)
+            {
+                if (config.ShouldNestProperty(column.ColumnName))
+                {
+                    nestedColumns.Add(column.ColumnName);
+                }
+            }
+
+            foreach (DataRow row in dataTable.Rows)
+            {
+                var nestedRow = new Dictionary<string, object>(dataTable.Columns.Count);
+
+                foreach (DataColumn column in dataTable.Columns)
+                {
+                    var value = row[column];
+                    if (value == DBNull.Value) continue;
+
+                    if (nestedColumns.Contains(column.ColumnName) && value is string stringValue)
+                    {
+                        nestedRow[column.ColumnName] = ProcessJsonStringValue(stringValue);
+                    }
+                    else
+                    {
+                        nestedRow[column.ColumnName] = value;
+                    }
+                }
+
+                result.Add(nestedRow);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return new Error($"Failed to convert to nested JSON: {ex.Message}", ex.StackTrace);
+        }
+    }
+
+    public static bool IsJsonString(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        value = value.Trim();
+        return (value.StartsWith('[') && value.EndsWith(']')) ||
+               (value.StartsWith('{') && value.EndsWith('}'));
+    }
+
+    private static object ProcessJsonStringValue(string stringValue)
+    {
+        if (!IsJsonString(stringValue))
+            return stringValue;
+
+        try
+        {
+            if (stringValue.Trim().StartsWith('['))
+            {
+                var parsed = JsonSerializer.Deserialize<object[]>(stringValue, JsonOptions);
+                return parsed ?? Array.Empty<object>();
+            }
+            else
+            {
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, object>>(stringValue, JsonOptions);
+                return parsed ?? new Dictionary<string, object>();
+            }
+        }
+        catch
+        {
+            return stringValue;
+        }
+    }
+
     private static Type GetColumnType(JsonElement element)
     {
         return element.ValueKind switch
@@ -257,5 +343,4 @@ public static class Converter
             _ => element.ToString()
         };
     }
-
 }

@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Threading.Channels;
 using Conductor.Logging;
 using Conductor.Model;
@@ -243,7 +244,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
         extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
-        
+
         var extractionIds = extractions.Select(x => x.Id);
         Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
@@ -392,7 +393,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
         extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
-        
+
         var extractionIds = extractions.Select(x => x.Id);
         Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
@@ -406,7 +407,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             job,
             token
         ), token);
-        
+
         return Results.Ok(
             new Message(Status200OK, $"{job.JobGuid}")
         );
@@ -472,7 +473,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             job,
             token
         ), token);
-        
+
         return Results.Ok(
             new Message(Status200OK, $"{job.JobGuid}")
         );
@@ -480,8 +481,10 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
     public async Task<IResult> FetchData(IQueryCollection? filters, CancellationToken token)
     {
-        var fetch = await extractionRepository.Search(filters);
+        var stopwatch = Stopwatch.StartNew();
+        var requestTime = DateTime.UtcNow;
 
+        var fetch = await extractionRepository.Search(filters);
         if (!fetch.IsSuccessful)
         {
             return Results.InternalServerError(ErrorMessage(fetch.Error));
@@ -495,15 +498,17 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         }
 
         var res = fetch.Value.FirstOrDefault();
-
         if (res is null)
         {
-            return Results.Ok(new Message(Status200OK, "Requested resource was not found.", false));
+            return Results.Ok(Message<Dictionary<string, object>>.FetchNotFound());
         }
 
         var extractions = fetch.Value;
         var extractionIds = extractions.Select(x => x.Id);
         var job = jobTracker.StartJob(extractionIds, JobType.Fetch);
+
+        var nestingConfig = JsonNestingConfig.FromQueryParameters(filters);
+        bool enableNesting = !bool.Parse(filters?["disableNesting"].FirstOrDefault() ?? "false");
 
         ulong currentRowCount = 0;
         if (ushort.TryParse(filters?["page"] ?? "0", out ushort page))
@@ -513,11 +518,13 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
         try
         {
+            DataTable dataTable;
+
             if ((res.SourceType?.ToLowerInvariant() ?? "db") == "http")
             {
                 var (exchange, httpMethod) = HTTPExchangeFactory.Create(httpFactory!, res.PaginationType, res.HttpMethod);
-
                 var fetchResult = await exchange.FetchEndpointData(res, httpMethod);
+
                 if (!fetchResult.IsSuccessful)
                 {
                     await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
@@ -531,19 +538,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                     return Results.InternalServerError(ErrorMessage(dataTableResult.Error));
                 }
 
-                Helper.GetAndSetByteUsageForExtraction(dataTableResult.Value, res.Id, jobTracker);
-
-                List<Dictionary<string, object>> rows = [.. dataTableResult.Value.Rows.Cast<DataRow>().Select(row =>
-                    dataTableResult.Value.Columns.Cast<DataColumn>().ToDictionary(
-                        col => col.ColumnName,
-                        col => row[col]
-                    )
-                )];
-
-                dataTableResult.Value.Dispose();
-
-                await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
-                return Results.Ok(new Message<Dictionary<string, object>>(Status200OK, "OK", rows, page: page == 0 ? 1 : page));
+                dataTable = dataTableResult.Value;
             }
             else
             {
@@ -553,8 +548,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 );
 
                 var engine = DBExchangeFactory.Create(res.Origin!.DbType!);
-
                 DbConnection? connection = null;
+
                 try
                 {
                     string finalConnectionString = DBExchange.SupportsMARS(res.Origin.DbType!)
@@ -563,38 +558,78 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
                     connection = await connectionPoolManager.GetConnectionAsync(finalConnectionString, res.Origin.DbType!, token);
 
-                    var query = await engine.FetchDataTable(res, DateTime.UtcNow, false, currentRowCount, connection, token, limit: Settings.FetcherLineMax, shouldPaginate: true);
+                    var query = await engine.FetchDataTable(res, requestTime, false, currentRowCount, connection, token,
+                        limit: Settings.FetcherLineMax, shouldPaginate: true);
+
                     if (!query.IsSuccessful)
                     {
                         await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
                         return Results.InternalServerError(ErrorMessage(query.Error));
                     }
 
-                    Helper.GetAndSetByteUsageForExtraction(query.Value, res.Id, jobTracker);
-
-                    List<Dictionary<string, object>> rows = [.. query.Value.Rows.Cast<DataRow>().Select(row =>
-                        query.Value.Columns.Cast<DataColumn>().ToDictionary(
-                            col => col.ColumnName,
-                            col => row[col]
-                        )
-                    )];
-
-                    query.Value.Dispose();
-
-                    await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
-                    return Results.Ok(
-                        new Message<Dictionary<string, object>>(Status200OK, "OK", rows, page: page == 0 ? 1 : page)
-                    );
+                    dataTable = query.Value;
                 }
                 finally
                 {
                     if (connection is not null)
                     {
-                        var connectionKey = $"{res.Origin.DbType}:{conStr.GetHashCode()}"; // Use decrypted string for key
+                        var connectionKey = $"{res.Origin.DbType}:{conStr.GetHashCode()}";
                         connectionPoolManager.ReturnConnection(connectionKey, connection);
                     }
                 }
             }
+
+            Helper.GetAndSetByteUsageForExtraction(dataTable, res.Id, jobTracker);
+            stopwatch.Stop();
+
+            List<Dictionary<string, object>> result;
+            List<string>? nestedProperties = null;
+
+            if (enableNesting)
+            {
+                var nestedResult = Converter.ProcessDataTableToNestedJson(dataTable, nestingConfig);
+                if (!nestedResult.IsSuccessful)
+                {
+                    await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+                    return Results.InternalServerError(ErrorMessage(nestedResult.Error));
+                }
+
+                result = nestedResult.Value;
+                nestedProperties = result
+                    .SelectMany(row => row.Keys)
+                    .Where(key => nestingConfig.ShouldNestProperty(key))
+                    .Distinct()
+                    .ToList();
+            }
+            else
+            {
+                result = [.. dataTable.Rows.Cast<DataRow>().Select(row =>
+                    dataTable.Columns.Cast<DataColumn>().ToDictionary(
+                        col => col.ColumnName,
+                        col => row[col]
+                    )
+                )];
+            }
+
+            var metadata = new FetchMetadata
+            {
+                ExtractionName = res.Name,
+                ExtractionId = res.Id,
+                RequestTime = requestTime,
+                ProcessingTime = stopwatch.Elapsed,
+                DataSizeBytes = Helper.CalculateBytesUsed(dataTable),
+                NestedProperties = nestedProperties
+            };
+
+            dataTable.Dispose();
+            await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Completed);
+
+            return Results.Ok(Message<Dictionary<string, object>>.FetchSuccess(
+                result,
+                page: page == 0 ? 1 : page,
+                hasNestedData: enableNesting,
+                metadata: metadata
+            ));
         }
         catch (Exception ex)
         {
@@ -874,37 +909,123 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
         group.MapGet("/fetch", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
-            await controller.FetchData(request.Query, token))
-            .WithName("FetchData")
-            .WithSummary("Fetches preview data from an origin.")
-            .WithDescription("""
-                Fetches a preview of the data from the specified origin for extractions based on the same filtering criteria as the GET endpoint.
-                
-                Supported query parameters for filtering:
-                - `name` (string): Filter by exact extraction name
-                - `contains` (string): Filter by extractions containing any of the specified values
-                - `schedule` (string): Filter by exact schedule name
-                - `scheduleId` (uint): Filter by schedule ID
-                - `originId` (uint): Filter by origin ID
-                - `destinationId` (uint): Filter by destination ID
-                - `origin` (string): Filter by exact origin name
-                - `destination` (string): Filter by exact destination name
-                - `sourceType` (string): Filter by source type
-                - `isIncremental` (bool): Filter by incremental flag
-                - `isVirtual` (bool): Filter by virtual flag
-                - `search` (string): Search across name, alias, and index name
-                - `skip` (uint): Number of records to skip
-                - `take` (uint): Limit the number of extractions to process
-                - `page` (uint): Page number for pagination
-                - `overrideTime` (uint): Override the default filter time for the extraction
-                Requirements:
-                - All origins must have a valid connection string and database type
-                - Returns a preview of the data in a paginated format
-                - Connection strings are automatically decrypted during processing
-            """)
-            .Produces<Message<Dictionary<string, object>>>(Status200OK, "application/json")
-            .Produces<Message>(Status400BadRequest, "application/json")
-            .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+    await controller.FetchData(request.Query, token))
+    .WithName("FetchData")
+    .WithSummary("Fetches preview data from an origin with intelligent JSON nesting.")
+    .WithDescription("""
+        Fetches a preview of the data from the specified origin for extractions with automatic JSON parsing and nesting capabilities.
+        
+        **Extraction Filtering Parameters:**
+        - `name` (string): Filter by exact extraction name
+        - `contains` (string): Filter by extractions containing any of the specified values
+        - `schedule` (string): Filter by exact schedule name
+        - `scheduleId` (uint): Filter by schedule ID
+        - `originId` (uint): Filter by origin ID
+        - `destinationId` (uint): Filter by destination ID
+        - `origin` (string): Filter by exact origin name
+        - `destination` (string): Filter by exact destination name
+        - `sourceType` (string): Filter by source type (db, http)
+        - `isIncremental` (bool): Filter by incremental flag
+        - `isVirtual` (bool): Filter by virtual flag
+        - `search` (string): Search across name, alias, and index name
+        
+        **Pagination Parameters:**
+        - `page` (uint): Page number for pagination (default: 1)
+        - `skip` (uint): Number of records to skip
+        - `take` (uint): Limit the number of extractions to process
+        
+        **Data Processing Parameters:**
+        - `overrideTime` (uint): Override the default filter time for the extraction
+        - `disableNesting` (bool): Disable automatic JSON nesting (default: false)
+        
+        **JSON Nesting Configuration:**
+        - `nestProperties` (string): Comma-separated list of properties to nest (e.g., "addresses,storekeeper,items")
+        - `nestPatterns` (string): Comma-separated regex patterns for auto-nesting (e.g., ".*List$,.*Array$")
+        - `excludeProperties` (string): Comma-separated list of properties to exclude from nesting
+        
+        **Default Nesting Behavior:**
+        The endpoint automatically detects and nests JSON strings in properties named:
+        - addresses, storekeeper, items, details
+        - Properties ending with "List" or "Array"
+        - Any property containing valid JSON array or object strings
+        
+        **Response Format:**
+        Returns an enhanced response with metadata including processing time, data size, and nesting information.
+        
+        **Requirements:**
+        - All origins must have a valid connection string and database type
+        - Connection strings are automatically decrypted during processing
+        - Supports both database and HTTP-based extractions
+        
+        **Examples:**
+        - Basic fetch: `/fetch?name=warehouse_data&page=1`
+        - Custom nesting: `/fetch?name=warehouse_data&nestProperties=addresses,storekeeper`
+        - Disable nesting: `/fetch?name=warehouse_data&disableNesting=true`
+        - Pattern-based: `/fetch?name=warehouse_data&nestPatterns=.*List$`
+        """)
+        .Produces<Message<Dictionary<string, object>>>(Status200OK, "application/json")
+        .Produces<Message>(Status400BadRequest, "application/json")
+        .Produces<Message<Error>>(Status500InternalServerError, "application/json")
+        .WithOpenApi(operation =>
+        {
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "name",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Filter by exact extraction name",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string" }
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "page",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Page number for pagination",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "integer", Minimum = 1, Default = new Microsoft.OpenApi.Any.OpenApiInteger(1) }
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "disableNesting",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Disable automatic JSON nesting",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "boolean", Default = new Microsoft.OpenApi.Any.OpenApiBoolean(false) }
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "nestProperties",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Comma-separated list of properties to nest (e.g., 'addresses,storekeeper')",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string" },
+                Example = new Microsoft.OpenApi.Any.OpenApiString("addresses,storekeeper,items")
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "nestPatterns",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Comma-separated regex patterns for auto-nesting (e.g., '.*List$,.*Array$')",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string" },
+                Example = new Microsoft.OpenApi.Any.OpenApiString(".*List$,.*Array$")
+            });
+
+            operation.Parameters.Add(new Microsoft.OpenApi.Models.OpenApiParameter
+            {
+                Name = "excludeProperties",
+                In = Microsoft.OpenApi.Models.ParameterLocation.Query,
+                Description = "Comma-separated list of properties to exclude from nesting",
+                Required = false,
+                Schema = new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string" }
+            });
+
+            return operation;
+        });
 
         return group;
     }
