@@ -195,7 +195,7 @@
       <div class="flex space-x-3">
         <Button
           variant="ghost"
-          onclick={() => (window.location.href = "/extractions")}
+          onclick={() => history.back()}
         >
           <ArrowLeft size={16} class="mr-2" />
           Cancel
