@@ -2,6 +2,7 @@
   import '../app.css';
   import { page } from '$app/stores';
   import { auth } from '$lib/auth.svelte.js';
+  import { themeStore } from '$lib/stores/theme.svelte.js';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
@@ -43,28 +44,30 @@
 </svelte:head>
 
 {#if shouldShowLogin}
-  {@render children()}
+  <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+    {@render children()}
+  </div>
 {:else if shouldShowApp}
-  <div class="flex h-screen bg-supabase-gray-50">
+  <div class="flex h-screen bg-gray-50 dark:bg-gray-900">
     <Sidebar />
     <div class="flex-1 flex flex-col overflow-hidden">
       <Header />
       <main class="flex-1 overflow-y-auto">
-        <div class="p-6">
+        <div class="mobile-container py-4 sm:py-6">
           {@render children()}
         </div>
       </main>
     </div>
   </div>
 {:else if shouldShowLoading}
-  <!-- Optimized loading screen -->
-  <div class="flex min-h-screen items-center justify-center bg-supabase-gray-50">
+  <!-- Optimized loading screen with dark mode -->
+  <div class="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
     <div class="text-center">
       <div class="inline-flex items-center justify-center w-16 h-16 bg-supabase-green rounded-full mb-4">
         <span class="text-white font-bold text-2xl">C</span>
       </div>
       <div class="animate-spin h-8 w-8 border-4 border-supabase-green border-t-transparent rounded-full mx-auto mb-4"></div>
-      <p class="text-supabase-gray-600 text-sm">Loading Conductor...</p>
+      <p class="text-gray-600 dark:text-gray-400 text-sm">Loading Conductor...</p>
     </div>
   </div>
 {/if}
@@ -92,4 +95,16 @@
   :global(.hover\\:bg-) {
     transition: background-color 0.15s ease-in-out;
   }
-</style>
+
+  /* Prevent horizontal scroll on mobile */
+  :global(html, body) {
+    overflow-x: hidden;
+  }
+
+  /* Mobile-friendly scroll behavior */
+  @media (max-width: 768px) {
+    :global(main) {
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+</style>  

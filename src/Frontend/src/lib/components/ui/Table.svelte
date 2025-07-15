@@ -28,6 +28,7 @@
     sortDirection?: 'asc' | 'desc';
     pagination?: PaginationInfo;
     showPageSizeSelector?: boolean;
+    mobileCardView?: boolean;
   }
 
   let {
@@ -39,7 +40,8 @@
     sortKey,
     sortDirection = 'asc',
     pagination,
-    showPageSizeSelector = true
+    showPageSizeSelector = true,
+    mobileCardView = true
   }: Props = $props();
 
   const pageSizeOptions = [10, 20, 50, 100];
@@ -80,12 +82,11 @@
     
     const { currentPage, totalPages } = pagination;
     const pages = [];
-    const maxVisible = 7; // Show more pages for better navigation
+    const maxVisible = 5; // Reduced for mobile
     
     let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
     let end = Math.min(totalPages, start + maxVisible - 1);
     
-    // Adjust start if we're near the end
     if (end - start + 1 < maxVisible) {
       start = Math.max(1, end - maxVisible + 1);
     }
@@ -104,23 +105,23 @@
     const start = (currentPage - 1) * pageSize + 1;
     const end = Math.min(currentPage * pageSize, totalItems);
     
-    return `Showing ${start}-${end} of ${totalItems.toLocaleString()} items`;
+    return `${start}-${end} of ${totalItems.toLocaleString()}`;
   }
 </script>
 
-<div class="bg-white shadow ring-1 ring-black ring-opacity-5 rounded-lg overflow-hidden">
+<div class="bg-white dark:bg-gray-800 shadow-sm dark:shadow-gray-900/20 ring-1 ring-gray-200 dark:ring-gray-700 rounded-lg overflow-hidden">
   <!-- Table Header with optional page size selector -->
   {#if pagination && showPageSizeSelector}
-    <div class="px-6 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-      <div class="text-sm text-gray-700">
-        {formatItemCount()}
+    <div class="px-4 sm:px-6 py-3 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+      <div class="text-sm text-gray-700 dark:text-gray-300">
+        Showing {formatItemCount()} items
       </div>
       
       <div class="flex items-center space-x-2">
-        <label for="pageSize" class="text-sm text-gray-700">Items per page:</label>
+        <label for="pageSize" class="text-sm text-gray-700 dark:text-gray-300">Per page:</label>
         <select
           id="pageSize"
-          class="text-sm border-gray-300 rounded-md focus:ring-supabase-green focus:border-supabase-green"
+          class="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-md focus:ring-supabase-green focus:border-supabase-green"
           value={pagination.pageSize}
           onchange={(e) => handlePageSizeChange(+e.target.value)}
         >
@@ -132,16 +133,17 @@
     </div>
   {/if}
 
-  <!-- Table -->
-  <div class="overflow-x-auto">
-    <table class="min-w-full divide-y divide-supabase-gray-300">
-      <thead class="bg-supabase-gray-50">
+  <!-- Desktop Table View -->
+  <div class="hidden sm:block overflow-x-auto">
+    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+      <thead class="bg-gray-50 dark:bg-gray-900/50">
         <tr>
           {#each columns as column}
             <th
-              class="px-6 py-3 text-left text-xs font-medium text-supabase-gray-500 uppercase tracking-wider"
+              class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
               class:cursor-pointer={column.sortable}
-              class:hover:bg-supabase-gray-100={column.sortable}
+              class:hover:bg-gray-100={column.sortable}
+              class:dark:hover:bg-gray-800={column.sortable}
               style={column.width ? `width: ${column.width}` : ''}
               onclick={() => handleSort(column)}
             >
@@ -174,24 +176,24 @@
           {/each}
         </tr>
       </thead>
-      <tbody class="bg-white divide-y divide-supabase-gray-200">
+      <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
         {#if loading}
           <tr>
             <td colspan={columns.length} class="px-6 py-12 text-center">
               <div class="flex flex-col items-center space-y-3">
-                <svg class="animate-spin h-8 w-8 text-supabase-gray-500" fill="none" viewBox="0 0 24 24">
+                <svg class="animate-spin h-8 w-8 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <p class="text-sm text-supabase-gray-500">Loading data...</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Loading data...</p>
               </div>
             </td>
           </tr>
         {:else if data.length === 0}
           <tr>
             <td colspan={columns.length} class="px-6 py-12 text-center">
-              <div class="text-supabase-gray-500">
-                <svg class="mx-auto h-12 w-12 text-supabase-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div class="text-gray-500 dark:text-gray-400">
+                <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <p class="mt-2 text-sm font-medium">{emptyMessage}</p>
@@ -200,9 +202,9 @@
           </tr>
         {:else}
           {#each data as row, i}
-            <tr class="hover:bg-supabase-gray-50 transition-colors">
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
               {#each columns as column}
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-supabase-gray-900">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                   {#if column.render}
                     {@html column.render(row[column.key], row)}
                   {:else}
@@ -216,36 +218,94 @@
       </tbody>
     </table>
   </div>
+
+  <!-- Mobile Card View -->
+  {#if mobileCardView}
+    <div class="sm:hidden">
+      {#if loading}
+        <div class="p-6 text-center">
+          <div class="flex flex-col items-center space-y-3">
+            <svg class="animate-spin h-8 w-8 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Loading data...</p>
+          </div>
+        </div>
+      {:else if data.length === 0}
+        <div class="p-6 text-center">
+          <div class="text-gray-500 dark:text-gray-400">
+            <svg class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p class="mt-2 text-sm font-medium">{emptyMessage}</p>
+          </div>
+        </div>
+      {:else}
+        <div class="divide-y divide-gray-200 dark:divide-gray-700">
+          {#each data as row, i}
+            <div class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+              <div class="space-y-2">
+                {#each columns.filter(col => col.key !== 'actions') as column}
+                  {#if row[column.key] !== undefined && row[column.key] !== null && row[column.key] !== ''}
+                    <div class="flex justify-between items-start">
+                      <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {column.label}:
+                      </span>
+                      <span class="text-sm text-gray-900 dark:text-gray-100 text-right ml-2">
+                        {#if column.render}
+                          {@html column.render(row[column.key], row)}
+                        {:else}
+                          {row[column.key] ?? '-'}
+                        {/if}
+                      </span>
+                    </div>
+                  {/if}
+                {/each}
+                
+                <!-- Actions always at bottom if present -->
+                {#each columns.filter(col => col.key === 'actions') as actionsColumn}
+                  <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                    {@html actionsColumn.render?.(null, row) || ''}
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
   
   <!-- Enhanced Pagination -->
   {#if pagination && pagination.totalPages > 1}
-    <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-supabase-gray-200 sm:px-6">
+    <div class="bg-white dark:bg-gray-800 px-4 py-3 flex flex-col sm:flex-row items-center justify-between border-t border-gray-200 dark:border-gray-700 gap-3">
       <!-- Mobile pagination -->
-      <div class="flex-1 flex justify-between sm:hidden">
+      <div class="flex justify-between w-full sm:hidden">
         <button
           onclick={() => goToPage(pagination.currentPage - 1)}
           disabled={pagination.currentPage <= 1}
-          class="relative inline-flex items-center px-4 py-2 border border-supabase-gray-300 text-sm font-medium rounded-md text-supabase-gray-700 bg-white hover:bg-supabase-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Previous
         </button>
-        <span class="text-sm text-supabase-gray-700 self-center">
-          Page {pagination.currentPage} of {pagination.totalPages}
+        <span class="text-sm text-gray-700 dark:text-gray-300 self-center">
+          {pagination.currentPage} / {pagination.totalPages}
         </span>
         <button
           onclick={() => goToPage(pagination.currentPage + 1)}
           disabled={pagination.currentPage >= pagination.totalPages}
-          class="ml-3 relative inline-flex items-center px-4 py-2 border border-supabase-gray-300 text-sm font-medium rounded-md text-supabase-gray-700 bg-white hover:bg-supabase-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Next
         </button>
       </div>
       
       <!-- Desktop pagination -->
-      <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+      <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
         <div>
-          <p class="text-sm text-supabase-gray-700">
-            {formatItemCount()}
+          <p class="text-sm text-gray-700 dark:text-gray-300">
+            Showing {formatItemCount()} items
           </p>
         </div>
         
@@ -254,7 +314,7 @@
           <button
             onclick={goToFirstPage}
             disabled={pagination.currentPage <= 1}
-            class="relative inline-flex items-center px-2 py-2 border border-supabase-gray-300 bg-white text-sm font-medium text-supabase-gray-500 hover:bg-supabase-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+            class="relative inline-flex items-center px-2 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
             title="First page"
           >
             <ChevronsLeft class="h-4 w-4" />
@@ -264,7 +324,7 @@
           <button
             onclick={() => goToPage(pagination.currentPage - 1)}
             disabled={pagination.currentPage <= 1}
-            class="relative inline-flex items-center px-2 py-2 border border-supabase-gray-300 bg-white text-sm font-medium text-supabase-gray-500 hover:bg-supabase-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+            class="relative inline-flex items-center px-2 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
             title="Previous page"
           >
             <ChevronLeft class="h-4 w-4" />
@@ -280,9 +340,13 @@
                 class:text-white={page === pagination.currentPage}
                 class:border-supabase-green={page === pagination.currentPage}
                 class:bg-white={page !== pagination.currentPage}
-                class:text-supabase-gray-700={page !== pagination.currentPage}
-                class:border-supabase-gray-300={page !== pagination.currentPage}
-                class:hover:bg-supabase-gray-50={page !== pagination.currentPage}
+                class:dark:bg-gray-800={page !== pagination.currentPage}
+                class:text-gray-700={page !== pagination.currentPage}
+                class:dark:text-gray-300={page !== pagination.currentPage}
+                class:border-gray-300={page !== pagination.currentPage}
+                class:dark:border-gray-600={page !== pagination.currentPage}
+                class:hover:bg-gray-50={page !== pagination.currentPage}
+                class:dark:hover:bg-gray-700={page !== pagination.currentPage}
               >
                 {page}
               </button>
@@ -293,7 +357,7 @@
           <button
             onclick={() => goToPage(pagination.currentPage + 1)}
             disabled={pagination.currentPage >= pagination.totalPages}
-            class="relative inline-flex items-center px-2 py-2 border border-supabase-gray-300 bg-white text-sm font-medium text-supabase-gray-500 hover:bg-supabase-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+            class="relative inline-flex items-center px-2 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
             title="Next page"
           >
             <ChevronRight class="h-4 w-4" />
@@ -303,7 +367,7 @@
           <button
             onclick={goToLastPage}
             disabled={pagination.currentPage >= pagination.totalPages}
-            class="relative inline-flex items-center px-2 py-2 border border-supabase-gray-300 bg-white text-sm font-medium text-supabase-gray-500 hover:bg-supabase-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+            class="relative inline-flex items-center px-2 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
             title="Last page"
           >
             <ChevronsRight class="h-4 w-4" />

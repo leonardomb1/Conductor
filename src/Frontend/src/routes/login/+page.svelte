@@ -44,44 +44,45 @@
   <title>Login - Conductor</title>
 </svelte:head>
 
-<div
-  class="min-h-screen flex items-center justify-center bg-supabase-gray-50 py-12 px-4 sm:px-6 lg:px-8"
->
+<div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
   <div class="max-w-md w-full space-y-8">
-    <div>
-      <div
-        class="mx-auto h-12 w-12 bg-supabase-green rounded-lg flex items-center justify-center"
-      >
+    <div class="text-center">
+      <div class="mx-auto h-12 w-12 bg-supabase-green rounded-lg flex items-center justify-center">
         <span class="text-white font-bold text-xl">C</span>
       </div>
-      <h2 class="mt-6 text-center text-3xl font-bold text-supabase-gray-900">
+      <h2 class="mt-6 text-3xl font-bold text-gray-900 dark:text-white">
         Sign in to Conductor
       </h2>
-      <p class="mt-2 text-center text-sm text-supabase-gray-600">
+      <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
         ETL Data Pipeline Management
       </p>
     </div>
 
     <div class="mt-8 space-y-6">
-      <div class="bg-white p-6 rounded-lg shadow">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
         <div class="space-y-4">
-          <div class="flex rounded-md border border-supabase-gray-300">
+          <!-- Login Type Selector -->
+          <div class="flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
             <button
-              class="flex-1 px-4 py-2 text-sm font-medium rounded-l-md transition-colors"
+              class="flex-1 px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-supabase-green focus:ring-inset"
               class:bg-supabase-green={loginType === "local"}
               class:text-white={loginType === "local"}
-              class:text-supabase-gray-700={loginType !== "local"}
+              class:text-gray-700={loginType !== "local"}
+              class:dark:text-gray-300={loginType !== "local"}
               class:bg-white={loginType !== "local"}
+              class:dark:bg-gray-800={loginType !== "local"}
               onclick={() => (loginType = "local")}
             >
               Local
             </button>
             <button
-              class="flex-1 px-4 py-2 text-sm font-medium rounded-r-md transition-colors"
+              class="flex-1 px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-supabase-green focus:ring-inset"
               class:bg-supabase-green={loginType === "ldap"}
               class:text-white={loginType === "ldap"}
-              class:text-supabase-gray-700={loginType !== "ldap"}
+              class:text-gray-700={loginType !== "ldap"}
+              class:dark:text-gray-300={loginType !== "ldap"}
               class:bg-white={loginType !== "ldap"}
+              class:dark:bg-gray-800={loginType !== "ldap"}
               onclick={() => (loginType = "ldap")}
             >
               LDAP
@@ -107,13 +108,15 @@
           />
 
           {#if error}
-            <div class="text-red-600 text-sm">{error}</div>
+            <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3">
+              <div class="text-red-600 dark:text-red-400 text-sm">{error}</div>
+            </div>
           {/if}
 
           <Button
             variant="primary"
             size="lg"
-            class="relative w-full bg-gradient-to-r from-supabase-green to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 ease-in-out focus:outline-none focus:ring-4 focus:ring-green-300 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            class="w-full bg-gradient-to-r from-supabase-green to-green-600 hover:from-green-600 hover:to-green-700 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 ease-in-out focus:outline-none focus:ring-4 focus:ring-green-300 dark:focus:ring-green-800 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             disabled={loading}
             onclick={handleLogin}
           >
