@@ -34,9 +34,11 @@ public sealed class Message<T>(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<T>? Content { get; set; } = values;
 
-    public static FetchResponse<T> FetchSuccess(List<T> data, int? page = null, int? pageSize = null, bool hasNestedData = false, FetchMetadata? metadata = null)
+    public Message() : this(0, "", null, false, null) { }
+
+    public static Message<T> FetchSuccess(List<T> data, int? page = null, bool hasNestedData = false, FetchMetadata? metadata = null)
     {
-        return new FetchResponse<T>
+        return new Message<T>
         {
             StatusCode = 200,
             Information = "OK",
@@ -49,9 +51,9 @@ public sealed class Message<T>(
         };
     }
 
-    public static FetchResponse<T> FetchNotFound(string message = "Requested resource was not found.")
+    public static Message<T> FetchNotFound(string message = "Requested resource was not found.")
     {
-        return new FetchResponse<T>
+        return new Message<T>
         {
             StatusCode = 200,
             Information = message,
