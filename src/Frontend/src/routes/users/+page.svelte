@@ -53,10 +53,10 @@
       render: (value: any, row: User) => {
         return `
           <div class="flex space-x-2">
-            <button onclick="editUser(${row.id})" class="text-green-600 hover:text-green-800" title="Edit">
+            <button onclick="editUser(${row.id})" class="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Edit">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
             </button>
-            <button onclick="deleteUser(${row.id})" class="text-red-600 hover:text-red-800" title="Delete">
+            <button onclick="deleteUser(${row.id})" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
             </button>
           </div>
@@ -240,19 +240,19 @@
   </PageHeader>
 
   <!-- Filters -->
-  <div class="bg-white p-4 rounded-lg shadow">
+  <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
     <div class="flex justify-between items-center gap-4">
       <div class="max-w-md flex-1">
         <Input placeholder="Search users..." bind:value={searchTerm} />
       </div>
-      <div class="text-sm text-supabase-gray-600">
+      <div class="text-sm text-gray-600 dark:text-gray-400">
         Showing {users.length} of {totalItems.toLocaleString()} users
       </div>
     </div>
   </div>
 
   <!-- Users Table -->
-  <div class="bg-white shadow rounded-lg">
+  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg border border-gray-200 dark:border-gray-700">
     <div class="p-6">
       <Table
         {columns}
@@ -306,7 +306,7 @@
       placeholder="Confirm password"
     />
 
-    <div class="flex justify-end space-x-3 pt-4">
+    <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
       <Button variant="secondary" onclick={() => (showModal = false)}>
         Cancel
       </Button>

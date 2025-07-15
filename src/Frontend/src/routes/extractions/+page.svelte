@@ -103,7 +103,7 @@
             type="checkbox" 
             ${isSelected ? "checked" : ""} 
             onchange="toggleSelection(${row.id})"
-            class="rounded border-supabase-gray-300 text-supabase-green focus:ring-supabase-green"
+            class="rounded border-gray-300 dark:border-gray-600 text-supabase-green focus:ring-supabase-green dark:bg-gray-800"
           />
         `
       },
@@ -117,10 +117,10 @@
       render: (value: string) => {
         const type = value || "db"
         const colors = {
-          http: "bg-blue-100 text-blue-800",
-          db: "bg-green-100 text-green-800",
+          http: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300",
+          db: "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300",
         }
-        return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[type as keyof typeof colors] || "bg-gray-100 text-gray-800"}">${type}</span>`
+        return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[type as keyof typeof colors] || "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"}">${type}</span>`
       },
     },
     {
@@ -147,8 +147,8 @@
       sortable: true,
       render: (value: boolean) => {
         return value
-          ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Yes</span>'
-          : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">No</span>'
+          ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">Yes</span>'
+          : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">No</span>'
       },
     },
     {
@@ -157,13 +157,13 @@
       render: (value: any, row: Extraction) => {
         return `
           <div class="flex space-x-2">
-            <button onclick="viewExtraction(${row.id})" class="text-blue-600 hover:text-blue-800" title="View">
+            <button onclick="viewExtraction(${row.id})" class="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300" title="View">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
             </button>
-            <button onclick="editExtraction(${row.id})" class="text-green-600 hover:text-green-800" title="Edit">
+            <button onclick="editExtraction(${row.id})" class="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Edit">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
             </button>
-            <button onclick="deleteExtraction(${row.id})" class="text-red-600 hover:text-red-800" title="Delete">
+            <button onclick="deleteExtraction(${row.id})" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
             </button>
           </div>
@@ -643,27 +643,27 @@
   </PageHeader>
 
   <!-- Enhanced Filters -->
-  <div class="bg-white p-6 rounded-lg shadow">
+  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
     <div class="space-y-4">
       <!-- Quick Search -->
       <div class="relative">
         <div
           class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
         >
-          <Search class="h-5 w-5 text-supabase-gray-400" />
+          <Search class="h-5 w-5 text-gray-400 dark:text-gray-500" />
         </div>
         <input
           type="text"
           bind:value={filters.search}
           placeholder="Search across name, alias, and index name..."
-          class="block w-full pl-10 pr-10 py-3 border border-supabase-gray-300 rounded-md leading-5 bg-white placeholder-supabase-gray-500 focus:outline-none focus:ring-1 focus:ring-supabase-green focus:border-supabase-green"
+          class="block w-full pl-10 pr-10 py-3 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-800 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-supabase-green focus:border-supabase-green"
         />
         {#if filters.search}
           <button
             onclick={() => {
               filters.search = ""
             }}
-            class="absolute inset-y-0 right-0 pr-3 flex items-center text-supabase-gray-400 hover:text-supabase-gray-600"
+            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
           >
             <X class="h-5 w-5" />
           </button>
@@ -726,15 +726,15 @@
 
       <!-- Advanced Filters -->
       {#if filters.showAdvanced}
-        <div class="border-t border-supabase-gray-200 pt-4 mt-4">
-          <h4 class="text-sm font-medium text-supabase-gray-900 mb-4">
+        <div class="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+          <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
             Advanced Filters
           </h4>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <!-- Exact Name Filters -->
             <div class="space-y-3">
               <h5
-                class="text-xs font-medium text-supabase-gray-700 uppercase tracking-wider"
+                class="text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider"
               >
                 Exact Matches
               </h5>
@@ -753,7 +753,7 @@
             <!-- Entity Filters -->
             <div class="space-y-3">
               <h5
-                class="text-xs font-medium text-supabase-gray-700 uppercase tracking-wider"
+                class="text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider"
               >
                 Related Entities
               </h5>
@@ -777,7 +777,7 @@
             <!-- ID Filters -->
             <div class="space-y-3">
               <h5
-                class="text-xs font-medium text-supabase-gray-700 uppercase tracking-wider"
+                class="text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider"
               >
                 ID Filters
               </h5>
@@ -806,7 +806,7 @@
 
       <!-- Results Summary -->
       <div
-        class="flex justify-between items-center text-sm text-supabase-gray-600 border-t border-supabase-gray-200 pt-4"
+        class="flex justify-between items-center text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-4"
       >
         <div class="space-y-1">
           <span>
@@ -869,7 +869,7 @@
   </div>
 
   <!-- Extractions Table -->
-  <div class="bg-white shadow rounded-lg">
+  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg border border-gray-200 dark:border-gray-700">
     <div class="p-6">
       <Table
         {columns}
@@ -895,37 +895,37 @@
 <!-- Enhanced Execute Modal -->
 <Modal bind:open={showExecuteModal} title="Execute Extractions" size="lg">
   <div class="space-y-6">
-    <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+    <div class="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-400 dark:border-blue-600 p-4">
       <div class="flex">
         <div class="flex-shrink-0">
-          <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+          <svg class="h-5 w-5 text-blue-400 dark:text-blue-300" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
         </div>
         <div class="ml-3">
-          <h3 class="text-sm font-medium text-blue-800">
+          <h3 class="text-sm font-medium text-blue-800 dark:text-blue-300">
             Execute {selectedExtractions.length} selected extraction{selectedExtractions.length !== 1 ? "s" : ""}
           </h3>
-          <div class="mt-2 text-sm text-blue-700">
+          <div class="mt-2 text-sm text-blue-700 dark:text-blue-400">
             <p>This will start a background job for the selected extractions. You can monitor the job progress in the Jobs section.</p>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="bg-supabase-gray-50 p-4 rounded-md max-h-60 overflow-y-auto">
-      <h5 class="text-sm font-medium text-supabase-gray-700 mb-3">
+    <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-md max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700">
+      <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
         Selected extractions ({selectedExtractions.length}):
       </h5>
-      <div class="text-sm text-supabase-gray-600 space-y-2">
+      <div class="text-sm text-gray-600 dark:text-gray-400 space-y-2">
         {#each selectedExtractions as id}
           {@const extraction = extractions.find((e) => e.id === id)}
-          <div class="flex items-center justify-between p-2 bg-white rounded border">
+          <div class="flex items-center justify-between p-2 bg-white dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-600">
             <div class="flex-1">
-              <span class="font-medium text-supabase-gray-900">
+              <span class="font-medium text-gray-900 dark:text-white">
                 {extraction?.extractionName || `ID: ${id}`}
               </span>
-              <div class="text-xs text-supabase-gray-500 mt-1">
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {extraction?.origin?.originName || "No origin"} → 
                 {executeType === "transfer" 
                   ? (extraction?.destination?.destinationName || "No destination")
@@ -935,15 +935,15 @@
             </div>
             <div class="ml-3 flex-shrink-0">
               {#if executeType === "transfer" && !extraction?.destinationId}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
                   No Destination
                 </span>
               {:else if !extraction?.originId}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
                   No Origin
                 </span>
               {:else}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
                   Ready
                 </span>
               {/if}
@@ -963,15 +963,15 @@
         ]}
       />
 
-      <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3">
+      <div class="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-600 p-3">
         <div class="flex">
           <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+            <svg class="h-5 w-5 text-yellow-400 dark:text-yellow-300" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
             </svg>
           </div>
           <div class="ml-3">
-            <p class="text-sm text-yellow-700">
+            <p class="text-sm text-yellow-700 dark:text-yellow-400">
               {#if executeType === "transfer"}
                 <strong>Transfer mode:</strong> Data will be transferred to the configured destination databases.
               {:else}
@@ -983,7 +983,7 @@
       </div>
     </div>
 
-    <div class="flex justify-end space-x-3 pt-4 border-t border-supabase-gray-200">
+    <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
       <Button variant="secondary" onclick={() => (showExecuteModal = false)} disabled={executeLoading}>
         Cancel
       </Button>
@@ -1040,5 +1040,24 @@
     font-weight: 600;
     color: #92400e;
     border: 1px solid #fbbf24;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+  }
+  
+  :global(.dark .job-guid-highlight) {
+    background-color: #451a03;
+    color: #fed7aa;
+    border-color: #92400e;
+  }
+  
+  :global(.job-guid-highlight:hover) {
+    background-color: #fed7aa;
+    border-color: #f97316;
+    transform: scale(1.02);
+  }
+  
+  :global(.dark .job-guid-highlight:hover) {
+    background-color: #7c2d12;
+    border-color: #ea580c;
   }
 </style>

@@ -61,12 +61,12 @@
       render: (value: string) => {
         if (!value) return "-"
         const colors = {
-          PostgreSQL: "bg-blue-100 text-blue-800",
-          MySQL: "bg-orange-100 text-orange-800",
-          SqlServer: "bg-green-100 text-green-800",
+          PostgreSQL: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300",
+          MySQL: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300",
+          SqlServer: "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300",
         }
         const colorClass =
-          colors[value as keyof typeof colors] || "bg-gray-100 text-gray-800"
+          colors[value as keyof typeof colors] || "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
         return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}">${value}</span>`
       },
     },
@@ -82,10 +82,10 @@
       render: (value: any, row: Origin) => {
         return `
           <div class="flex space-x-2">
-            <button onclick="editOrigin(${row.id})" class="text-green-600 hover:text-green-800" title="Edit">
+            <button onclick="editOrigin(${row.id})" class="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" title="Edit">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
             </button>
-            <button onclick="deleteOrigin(${row.id})" class="text-red-600 hover:text-red-800" title="Delete">
+            <button onclick="deleteOrigin(${row.id})" class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300" title="Delete">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
             </button>
           </div>
@@ -203,7 +203,6 @@
       showModal = false
       await loadOrigins()
     } catch (error) {
-      error(`Failed to ${modalMode} origin:`, error)
       showToastMessage(
         `Failed to ${modalMode} origin: ${error.message}`,
         "error",
@@ -275,14 +274,14 @@
   </PageHeader>
 
   <!-- Filters -->
-  <div class="bg-white p-4 rounded-lg shadow">
+  <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
     <div class="max-w-md">
       <Input placeholder="Search origins..." bind:value={searchTerm} />
     </div>
   </div>
 
   <!-- Origins Table -->
-  <div class="bg-white shadow rounded-lg">
+  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg border border-gray-200 dark:border-gray-700">
     <div class="p-6">
       <Table
         {columns}
@@ -338,7 +337,7 @@
     <div>
       <label
         for="connectionString"
-        class="block text-sm font-medium text-supabase-gray-700 mb-1"
+        class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
       >
         Connection String
         <span class="text-red-500">*</span>
@@ -348,12 +347,13 @@
         bind:value={formData.originConStr}
         class="form-textarea"
         class:border-red-300={errors.originConStr}
+        class:dark:border-red-500={errors.originConStr}
         rows="3"
         placeholder="Server=localhost;Database=mydb;User Id=user;Password=password;"
         required
       ></textarea>
       {#if errors.originConStr}
-        <p class="mt-1 text-sm text-red-600">{errors.originConStr}</p>
+        <p class="mt-1 text-sm text-red-600 dark:text-red-400">{errors.originConStr}</p>
       {/if}
     </div>
 
@@ -365,7 +365,7 @@
       help="Hours offset from UTC (e.g., -5 for EST, +2 for CEST)"
     />
 
-    <div class="flex justify-end space-x-3 pt-4">
+    <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
       <Button variant="secondary" onclick={() => (showModal = false)}>
         Cancel
       </Button>
