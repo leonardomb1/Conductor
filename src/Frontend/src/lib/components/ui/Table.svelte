@@ -218,8 +218,7 @@
       </tbody>
     </table>
   </div>
-
-  <!-- Mobile Card View -->
+<!-- Mobile Card View with Selection Support -->
   {#if mobileCardView}
     <div class="sm:hidden">
       {#if loading}
@@ -245,9 +244,36 @@
         <div class="divide-y divide-gray-200 dark:divide-gray-700">
           {#each data as row, i}
             <div class="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+              <!-- Mobile Selection Header -->
+              {#if columns.find(col => col.key === 'selection')}
+                <div class="flex items-center justify-between mb-3 pb-2 border-b border-gray-100 dark:border-gray-600">
+                  <div class="flex items-center space-x-3">
+                    <!-- Selection Input with Better Mobile UX -->
+                    <div class="flex items-center">
+                      {@html columns.find(col => col.key === 'selection')?.render?.(null, row) || ''}
+                    </div>
+                    <!-- Primary identifier (usually name or title) -->
+                    {#each columns.filter(col => col.key !== 'actions' && col.key !== 'selection') as column}
+                      {#if column.key.toLowerCase().includes('name') || column.key.toLowerCase().includes('title')}
+                        <span class="font-semibold text-gray-900 dark:text-white text-base">
+                          {row[column.key] || '-'}
+                        </span>
+                      {/if}
+                    {/each}
+                  </div>
+                  <!-- Quick Action Buttons -->
+                  {#each columns.filter(col => col.key === 'actions') as actionsColumn}
+                    <div class="flex space-x-1">
+                      {@html actionsColumn.render?.(null, row) || ''}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+              
+              <!-- Mobile Card Content -->
               <div class="space-y-2">
-                {#each columns.filter(col => col.key !== 'actions') as column}
-                  {#if row[column.key] !== undefined && row[column.key] !== null && row[column.key] !== ''}
+                {#each columns.filter(col => col.key !== 'actions' && col.key !== 'selection') as column}
+                  {#if row[column.key] !== undefined && row[column.key] !== null && row[column.key] !== '' && !column.key.toLowerCase().includes('name')}
                     <div class="flex justify-between items-start">
                       <span class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         {column.label}:
@@ -263,12 +289,14 @@
                   {/if}
                 {/each}
                 
-                <!-- Actions always at bottom if present -->
-                {#each columns.filter(col => col.key === 'actions') as actionsColumn}
-                  <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
-                    {@html actionsColumn.render?.(null, row) || ''}
-                  </div>
-                {/each}
+                <!-- Actions at bottom if not already shown and no selection -->
+                {#if !columns.find(col => col.key === 'selection')}
+                  {#each columns.filter(col => col.key === 'actions') as actionsColumn}
+                    <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                      {@html actionsColumn.render?.(null, row) || ''}
+                    </div>
+                  {/each}
+                {/if}
               </div>
             </div>
           {/each}
@@ -276,7 +304,6 @@
       {/if}
     </div>
   {/if}
-  
   <!-- Enhanced Pagination -->
   {#if pagination && pagination.totalPages > 1}
     <div class="bg-white dark:bg-gray-800 px-4 py-3 flex flex-col sm:flex-row items-center justify-between border-t border-gray-200 dark:border-gray-700 gap-3">
