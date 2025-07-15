@@ -47,6 +47,51 @@
 
   let errors = $state<Record<string, string>>({})
 
+  // Mobile-optimized columns
+  const mobileColumns = [
+    { 
+      key: "originName", 
+      label: "Origin", 
+      render: (value: string, row: Origin) => {
+        const dbTypeColors = {
+          PostgreSQL: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300",
+          MySQL: "bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300",
+          SqlServer: "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300",
+        }
+        const dbTypeColor = dbTypeColors[row.originDbType as keyof typeof dbTypeColors] || "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+        
+        return `
+          <div class="space-y-3">
+            <div class="flex items-start justify-between">
+              <div class="min-w-0 flex-1">
+                <h3 class="font-medium text-gray-900 dark:text-white text-base leading-tight">${value}</h3>
+                ${row.originAlias ? `<p class="text-sm text-gray-600 dark:text-gray-400 mt-1">${row.originAlias}</p>` : ''}
+              </div>
+              <div class="flex items-center space-x-2 ml-3">
+                <button onclick="editOrigin(${row.id})" class="p-2 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-md transition-colors" title="Edit">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                </button>
+                <button onclick="deleteOrigin(${row.id})" class="p-2 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors" title="Delete">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center space-x-3">
+              ${row.originDbType ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${dbTypeColor}">${row.originDbType}</span>` : ''}
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                <span class="font-medium">Timezone:</span> ${row.originTimeZoneOffSet ? (row.originTimeZoneOffSet > 0 ? '+' : '') + row.originTimeZoneOffSet : '0'}
+              </span>
+            </div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              <span class="font-medium">ID:</span> ${row.id}
+            </div>
+          </div>
+        `
+      }
+    }
+  ]
+
+  // Desktop columns
   const columns = [
     { key: "id", label: "ID", sortable: true, width: "80px" },
     { key: "originName", label: "Name", sortable: true },
@@ -263,7 +308,7 @@
   <title>Origins - Conductor</title>
 </svelte:head>
 
-<div class="space-y-6">
+<div class="space-y-4 sm:space-y-6">
   <PageHeader title="Origins" description="Manage data source connections">
     {#snippet actions()}
       <Button variant="primary" onclick={openCreateModal}>
@@ -273,30 +318,91 @@
     {/snippet}
   </PageHeader>
 
-  <!-- Filters -->
+  <!-- Search -->
   <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-    <div class="max-w-md">
-      <Input placeholder="Search origins..." bind:value={searchTerm} />
+    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+      <div class="flex-1 max-w-md">
+        <Input placeholder="Search origins..." bind:value={searchTerm} />
+      </div>
+      <div class="text-sm text-gray-600 dark:text-gray-400">
+        Showing {origins.length} of {totalItems.toLocaleString()} origins
+      </div>
     </div>
   </div>
 
-  <!-- Origins Table -->
+  <!-- Origins Content -->
   <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg border border-gray-200 dark:border-gray-700">
-    <div class="p-6">
-      <Table
-        {columns}
-        data={origins}
-        {loading}
-        emptyMessage="No origins found"
-        pagination={{
-          currentPage,
-          totalPages,
-          pageSize,
-          totalItems,
-          onPageChange: handlePageChange,
-          onPageSizeChange: handlePageSizeChange,
-        }}
-      />
+    <div class="p-3 sm:p-6">
+      <!-- Mobile view: Card layout -->
+      <div class="block sm:hidden space-y-3">
+        {#if loading}
+          <div class="flex justify-center py-8">
+            <svg class="animate-spin h-8 w-8 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          </div>
+        {:else if origins.length === 0}
+          <div class="text-center py-8">
+            <Database class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" />
+            <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+              No origins found
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Get started by creating a new origin.
+            </p>
+          </div>
+        {:else}
+          {#each origins as origin}
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+              {@html mobileColumns[0].render(origin.originName, origin)}
+            </div>
+          {/each}
+        {/if}
+
+        <!-- Mobile Pagination -->
+        {#if totalPages > 1}
+          <div class="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700 gap-2">
+            <Button
+              variant="secondary"
+              onclick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1}
+              class="min-h-[44px] px-4 py-2 text-sm font-medium"
+            >
+              Previous
+            </Button>
+            <span class="text-sm text-gray-600 dark:text-gray-400 font-medium px-2">
+              {currentPage} / {totalPages}
+            </span>
+            <Button
+              variant="secondary"
+              onclick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
+              class="min-h-[44px] px-4 py-2 text-sm font-medium"
+            >
+              Next
+            </Button>
+          </div>
+        {/if}
+      </div>
+
+      <!-- Desktop view: Table layout -->
+      <div class="hidden sm:block">
+        <Table
+          {columns}
+          data={origins}
+          {loading}
+          emptyMessage="No origins found"
+          pagination={{
+            currentPage,
+            totalPages,
+            pageSize,
+            totalItems,
+            onPageChange: handlePageChange,
+            onPageSizeChange: handlePageSizeChange,
+          }}
+        />
+      </div>
     </div>
   </div>
 </div>

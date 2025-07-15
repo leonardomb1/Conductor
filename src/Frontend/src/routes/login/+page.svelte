@@ -38,6 +38,9 @@
       handleLogin()
     }
   }
+
+  // Remove any reactive effects that might cause re-renders
+  // The navigation logic should be handled in the auth store or in handleLogin
 </script>
 
 <svelte:head>
@@ -64,6 +67,7 @@
           <!-- Login Type Selector -->
           <div class="flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
             <button
+              type="button"
               class="flex-1 px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-supabase-green focus:ring-inset"
               class:bg-supabase-green={loginType === "local"}
               class:text-white={loginType === "local"}
@@ -76,6 +80,7 @@
               Local
             </button>
             <button
+              type="button"
               class="flex-1 px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-supabase-green focus:ring-inset"
               class:bg-supabase-green={loginType === "ldap"}
               class:text-white={loginType === "ldap"}
