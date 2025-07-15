@@ -74,9 +74,9 @@
               ? "info"
               : "error"
         const colors = {
-          success: "bg-green-100 text-green-800",
-          info: "bg-blue-100 text-blue-800",
-          error: "bg-red-100 text-red-800",
+          success: "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300",
+          info: "bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300",
+          error: "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300",
         }
         return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[variant]}">${value}</span>`
       },
@@ -407,8 +407,8 @@
           <Clock class="h-8 w-8 text-blue-500" />
         </div>
         <div class="ml-4">
-          <p class="text-sm font-medium text-supabase-gray-600">Active Jobs</p>
-          <p class="text-2xl font-semibold text-supabase-gray-900">
+          <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Active Jobs</p>
+          <p class="text-2xl font-semibold text-gray-900 dark:text-white">
             {activeJobs.length}
           </p>
         </div>
@@ -421,10 +421,10 @@
           <CheckCircle class="h-8 w-8 text-green-500" />
         </div>
         <div class="ml-4">
-          <p class="text-sm font-medium text-supabase-gray-600">
+          <p class="text-sm font-medium text-gray-600 dark:text-gray-400">
             Completed (24h)
           </p>
-          <p class="text-2xl font-semibold text-supabase-gray-900">
+          <p class="text-2xl font-semibold text-gray-900 dark:text-white">
             {recentJobs.filter((j) => j.status === "Completed").length}
           </p>
         </div>
@@ -437,8 +437,8 @@
           <XCircle class="h-8 w-8 text-red-500" />
         </div>
         <div class="ml-4">
-          <p class="text-sm font-medium text-supabase-gray-600">Failed (24h)</p>
-          <p class="text-2xl font-semibold text-supabase-gray-900">
+          <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Failed (24h)</p>
+          <p class="text-2xl font-semibold text-gray-900 dark:text-white">
             {recentJobs.filter((j) => j.status === "Failed").length}
           </p>
         </div>
@@ -451,10 +451,10 @@
           <BarChart3 class="h-8 w-8 text-purple-500" />
         </div>
         <div class="ml-4">
-          <p class="text-sm font-medium text-supabase-gray-600">
+          <p class="text-sm font-medium text-gray-600 dark:text-gray-400">
             Data Processed (24h)
           </p>
-          <p class="text-2xl font-semibold text-supabase-gray-900">
+          <p class="text-2xl font-semibold text-gray-900 dark:text-white">
             {(
               recentJobs.reduce((sum, job) => sum + job.megaBytes, 0) / 1024
             ).toFixed(1)} GB
@@ -465,16 +465,18 @@
   </div>
 
   <!-- View Tabs -->
-  <div class="bg-white shadow rounded-lg">
-    <div class="border-b border-supabase-gray-200">
+  <div class="bg-white dark:bg-gray-800 shadow rounded-lg">
+    <div class="border-b border-gray-200 dark:border-gray-700">
       <nav class="-mb-px flex space-x-8 px-6">
         <button
           class="py-4 px-1 border-b-2 font-medium text-sm transition-colors"
           class:border-supabase-green={activeView === "active"}
           class:text-supabase-green={activeView === "active"}
           class:border-transparent={activeView !== "active"}
-          class:text-supabase-gray-500={activeView !== "active"}
-          class:hover:text-supabase-gray-700={activeView !== "active"}
+          class:text-gray-500={activeView !== "active"}
+          class:dark:text-gray-400={activeView !== "active"}
+          class:hover:text-gray-700={activeView !== "active"}
+          class:dark:hover:text-gray-300={activeView !== "active"}
           onclick={() => (activeView = "active")}
         >
           Active Jobs ({activeJobs.length})
@@ -484,8 +486,10 @@
           class:border-supabase-green={activeView === "recent"}
           class:text-supabase-green={activeView === "recent"}
           class:border-transparent={activeView !== "recent"}
-          class:text-supabase-gray-500={activeView !== "recent"}
-          class:hover:text-supabase-gray-700={activeView !== "recent"}
+          class:text-gray-500={activeView !== "recent"}
+          class:dark:text-gray-400={activeView !== "recent"}
+          class:hover:text-gray-700={activeView !== "recent"}
+          class:dark:hover:text-gray-300={activeView !== "recent"}
           onclick={() => (activeView = "recent")}
         >
           Recent Jobs ({totalItems.toLocaleString()})
@@ -495,8 +499,10 @@
           class:border-supabase-green={activeView === "aggregated"}
           class:text-supabase-green={activeView === "aggregated"}
           class:border-transparent={activeView !== "aggregated"}
-          class:text-supabase-gray-500={activeView !== "aggregated"}
-          class:hover:text-supabase-gray-700={activeView !== "aggregated"}
+          class:text-gray-500={activeView !== "aggregated"}
+          class:dark:text-gray-400={activeView !== "aggregated"}
+          class:hover:text-gray-700={activeView !== "aggregated"}
+          class:dark:hover:text-gray-300={activeView !== "aggregated"}
           onclick={() => (activeView = "aggregated")}
         >
           Aggregated View ({aggregatedTotalItems.toLocaleString()})
@@ -509,11 +515,11 @@
         <div class="space-y-4">
           {#if activeJobs.length === 0}
             <div class="text-center py-12">
-              <Clock class="mx-auto h-12 w-12 text-supabase-gray-400" />
-              <h3 class="mt-2 text-sm font-medium text-supabase-gray-900">
+              <Clock class="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" />
+              <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
                 No active jobs
               </h3>
-              <p class="mt-1 text-sm text-supabase-gray-500">
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 All extractions are currently idle.
               </p>
             </div>
@@ -567,7 +573,7 @@
 
           <!-- Results Summary -->
           <div
-            class="flex justify-between items-center text-sm text-supabase-gray-600"
+            class="flex justify-between items-center text-sm text-gray-600 dark:text-gray-400"
           >
             <span>
               Showing {recentJobs.length} of {totalItems.toLocaleString()} jobs
@@ -598,7 +604,7 @@
       {:else if activeView === "aggregated"}
         <div class="space-y-4">
           <div class="flex justify-between items-center">
-            <p class="text-sm text-supabase-gray-600">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
               Showing aggregated statistics for the selected time period
             </p>
             <Select
@@ -614,7 +620,7 @@
 
           <!-- Results Summary -->
           <div
-            class="flex justify-between items-center text-sm text-supabase-gray-600"
+            class="flex justify-between items-center text-sm text-gray-600 dark:text-gray-400"
           >
             <span>
               Showing {aggregatedJobs.length} of {aggregatedTotalItems.toLocaleString()}

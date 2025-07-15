@@ -317,7 +317,7 @@
     description="Extraction configuration details"
   >
     {#snippet actions()}
-      <div class="flex space-x-3">
+      <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
         <Button variant="ghost" onclick={() => history.back()}>
           <ArrowLeft size={16} class="mr-2" />
           Back
@@ -346,7 +346,7 @@
 
   {#if loading}
     <div class="flex justify-center py-12">
-      <svg class="animate-spin h-8 w-8 text-supabase-gray-500" fill="none" viewBox="0 0 24 24">
+      <svg class="animate-spin h-8 w-8 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
       </svg>
@@ -354,7 +354,7 @@
   {:else if !extraction}
     <Card>
       <div class="text-center py-12">
-        <p class="text-supabase-gray-500">Extraction not found</p>
+        <p class="text-gray-500 dark:text-gray-400">Extraction not found</p>
       </div>
     </Card>
   {:else}
@@ -364,15 +364,15 @@
         <Card title="Basic Information">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Name</span>
-              <p class="mt-1 text-sm text-supabase-gray-900">{extraction.extractionName}</p>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</span>
+              <p class="mt-1 text-sm text-gray-900 dark:text-white">{extraction.extractionName}</p>
             </div>
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Alias</span>
-              <p class="mt-1 text-sm text-supabase-gray-900">{extraction.extractionAlias || '-'}</p>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Alias</span>
+              <p class="mt-1 text-sm text-gray-900 dark:text-white">{extraction.extractionAlias || '-'}</p>
             </div>
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Source Type</span>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Source Type</span>
               <p class="mt-1">
                 <Badge variant={extraction.sourceType === 'http' ? 'info' : 'success'}>
                   {extraction.sourceType || 'db'}
@@ -380,8 +380,8 @@
               </p>
             </div>
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Index Name</span>
-              <p class="mt-1 text-sm text-supabase-gray-900">{extraction.indexName || '-'}</p>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Index Name</span>
+              <p class="mt-1 text-sm text-gray-900 dark:text-white">{extraction.indexName || '-'}</p>
             </div>
           </div>
         </Card>
@@ -389,7 +389,7 @@
         <Card title="Configuration">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Incremental</span>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Incremental</span>
               <p class="mt-1">
                 <Badge variant={extraction.isIncremental ? 'success' : 'default'}>
                   {extraction.isIncremental ? 'Yes' : 'No'}
@@ -397,7 +397,7 @@
               </p>
             </div>
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Virtual</span>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Virtual</span>
               <p class="mt-1">
                 <Badge variant={extraction.isVirtual ? 'success' : 'default'}>
                   {extraction.isVirtual ? 'Yes' : 'No'}
@@ -405,8 +405,8 @@
               </p>
             </div>
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Filter Time</span>
-              <p class="mt-1 text-sm text-supabase-gray-900">{extraction.filterTime || '-'}</p>
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Filter Time</span>
+              <p class="mt-1 text-sm text-gray-900 dark:text-white">{extraction.filterTime || '-'}</p>
             </div>
           </div>
         </Card>
@@ -415,19 +415,19 @@
           <Card title="HTTP Configuration">
             <div class="space-y-4">
               <div>
-                <span class="block text-sm font-medium text-supabase-gray-700">Endpoint</span>
-                <p class="mt-1 text-sm text-supabase-gray-900 break-all">{extraction.endpointFullName || '-'}</p>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Endpoint</span>
+                <p class="mt-1 text-sm text-gray-900 dark:text-white break-all">{extraction.endpointFullName || '-'}</p>
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <span class="block text-sm font-medium text-supabase-gray-700">HTTP Method</span>
+                  <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">HTTP Method</span>
                   <p class="mt-1">
                     <Badge variant="info">{extraction.httpMethod || 'GET'}</Badge>
                   </p>
                 </div>
                 <div>
-                  <span class="block text-sm font-medium text-supabase-gray-700">Pagination Type</span>
-                  <p class="mt-1 text-sm text-supabase-gray-900">{extraction.paginationType || '-'}</p>
+                  <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Pagination Type</span>
+                  <p class="mt-1 text-sm text-gray-900 dark:text-white">{extraction.paginationType || '-'}</p>
                 </div>
               </div>
             </div>
@@ -436,13 +436,13 @@
 
         {#if extraction.overrideQuery}
           <Card title="Override Query">
-            <pre class="text-sm text-supabase-gray-900 bg-supabase-gray-50 p-4 rounded-md overflow-x-auto">{extraction.overrideQuery}</pre>
+            <pre class="text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-700 p-4 rounded-md overflow-x-auto">{extraction.overrideQuery}</pre>
           </Card>
         {/if}
 
         {#if extraction.script}
           <Card title="Custom Script">
-            <pre class="text-sm text-supabase-gray-900 bg-supabase-gray-50 p-4 rounded-md overflow-x-auto">{extraction.script}</pre>
+            <pre class="text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-700 p-4 rounded-md overflow-x-auto">{extraction.script}</pre>
           </Card>
         {/if}
       </div>
@@ -452,26 +452,26 @@
         <Card title="Relations">
           <div class="space-y-4">
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Origin</span>
-              <p class="mt-1 text-sm text-supabase-gray-900">
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Origin</span>
+              <p class="mt-1 text-sm text-gray-900 dark:text-white">
                 {extraction.origin?.originName || '-'}
               </p>
               {#if !extraction.originId}
-                <p class="mt-1 text-xs text-red-600">⚠ No origin configured</p>
+                <p class="mt-1 text-xs text-red-600 dark:text-red-400">⚠ No origin configured</p>
               {/if}
             </div>
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Destination</span>
-              <p class="mt-1 text-sm text-supabase-gray-900">
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Destination</span>
+              <p class="mt-1 text-sm text-gray-900 dark:text-white">
                 {extraction.destination?.destinationName || '-'}
               </p>
               {#if !extraction.destinationId}
-                <p class="mt-1 text-xs text-orange-600">⚠ No destination configured (Pull only)</p>
+                <p class="mt-1 text-xs text-orange-600 dark:text-orange-400">⚠ No destination configured (Pull only)</p>
               {/if}
             </div>
             <div>
-              <span class="block text-sm font-medium text-supabase-gray-700">Schedule</span>
-              <p class="mt-1 text-sm text-supabase-gray-900">
+              <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Schedule</span>
+              <p class="mt-1 text-sm text-gray-900 dark:text-white">
                 {extraction.schedule?.scheduleName || '-'}
               </p>
             </div>
@@ -481,9 +481,9 @@
         <!-- Quick Actions Card -->
         <Card title="Quick Actions">
           {#if !extraction.originId || !extraction.destinationId}
-            <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-              <h4 class="text-sm font-medium text-yellow-800">Configuration Required</h4>
-              <ul class="mt-2 text-xs text-yellow-700 space-y-1">
+            <div class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+              <h4 class="text-sm font-medium text-yellow-800 dark:text-yellow-300">Configuration Required</h4>
+              <ul class="mt-2 text-xs text-yellow-700 dark:text-yellow-400 space-y-1">
                 {#if !extraction.originId}
                   <li>• Configure an origin to enable data operations</li>
                 {/if}
@@ -499,13 +499,13 @@
           <Card title="Filtering">
             <div class="space-y-3">
               <div>
-                <span class="block text-sm font-medium text-supabase-gray-700">Filter Column</span>
-                <p class="mt-1 text-sm text-supabase-gray-900">{extraction.filterColumn}</p>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Filter Column</span>
+                <p class="mt-1 text-sm text-gray-900 dark:text-white">{extraction.filterColumn}</p>
               </div>
               {#if extraction.filterCondition}
                 <div>
-                  <span class="block text-sm font-medium text-supabase-gray-700">Filter Condition</span>
-                  <p class="mt-1 text-sm text-supabase-gray-900">{extraction.filterCondition}</p>
+                  <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">Filter Condition</span>
+                  <p class="mt-1 text-sm text-gray-900 dark:text-white">{extraction.filterCondition}</p>
                 </div>
               {/if}
             </div>
@@ -516,7 +516,7 @@
           <Card title="Dependencies">
             <div class="space-y-2">
               {#each extraction.dependencies.split(',') as dep}
-                <span class="inline-block px-2 py-1 text-xs bg-supabase-gray-100 text-supabase-gray-800 rounded">
+                <span class="inline-block px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded">
                   {dep.trim()}
                 </span>
               {/each}
@@ -531,40 +531,40 @@
 <!-- Execute Confirmation Modal -->
 <Modal bind:open={showExecuteModal} title="Execute Extraction" size="md">
   <div class="space-y-6">
-    <div class="bg-blue-50 border-l-4 border-blue-400 p-4">
+    <div class="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-400 dark:border-blue-600 p-4">
       <div class="flex">
         <div class="flex-shrink-0">
-          <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+          <svg class="h-5 w-5 text-blue-400 dark:text-blue-300" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
         </div>
         <div class="ml-3">
-          <h3 class="text-sm font-medium text-blue-800">
+          <h3 class="text-sm font-medium text-blue-800 dark:text-blue-300">
             Execute {executeType === 'transfer' ? 'Transfer' : 'Pull'} Job
           </h3>
-          <div class="mt-2 text-sm text-blue-700">
+          <div class="mt-2 text-sm text-blue-700 dark:text-blue-400">
             <p>This will start a background job for "{extraction?.extractionName}". You can monitor the job progress in the Jobs section.</p>
           </div>
         </div>
       </div>
     </div>
 
-    <div class="bg-supabase-gray-50 p-4 rounded-md">
-      <h5 class="text-sm font-medium text-supabase-gray-700 mb-3">
+    <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-md">
+      <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
         Execution Details:
       </h5>
       <div class="space-y-3 text-sm">
         <div class="flex justify-between">
-          <span class="text-supabase-gray-600">Extraction:</span>
-          <span class="font-medium text-supabase-gray-900">{extraction?.extractionName}</span>
+          <span class="text-gray-600 dark:text-gray-400">Extraction:</span>
+          <span class="font-medium text-gray-900 dark:text-white">{extraction?.extractionName}</span>
         </div>
         <div class="flex justify-between">
-          <span class="text-supabase-gray-600">Source:</span>
-          <span class="text-supabase-gray-900">{extraction?.origin?.originName || 'Not configured'}</span>
+          <span class="text-gray-600 dark:text-gray-400">Source:</span>
+          <span class="text-gray-900 dark:text-white">{extraction?.origin?.originName || 'Not configured'}</span>
         </div>
         <div class="flex justify-between">
-          <span class="text-supabase-gray-600">Target:</span>
-          <span class="text-supabase-gray-900">
+          <span class="text-gray-600 dark:text-gray-400">Target:</span>
+          <span class="text-gray-900 dark:text-white">
             {#if executeType === 'transfer'}
               {extraction?.destination?.destinationName || 'Not configured'}
             {:else}
@@ -573,16 +573,16 @@
           </span>
         </div>
         <div class="flex justify-between">
-          <span class="text-supabase-gray-600">Type:</span>
-          <span class="text-supabase-gray-900">
+          <span class="text-gray-600 dark:text-gray-400">Type:</span>
+          <span class="text-gray-900 dark:text-white">
             <Badge variant={extraction?.sourceType === 'http' ? 'info' : 'success'}>
               {extraction?.sourceType || 'db'}
             </Badge>
           </span>
         </div>
         <div class="flex justify-between">
-          <span class="text-supabase-gray-600">Incremental:</span>
-          <span class="text-supabase-gray-900">
+          <span class="text-gray-600 dark:text-gray-400">Incremental:</span>
+          <span class="text-gray-900 dark:text-white">
             <Badge variant={extraction?.isIncremental ? 'success' : 'default'}>
               {extraction?.isIncremental ? 'Yes' : 'No'}
             </Badge>
@@ -591,15 +591,15 @@
       </div>
     </div>
 
-    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-3">
+    <div class="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-600 p-3">
       <div class="flex">
         <div class="flex-shrink-0">
-          <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+          <svg class="h-5 w-5 text-yellow-400 dark:text-yellow-300" fill="currentColor" viewBox="0 0 20 20">
             <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
         </div>
         <div class="ml-3">
-          <p class="text-sm text-yellow-700">
+          <p class="text-sm text-yellow-700 dark:text-yellow-400">
             {#if executeType === 'transfer'}
               <strong>Transfer mode:</strong> Data will be transferred from the source to the configured destination database.
             {:else}
@@ -610,7 +610,7 @@
       </div>
     </div>
 
-    <div class="flex justify-end space-x-3 pt-4 border-t border-supabase-gray-200">
+    <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
       <Button variant="secondary" onclick={() => (showExecuteModal = false)} disabled={executeConfirmLoading}>
         Cancel
       </Button>
@@ -641,8 +641,8 @@
 <Modal bind:open={showPreviewModal} title="Data Preview" size="2xl" scrollable={true}>
   <div class="space-y-4">
     {#if previewData.length > 0}
-      <div class="flex justify-between items-center">
-        <p class="text-sm text-supabase-gray-600">
+      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
           Showing first {previewData.length} rows
         </p>
         <div class="flex space-x-2">
@@ -658,23 +658,23 @@
       </div>
       
       <!-- Scrollable table container with fixed height -->
-      <div class="border border-supabase-gray-200 rounded-lg">
+      <div class="border border-gray-200 dark:border-gray-700 rounded-lg">
         <div class="overflow-auto max-h-96 w-full">
-          <table class="min-w-full divide-y divide-supabase-gray-200">
-            <thead class="bg-supabase-gray-50 sticky top-0">
+          <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead class="bg-gray-50 dark:bg-gray-800 sticky top-0">
               <tr>
                 {#each previewColumns as column}
-                  <th class="px-4 py-3 text-left text-xs font-medium text-supabase-gray-500 uppercase tracking-wider whitespace-nowrap" style="min-width: 150px;">
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap" style="min-width: 150px;">
                     {column.label}
                   </th>
                 {/each}
               </tr>
             </thead>
-            <tbody class="bg-white divide-y divide-supabase-gray-200">
+            <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {#each previewData as row, i}
-                <tr class="hover:bg-supabase-gray-50">
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                   {#each previewColumns as column}
-                    <td class="px-4 py-3 text-sm text-supabase-gray-900 whitespace-nowrap overflow-hidden text-ellipsis" style="max-width: 200px;" title={row[column.key]}>
+                    <td class="px-4 py-3 text-sm text-gray-900 dark:text-white whitespace-nowrap overflow-hidden text-ellipsis" style="max-width: 200px;" title={row[column.key]}>
                       {row[column.key] ?? '-'}
                     </td>
                   {/each}
@@ -685,7 +685,7 @@
         </div>
       </div>
     {:else}
-      <p class="text-center py-8 text-supabase-gray-500">No data available for preview</p>
+      <p class="text-center py-8 text-gray-500 dark:text-gray-400">No data available for preview</p>
     {/if}
   </div>
 </Modal>

@@ -34,7 +34,65 @@
   * {
     transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, color 0.2s ease-in-out;
   }
-}
+
+  /* Fix default focus outlines in dark mode */
+  .dark *:focus {
+    outline-color: #3ECF8E !important;
+  }
+
+  /* Override browser default form element borders */
+  .dark input,
+  .dark textarea,
+  .dark select {
+    border-color: #4b5563 !important;
+    background-color: #374151 !important;
+    color: #f9fafb !important;
+  }
+
+  .dark input:focus,
+  .dark textarea:focus,
+  .dark select:focus {
+    border-color: #3ECF8E !important;
+    box-shadow: 0 0 0 1px #3ECF8E !important;
+  }
+
+  /* Fix table borders in dark mode */
+  .dark table,
+  .dark th,
+  .dark td {
+    border-color: #374151 !important;
+  }
+
+  /* Fix card and container borders */
+  .dark .ring-1,
+  .dark .border {
+    border-color: #374151 !important;
+  }
+
+  .dark .ring-gray-200 {
+    --tw-ring-color: #374151 !important;
+  }
+
+  .dark .border-gray-200 {
+    border-color: #374151 !important;
+  }
+
+  .dark .border-gray-300 {
+    border-color: #4b5563 !important;
+  }
+
+  /* Fix search input and filter components */
+  .dark .bg-white {
+    background-color: #1f2937 !important;
+  }
+
+  /* Fix shadow colors in dark mode */
+  .dark .shadow,
+  .dark .shadow-sm,
+  .dark .shadow-lg {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px 0 rgba(0, 0, 0, 0.2) !important;
+  }
+</layer>
 
 @layer components {
   .form-input {
@@ -55,7 +113,7 @@
   }
 
   .mobile-card {
-    @apply rounded-lg shadow bg-white dark:bg-gray-800 p-4 sm:p-6;
+    @apply rounded-lg shadow bg-white dark:bg-gray-800 p-4 sm:p-6 border border-gray-200 dark:border-gray-700;
   }
 
   .mobile-button {
@@ -79,6 +137,28 @@
 
   .dark ::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
+  }
+
+  /* Fix table styling in dark mode */
+  .dark-table {
+    @apply bg-gray-800 border-gray-700;
+  }
+
+  .dark-table th {
+    @apply bg-gray-900 text-gray-300 border-gray-700;
+  }
+
+  .dark-table td {
+    @apply bg-gray-800 text-gray-100 border-gray-700;
+  }
+
+  /* Fix form controls in dark mode */
+  .dark .form-control {
+    @apply bg-gray-800 border-gray-600 text-white;
+  }
+
+  .dark .form-control:focus {
+    @apply border-supabase-green ring-supabase-green;
   }
 }
 
@@ -112,6 +192,19 @@
     content: attr(data-label);
     @apply absolute left-2 sm:hidden font-medium text-gray-600 dark:text-gray-400;
   }
+
+  /* Force dark mode styles for problematic elements */
+  .dark-mode-fix {
+    border-color: #4b5563 !important;
+    background-color: #1f2937 !important;
+    color: #f9fafb !important;
+  }
+
+  .dark .dark-mode-fix {
+    border-color: #4b5563 !important;
+    background-color: #1f2937 !important;
+    color: #f9fafb !important;
+  }
 }
 
 /* Toast and modal z-index fixes for mobile */
@@ -133,7 +226,7 @@
 }
 
 .mobile-menu {
-  @apply fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-800 z-40 lg:hidden transform transition-transform duration-300 ease-in-out;
+  @apply fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-800 z-40 lg:hidden transform transition-transform duration-300 ease-in-out border-r border-gray-200 dark:border-gray-700;
 }
 
 .mobile-menu.open {
@@ -142,4 +235,25 @@
 
 .mobile-menu.closed {
   @apply -translate-x-full;
+}
+
+/* Additional dark mode fixes for specific components */
+.dark .bg-gray-50 {
+  background-color: #1f2937 !important;
+}
+
+.dark .text-gray-900 {
+  color: #f9fafb !important;
+}
+
+.dark .text-gray-700 {
+  color: #d1d5db !important;
+}
+
+.dark .text-gray-600 {
+  color: #9ca3af !important;
+}
+
+.dark .text-gray-500 {
+  color: #6b7280 !important;
 }
