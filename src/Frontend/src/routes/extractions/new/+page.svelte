@@ -271,9 +271,9 @@
                 <input
                   type="checkbox"
                   bind:checked={formData.isIncremental}
-                  class="rounded border-supabase-gray-300 text-supabase-green focus:ring-supabase-green"
+                  class="rounded border-gray-300 dark:border-gray-600 text-supabase-green focus:ring-supabase-green dark:bg-gray-800"
                 />
-                <span class="text-sm font-medium text-supabase-gray-700"
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
                   >Incremental</span
                 >
               </label>
@@ -281,9 +281,9 @@
                 <input
                   type="checkbox"
                   bind:checked={formData.isVirtual}
-                  class="rounded border-supabase-gray-300 text-supabase-green focus:ring-supabase-green"
+                  class="rounded border-gray-300 dark:border-gray-600 text-supabase-green focus:ring-supabase-green dark:bg-gray-800"
                 />
-                <span class="text-sm font-medium text-supabase-gray-700"
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
                   >Virtual</span
                 >
               </label>
@@ -291,9 +291,9 @@
                 <input
                   type="checkbox"
                   bind:checked={formData.isVirtualTemplate}
-                  class="rounded border-supabase-gray-300 text-supabase-green focus:ring-supabase-green"
+                  class="rounded border-gray-300 dark:border-gray-600 text-supabase-green focus:ring-supabase-green dark:bg-gray-800"
                 />
-                <span class="text-sm font-medium text-supabase-gray-700"
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
                   >Virtual Template</span
                 >
               </label>
@@ -379,36 +379,36 @@
                 <div>
                   <label
                     for="headerStructure"
-                    class="block text-sm font-medium text-supabase-gray-700 mb-1"
+                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
                   >
                     Headers
                   </label>
                   <textarea
                     id="headerStructure"
                     bind:value={formData.headerStructure}
-                    class="form-textarea"
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm focus:border-supabase-green focus:ring-supabase-green sm:text-sm"
                     rows="3"
                     placeholder="Authorization=Bearer token,Content-Type=application/json"
                   ></textarea>
-                  <p class="mt-1 text-xs text-supabase-gray-500">
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     Format: key=value,key2=value2
                   </p>
                 </div>
                 <div>
                   <label
                     for="bodyStructure"
-                    class="block text-sm font-medium text-supabase-gray-700 mb-1"
+                    class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
                   >
                     Body Structure
                   </label>
                   <textarea
                     id="bodyStructure"
                     bind:value={formData.bodyStructure}
-                    class="form-textarea"
+                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm focus:border-supabase-green focus:ring-supabase-green sm:text-sm"
                     rows="3"
                     placeholder="param1=value1,param2=value2"
                   ></textarea>
-                  <p class="mt-1 text-xs text-supabase-gray-500">
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     Format: key=value,key2=value2
                   </p>
                 </div>
@@ -454,14 +454,14 @@
             <div>
               <label
                 for="overrideQuery"
-                class="block text-sm font-medium text-supabase-gray-700 mb-1"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
               >
                 Override Query
               </label>
               <textarea
                 id="overrideQuery"
                 bind:value={formData.overrideQuery}
-                class="form-textarea"
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm focus:border-supabase-green focus:ring-supabase-green sm:text-sm"
                 rows="4"
                 placeholder="SELECT * FROM table WHERE condition"
               ></textarea>
@@ -470,18 +470,18 @@
             <div>
               <label
                 for="customScript"
-                class="block text-sm font-medium text-supabase-gray-700 mb-1"
+                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
               >
                 Custom Script
               </label>
               <textarea
                 id="customScript"
                 bind:value={formData.script}
-                class="form-textarea"
+                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm focus:border-supabase-green focus:ring-supabase-green sm:text-sm"
                 rows="6"
                 placeholder=""
               ></textarea>
-              <p class="mt-1 text-xs text-supabase-gray-500">
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Custom C# script for advanced data processing
               </p>
             </div>
@@ -494,37 +494,37 @@
         <Card title="Summary">
           <div class="space-y-3 text-sm">
             <div>
-              <span class="font-medium text-supabase-gray-700">Name:</span>
-              <p class="text-supabase-gray-900">
+              <span class="font-medium text-gray-700 dark:text-gray-300">Name:</span>
+              <p class="text-gray-900 dark:text-white">
                 {formData.extractionName || "Not specified"}
               </p>
             </div>
             <div>
-              <span class="font-medium text-supabase-gray-700"
+              <span class="font-medium text-gray-700 dark:text-gray-300"
                 >Source Type:</span
               >
-              <p class="text-supabase-gray-900">{formData.sourceType}</p>
+              <p class="text-gray-900 dark:text-white">{formData.sourceType}</p>
             </div>
             <div>
-              <span class="font-medium text-supabase-gray-700">Origin:</span>
-              <p class="text-supabase-gray-900">
+              <span class="font-medium text-gray-700 dark:text-gray-300">Origin:</span>
+              <p class="text-gray-900 dark:text-white">
                 {origins.find((o) => o.id.toString() === formData.originId)
                   ?.originName || "Not selected"}
               </p>
             </div>
             <div>
-              <span class="font-medium text-supabase-gray-700"
+              <span class="font-medium text-gray-700 dark:text-gray-300"
                 >Destination:</span
               >
-              <p class="text-supabase-gray-900">
+              <p class="text-gray-900 dark:text-white">
                 {destinations.find(
                   (d) => d.id.toString() === formData.destinationId,
                 )?.destinationName || "Not selected"}
               </p>
             </div>
             <div>
-              <span class="font-medium text-supabase-gray-700">Schedule:</span>
-              <p class="text-supabase-gray-900">
+              <span class="font-medium text-gray-700 dark:text-gray-300">Schedule:</span>
+              <p class="text-gray-900 dark:text-white">
                 {schedules.find((s) => s.id.toString() === formData.scheduleId)
                   ?.scheduleName || "Not selected"}
               </p>
@@ -535,71 +535,71 @@
         <Card title="Configuration Flags">
           <div class="space-y-2 text-sm">
             <div class="flex items-center justify-between">
-              <span class="text-supabase-gray-700">Incremental</span>
+              <span class="text-gray-700 dark:text-gray-300">Incremental</span>
               <span
                 class={formData.isIncremental
-                  ? "text-green-600"
-                  : "text-supabase-gray-400"}
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-gray-400 dark:text-gray-500"}
               >
                 {formData.isIncremental ? "Yes" : "No"}
               </span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-supabase-gray-700">Virtual</span>
+              <span class="text-gray-700 dark:text-gray-300">Virtual</span>
               <span
                 class={formData.isVirtual
-                  ? "text-green-600"
-                  : "text-supabase-gray-400"}
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-gray-400 dark:text-gray-500"}
               >
                 {formData.isVirtual ? "Yes" : "No"}
               </span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-supabase-gray-700">Virtual Template</span>
+              <span class="text-gray-700 dark:text-gray-300">Virtual Template</span>
               <span
                 class={formData.isVirtualTemplate
-                  ? "text-green-600"
-                  : "text-supabase-gray-400"}
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-gray-400 dark:text-gray-500"}
               >
                 {formData.isVirtualTemplate ? "Yes" : "No"}
               </span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-supabase-gray-700">Has Filter</span>
+              <span class="text-gray-700 dark:text-gray-300">Has Filter</span>
               <span
                 class={formData.filterColumn
-                  ? "text-green-600"
-                  : "text-supabase-gray-400"}
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-gray-400 dark:text-gray-500"}
               >
                 {formData.filterColumn ? "Yes" : "No"}
               </span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-supabase-gray-700">Has Script</span>
+              <span class="text-gray-700 dark:text-gray-300">Has Script</span>
               <span
                 class={formData.script
-                  ? "text-green-600"
-                  : "text-supabase-gray-400"}
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-gray-400 dark:text-gray-500"}
               >
                 {formData.script ? "Yes" : "No"}
               </span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-supabase-gray-700">Virtual ID</span>
+              <span class="text-gray-700 dark:text-gray-300">Virtual ID</span>
               <span
                 class={formData.virtualId
-                  ? "text-green-600"
-                  : "text-supabase-gray-400"}
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-gray-400 dark:text-gray-500"}
               >
                 {formData.virtualId ? "Set" : "Not set"}
               </span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-supabase-gray-700">Virtual Group</span>
+              <span class="text-gray-700 dark:text-gray-300">Virtual Group</span>
               <span
                 class={formData.virtualIdGroup
-                  ? "text-green-600"
-                  : "text-supabase-gray-400"}
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-gray-400 dark:text-gray-500"}
               >
                 {formData.virtualIdGroup ? "Set" : "Not set"}
               </span>

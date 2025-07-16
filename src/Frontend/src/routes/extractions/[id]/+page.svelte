@@ -33,6 +33,7 @@
   let showExecuteModal = $state(false)
   let executeType = $state<"transfer" | "pull">("transfer")
   let executeConfirmLoading = $state(false)
+  let overrideFilterTime = $state("")
 
   // Toast notifications
   let toastMessage = $state("")
@@ -194,6 +195,11 @@
       executeConfirmLoading = true
       const apiFilters = { name: extraction.extractionName }
 
+      // Add override filter time if specified
+      if (overrideFilterTime && !isNaN(+overrideFilterTime) && +overrideFilterTime > 0) {
+        apiFilters.overrideTime = overrideFilterTime
+      }
+
       let response
       if (executeType === "transfer") {
         response = await api.executeTransfer(apiFilters)
@@ -211,20 +217,21 @@
           jobGuid = response.information
         }
 
-        // Show success message with job GUID
+        // Build success message with override info
+        let successMessage = `${executeType === "transfer" ? "Transfer" : "Pull"} job started successfully for "${extraction.extractionName}"`
+        
+        if (overrideFilterTime && !isNaN(+overrideFilterTime) && +overrideFilterTime > 0) {
+          successMessage += ` with override filter time of ${overrideFilterTime} seconds`
+        }
+        
         if (jobGuid) {
-          showToastMessage(
-            `${executeType === "transfer" ? "Transfer" : "Pull"} job started successfully for "${extraction.extractionName}". Job ID: ${jobGuid}`,
-            "success",
-          )
-        } else {
-          showToastMessage(
-            `${executeType === "transfer" ? "Transfer" : "Pull"} job started successfully for "${extraction.extractionName}"`,
-            "success",
-          )
+          successMessage += `. Job ID: ${jobGuid}`
         }
 
+        showToastMessage(successMessage, "success")
+
         showExecuteModal = false
+        overrideFilterTime = "" // Reset override filter time
       } else {
         // Handle API error response
         const errorMessage = response.information || "Unknown error occurred"
@@ -722,6 +729,24 @@
       </div>
     </div>
 
+    <!-- Override Filter Time Input -->
+    <div>
+      <label for="overrideFilterTime" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        Override Filter Time (seconds)
+      </label>
+      <input
+        id="overrideFilterTime"
+        type="number"
+        bind:value={overrideFilterTime}
+        placeholder="Optional - override extraction filter time"
+        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-supabase-green focus:border-supabase-green dark:bg-gray-800 dark:text-white"
+      />
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Leave empty to use the extraction's default filter time ({extraction?.filterTime || 'none'} seconds). 
+        Specify a value to override for this execution.
+      </p>
+    </div>
+
     <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-md">
       <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
         Execution Details:
@@ -767,6 +792,18 @@
             </Badge>
           </span>
         </div>
+        <div class="flex justify-between">
+          <span class="text-gray-600 dark:text-gray-400">Filter Time:</span>
+          <span class="text-gray-900 dark:text-white">
+            {#if overrideFilterTime && !isNaN(+overrideFilterTime) && +overrideFilterTime > 0}
+              <span class="text-orange-600 dark:text-orange-400 font-medium">
+                {overrideFilterTime}s (override)
+              </span>
+            {:else}
+              {extraction?.filterTime || 'Default'}s
+            {/if}
+          </span>
+        </div>
       </div>
     </div>
 
@@ -795,6 +832,9 @@
             {:else}
               <strong>Pull mode:</strong> Data will be extracted from the source
               and made available as CSV files for download.
+            {/if}
+            {#if overrideFilterTime && !isNaN(+overrideFilterTime) && +overrideFilterTime > 0}
+              <br><strong>Filter Override:</strong> Using {overrideFilterTime} seconds instead of the default filter time.
             {/if}
           </p>
         </div>
@@ -956,5 +996,16 @@
   :global(.job-guid-highlight:hover) {
     background-color: #fed7aa;
     border-color: #f97316;
+  }
+
+  :global(.dark .job-guid-highlight) {
+    background-color: #451a03;
+    color: #fed7aa;
+    border-color: #92400e;
+  }
+
+  :global(.dark .job-guid-highlight:hover) {
+    background-color: #7c2d12;
+    border-color: #ea580c;
   }
 </style>

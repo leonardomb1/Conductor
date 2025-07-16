@@ -68,6 +68,7 @@
   let executeType = $state<"transfer" | "pull">("transfer")
   let executeLoading = $state(false)
   let selectedExtractions = $state<number[]>([])
+  let overrideFilterTime = $state("")
 
   // Confirmation modal state
   let showConfirmModal = $state(false)
@@ -483,7 +484,7 @@
         )
         if (withoutDestination.length > 0) {
           showToastMessage(
-            `Cannot transfer ${withoutDestination.length} extraction(\s) without destinations: ${withoutDestination.map((e) => e.extractionName).join(", ")}`,
+            `Cannot transfer ${withoutDestination.length} extraction(s) without destinations: ${withoutDestination.map((e) => e.extractionName).join(", ")}`,
             "error",
           )
           return
@@ -504,6 +505,11 @@
         ids: selectedExtractions.join(","),
       }
 
+      // Add override filter time if specified
+      if (overrideFilterTime && !isNaN(+overrideFilterTime) && +overrideFilterTime > 0) {
+        apiFilters.overrideTime = overrideFilterTime
+      }
+
       let response
       if (executeType === "transfer") {
         response = await api.executeTransfer(apiFilters)
@@ -518,21 +524,24 @@
         jobGuid = response.information
       }
 
-      // Show success message with job GUID
-      if (jobGuid) {
-        showToastMessage(
-          `${executeType === "transfer" ? "Transfer" : "Pull"} job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}. Job ID: ${jobGuid}`,
-          "success",
-        )
-      } else {
-        showToastMessage(
-          `${executeType === "transfer" ? "Transfer" : "Pull"} job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}: ${selectedExtractionsData.map((e) => e.extractionName).join(", ")}`,
-          "success",
-        )
+      // Show success message with job GUID and override info
+      let successMessage = `${executeType === "transfer" ? "Transfer" : "Pull"} job started successfully for ${selectedExtractionsData.length} extraction${selectedExtractionsData.length > 1 ? "s" : ""}`
+      
+      if (overrideFilterTime && !isNaN(+overrideFilterTime) && +overrideFilterTime > 0) {
+        successMessage += ` with override filter time of ${overrideFilterTime} seconds`
       }
+      
+      if (jobGuid) {
+        successMessage += `. Job ID: ${jobGuid}`
+      } else {
+        successMessage += `: ${selectedExtractionsData.map((e) => e.extractionName).join(", ")}`
+      }
+
+      showToastMessage(successMessage, "success")
 
       showExecuteModal = false
       selectedExtractions = []
+      overrideFilterTime = "" // Reset override filter time
     } catch (error) {
       showToastMessage(
         `Failed to start ${executeType} job: ${error.message}`,
@@ -1100,6 +1109,34 @@
       </div>
     </div>
 
+    <div class="space-y-4">
+      <Select
+        label="Execution Type"
+        bind:value={executeType}
+        options={[
+          { value: "transfer", label: "Transfer (to destination database)" },
+          { value: "pull", label: "Pull (to CSV files)" },
+        ]}
+      />
+
+      <!-- Override Filter Time Input -->
+      <div>
+        <label for="overrideFilterTimeList" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Override Filter Time (seconds)
+        </label>
+        <input
+          id="overrideFilterTimeList"
+          type="number"
+          bind:value={overrideFilterTime}
+          placeholder="Optional - override extraction filter time"
+          class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-supabase-green focus:border-supabase-green dark:bg-gray-800 dark:text-white"
+        />
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Leave empty to use each extraction's default filter time. Specify a value to override all selected extractions.
+        </p>
+      </div>
+    </div>
+
     <div
       class="bg-gray-50 dark:bg-gray-800 p-4 rounded-md max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700"
     >
@@ -1121,6 +1158,11 @@
                 {executeType === "transfer"
                   ? extraction?.destination?.destinationName || "No destination"
                   : "CSV File"}
+                {#if extraction?.filterTime}
+                  <span class="ml-2 text-blue-600 dark:text-blue-400">
+                    Filter: {extraction.filterTime}s
+                  </span>
+                {/if}
               </div>
             </div>
             <div class="ml-3 flex-shrink-0">
@@ -1149,44 +1191,36 @@
       </div>
     </div>
 
-    <div class="space-y-4">
-      <Select
-        label="Execution Type"
-        bind:value={executeType}
-        options={[
-          { value: "transfer", label: "Transfer (to destination database)" },
-          { value: "pull", label: "Pull (to CSV files)" },
-        ]}
-      />
-
-      <div
-        class="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-600 p-3"
-      >
-        <div class="flex">
-          <div class="flex-shrink-0">
-            <svg
-              class="h-5 w-5 text-yellow-400 dark:text-yellow-300"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </div>
-          <div class="ml-3">
-            <p class="text-sm text-yellow-700 dark:text-yellow-400">
-              {#if executeType === "transfer"}
-                <strong>Transfer mode:</strong> Data will be transferred to the configured
-                destination databases.
-              {:else}
-                <strong>Pull mode:</strong> Data will be extracted and saved as CSV
-                files for download.
-              {/if}
-            </p>
-          </div>
+    <div
+      class="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-600 p-3"
+    >
+      <div class="flex">
+        <div class="flex-shrink-0">
+          <svg
+            class="h-5 w-5 text-yellow-400 dark:text-yellow-300"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <p class="text-sm text-yellow-700 dark:text-yellow-400">
+            {#if executeType === "transfer"}
+              <strong>Transfer mode:</strong> Data will be transferred to the configured
+              destination databases.
+            {:else}
+              <strong>Pull mode:</strong> Data will be extracted and saved as CSV
+              files for download.
+            {/if}
+            {#if overrideFilterTime}
+              <br><strong>Override Filter:</strong> Using {overrideFilterTime} seconds for all extractions.
+            {/if}
+          </p>
         </div>
       </div>
     </div>
@@ -1205,7 +1239,14 @@
         variant="primary"
         loading={executeLoading}
         onclick={executeExtractions}
-        disabled={executeLoading}
+        disabled={executeLoading || 
+          (executeType === "transfer" && 
+          selectedExtractions.some(id => {
+            const extraction = extractions.find(e => e.id === id)
+            return !extraction?.destinationId
+          })
+          )
+        }
       >
         {#if executeLoading}
           <svg
