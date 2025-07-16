@@ -80,17 +80,13 @@
             </div>
             
             <div class="flex items-center">
-              <div 
-                onclick="selectSchedule(${row.id})"
-                class="h-4 w-4 rounded-full border-2 cursor-pointer mr-3 flex-shrink-0 transition-colors ${
-                  selectedScheduleId === row.id
-                    ? "border-supabase-green bg-supabase-green"
-                    : "border-gray-300 dark:border-gray-600 hover:border-supabase-green"
-                }"
-                title="${selectedScheduleId === row.id ? "Selected" : "Click to select"}"
-              >
-                ${selectedScheduleId === row.id ? '<div class="w-1.5 h-1.5 bg-white rounded-full m-auto mt-0.5"></div>' : ""}
-              </div>
+              <input 
+                type="radio" 
+                name="schedule-selection-mobile"
+                ${selectedScheduleId === row.id ? "checked" : ""} 
+                onchange="toggleScheduleSelection(${row.id})"
+                class="h-4 w-4 border-gray-300 dark:border-gray-600 text-supabase-green focus:ring-supabase-green dark:bg-gray-800 cursor-pointer mr-3"
+              />
               <div class="flex flex-wrap gap-2 text-xs">
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full font-medium ${statusColor}">
                   ${statusText}
@@ -120,17 +116,13 @@
         const isSelected = selectedScheduleId === row.id
         return `
           <div class="flex items-center justify-center">
-            <div 
-              onclick="selectSchedule(${row.id})"
-              class="h-4 w-4 rounded-full border-2 cursor-pointer transition-colors ${
-                isSelected
-                  ? "border-supabase-green bg-supabase-green"
-                  : "border-gray-300 dark:border-gray-600 hover:border-supabase-green"
-              }"
-              title="${isSelected ? "Selected" : "Click to select"}"
-            >
-              ${isSelected ? '<div class="w-1.5 h-1.5 bg-white rounded-full m-auto mt-0.5"></div>' : ""}
-            </div>
+            <input 
+              type="radio" 
+              name="schedule-selection-desktop"
+              ${isSelected ? "checked" : ""} 
+              onchange="toggleScheduleSelection(${row.id})"
+              class="h-4 w-4 border-gray-300 dark:border-gray-600 text-supabase-green focus:ring-supabase-green dark:bg-gray-800 cursor-pointer"
+            />
           </div>
         `
       },
@@ -242,8 +234,9 @@
     }
   }
 
-  function selectSchedule(id: number) {
-    selectedScheduleId = selectedScheduleId === id ? null : id
+  function toggleScheduleSelection(id: number) {
+    // Radio button behavior: always select the clicked one
+    selectedScheduleId = id
     // Force a re-render to update visual indicators
     schedules = [...schedules]
   }
@@ -462,8 +455,8 @@
     ;(window as any).deleteSchedule = (id: number) => {
       showDeleteConfirmation(id)
     }
-    ;(window as any).selectSchedule = (id: number) => {
-      selectSchedule(id)
+    ;(window as any).toggleScheduleSelection = (id: number) => {
+      toggleScheduleSelection(id)
     }
   }
 
