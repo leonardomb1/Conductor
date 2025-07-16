@@ -208,7 +208,7 @@ public abstract partial class DBExchange
             $", {metadata}" : $"{metadata}";
 
         string partitioning = extraction.IsIncremental && shouldPartition ?
-            GeneratePartitionCondition(extraction, requestTime, virtualizedIdGroup, effectiveFilterTime) : "";
+            GeneratePartitionCondition(extraction, requestTime, null, effectiveFilterTime) : "";
 
         string condition = extraction.FilterCondition ?? "";
 

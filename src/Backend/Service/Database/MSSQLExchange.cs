@@ -194,7 +194,6 @@ public class MSSQLExchange : DBExchange
             var affectedRows = await mergeCommand.ExecuteNonQueryAsync();
             Log.Information($"Merge operation affected {affectedRows} rows in {schemaName}.{tableName}");
 
-            // Delete unsynced data
             var lookupTime = RequestTimeWithOffSet(requestTime, extraction.FilterTime!.Value, extraction.Origin!.TimeZoneOffSet!.Value);
 
             StringBuilder deleteQuery = new($"DELETE FROM \"{schemaName}\".\"{tableName}\"");
