@@ -87,6 +87,31 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
         );
     }
 
+    public async Task<IResult> CancelJob(string jobGuidString)
+    {
+        if (!Guid.TryParse(jobGuidString, out Guid jobGuid))
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid job GUID format.", true)
+            );
+        }
+
+        var success = await jobTracker.CancelJob(jobGuid);
+        
+        if (success)
+        {
+            return Results.Ok(
+                new Message(Status200OK, $"Job {jobGuid} cancellation requested successfully.")
+            );
+        }
+        else
+        {
+            return Results.NotFound(
+                new Message(Status404NotFound, $"Job {jobGuid} not found or cannot be cancelled.", true)
+            );
+        }
+    }
+
     public async Task<IResult> GetActiveJobs()
     {
         try
@@ -181,6 +206,26 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
             .Produces<Message<JobDto>>(Status200OK, "application/json")
             .Produces<Message>(Status200OK, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+
+        group.MapDelete("/jobs/{jobGuid}/cancel", async (JobController controller, string jobGuid) => await controller.CancelJob(jobGuid))
+            .WithName("CancelJob")
+            .WithSummary("Cancels a running extraction job.")
+            .WithDescription("""
+                Requests cancellation of a running extraction job by its GUID.
+                
+                Path Parameters:
+                - `jobGuid` (string): The GUID of the job to cancel
+                
+                Returns 200 if cancellation was requested successfully.
+                Returns 404 if the job was not found or cannot be cancelled.
+                Returns 400 if the job GUID format is invalid.
+                
+                Note: Cancellation is a request, and the job may take some time to actually stop.
+                Use the job status endpoint to monitor the cancellation progress.
+                """)
+            .Produces<Message>(Status200OK, "application/json")
+            .Produces<Message>(Status404NotFound, "application/json")
+            .Produces<Message>(Status400BadRequest, "application/json");
 
         group.MapGet("/search", (JobController controller, HttpRequest request) => controller.GetJobs(request.Query))
             .WithName("SearchJobs")

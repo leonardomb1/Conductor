@@ -28,7 +28,8 @@ public enum JobStatus
 {
     Running,
     Completed,
-    Failed
+    Failed,
+    Cancelled
 }
 
 public enum JobType

@@ -24,7 +24,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
     public override async Task<IResult> Get(IQueryCollection? filters)
     {
-        // Validate numeric filters
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
@@ -36,7 +35,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             );
         }
 
-        // Validate boolean filters
         var invalidBoolFilters = filters?.Where(f =>
             (f.Key == "isIncremental" || f.Key == "isVirtual") &&
             !bool.TryParse(f.Value, out _)).ToList();
@@ -70,10 +68,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         );
     }
 
-    // Add GetCount endpoint
     public async Task<IResult> GetCount(IQueryCollection? filters)
     {
-        // Validate numeric filters
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
@@ -85,7 +81,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             );
         }
 
-        // Validate boolean filters
         var invalidBoolFilters = filters?.Where(f =>
             (f.Key == "isIncremental" || f.Key == "isVirtual") &&
             !bool.TryParse(f.Value, out _)).ToList();
@@ -170,7 +165,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             );
         }
 
-        if (extractionResult.Value == null)
+        if (extractionResult.Value is null)
         {
             return Results.NotFound(
                 new Message(Status404NotFound, $"Extraction with ID {extractionId} not found.", true)
@@ -401,17 +396,44 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         var extractionIds = extractions.Select(x => x.Id);
         Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
-        _ = Task.Run(async () => await ExtractionPipeline.ExecuteTransferJob(
-            jobTracker,
-            extractions,
-            httpFactory,
-            overrideFilter,
-            connectionPoolManager,
-            memoryManager,
-            job,
-            requestTime, 
-            token
-        ), token);
+        using var jobCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+        var backgroundTask = Task.Run(async () => 
+        {
+            try
+            {
+                var extractionResult = await ExtractionPipeline.ExecuteTransferJob(
+                    jobTracker,
+                    extractions,
+                    httpFactory,
+                    overrideFilter,
+                    connectionPoolManager,
+                    memoryManager,
+                    job,
+                    requestTime, 
+                    jobCancellationSource.Token
+                );
+
+                if (!extractionResult.IsSuccessful)
+                {
+                    await jobTracker.UpdateJob(job.JobGuid, JobStatus.Failed);
+                }
+                else
+                {
+                    await jobTracker.UpdateJob(job.JobGuid, JobStatus.Completed);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                await jobTracker.UpdateJob(job.JobGuid, JobStatus.Cancelled);
+            }
+            catch (Exception)
+            {
+                await jobTracker.UpdateJob(job.JobGuid, JobStatus.Failed);
+            }
+        }, jobCancellationSource.Token);
+
+        jobTracker.AttachTask(job.JobGuid, backgroundTask, jobCancellationSource);
 
         return Results.Ok(
             new Message(Status200OK, $"{job.JobGuid}")
@@ -468,18 +490,44 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
+        using var jobCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-        _ = Task.Run(async () => await ExtractionPipeline.ExecutePullJob(
-            jobTracker,
-            extractions,
-            httpFactory,
-            overrideFilter,
-            connectionPoolManager,
-            memoryManager,
-            job,
-            requestTime,
-            token
-        ), token);
+        var backgroundTask = Task.Run(async () => 
+        {
+            try
+            {
+                var extractionResult = await ExtractionPipeline.ExecutePullJob(
+                    jobTracker,
+                    extractions,
+                    httpFactory,
+                    overrideFilter,
+                    connectionPoolManager,
+                    memoryManager,
+                    job,
+                    requestTime,
+                    jobCancellationSource.Token
+                );
+
+                if (!extractionResult.IsSuccessful)
+                {
+                    await jobTracker.UpdateJob(job.JobGuid, JobStatus.Failed);
+                }
+                else
+                {
+                    await jobTracker.UpdateJob(job.JobGuid, JobStatus.Completed);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                await jobTracker.UpdateJob(job.JobGuid, JobStatus.Cancelled);
+            }
+            catch (Exception)
+            {
+                await jobTracker.UpdateJob(job.JobGuid, JobStatus.Failed);
+            }
+        }, jobCancellationSource.Token);
+
+        jobTracker.AttachTask(job.JobGuid, backgroundTask, jobCancellationSource);
 
         return Results.Ok(
             new Message(Status200OK, $"{job.JobGuid}")
