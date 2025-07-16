@@ -193,6 +193,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
     public async Task<IResult> ExecuteTrasfer(IQueryCollection? filters, CancellationToken token)
     {
+        var requestTime = DateTime.UtcNow;
+
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
@@ -218,7 +220,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             );
         }
 
-        if (fetch.Value.Any(e => e.Origin!.ConnectionString is null || e.Origin.DbType is null))
+        if (fetch.Value.Any(e => e.Origin?.ConnectionString is null || e.Origin?.DbType is null))
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "All used origins need to have a Connection String and DbType.", true)
@@ -243,7 +245,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         }
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
-        extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
 
         var extractionIds = extractions.Select(x => x.Id);
         Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
@@ -256,6 +257,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             connectionPoolManager,
             memoryManager,
             job,
+            requestTime,
             token
         );
 
@@ -271,6 +273,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
     public async Task<IResult> ExecutePull(IQueryCollection? filters, CancellationToken token)
     {
+        var requestTime = DateTime.UtcNow;
+
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
@@ -289,7 +293,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             return Results.InternalServerError(ErrorMessage(fetch.Error));
         }
 
-        if (fetch.Value.Any(e => e.Origin!.ConnectionString is null || e.Origin.DbType is null))
+        if (fetch.Value.Any(e => e.Origin?.ConnectionString is null || e.Origin?.DbType is null))
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "All used origins need to have a Connection String and DbType.", true)
@@ -317,7 +321,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
-        extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
 
         var extractionResult = await ExtractionPipeline.ExecutePullJob(
             jobTracker,
@@ -327,6 +330,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             connectionPoolManager,
             memoryManager,
             job,
+            requestTime,
             token
         );
 
@@ -342,6 +346,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
     public async Task<IResult> ExecuteTrasferNoWait(IQueryCollection? filters, CancellationToken token)
     {
+        var requestTime = DateTime.UtcNow;
+
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
@@ -367,7 +373,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             );
         }
 
-        if (fetch.Value.Any(e => e.Origin!.ConnectionString is null || e.Origin.DbType is null))
+        if (fetch.Value.Any(e => e.Origin?.ConnectionString is null || e.Origin?.DbType is null))
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "All used origins need to have a Connection String and DbType.", true)
@@ -392,7 +398,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         }
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
-        extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
 
         var extractionIds = extractions.Select(x => x.Id);
         Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
@@ -405,6 +410,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             connectionPoolManager,
             memoryManager,
             job,
+            requestTime, 
             token
         ), token);
 
@@ -415,6 +421,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
     public async Task<IResult> ExecutePullNoWait(IQueryCollection? filters, CancellationToken token)
     {
+        var requestTime = DateTime.UtcNow;
+
         var invalidFilters = filters?.Where(f =>
             (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
             !uint.TryParse(f.Value, out _)).ToList();
@@ -433,7 +441,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             return Results.InternalServerError(ErrorMessage(fetch.Error));
         }
 
-        if (fetch.Value.Any(e => e.Origin!.ConnectionString is null || e.Origin.DbType is null))
+        if (fetch.Value.Any(e => e.Origin?.ConnectionString is null || e.Origin?.DbType is null))
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "All used origins need to have a Connection String and DbType.", true)
@@ -461,7 +469,6 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
-        extractions.ForEach(x => x.FilterTime = overrideFilter ?? x.FilterTime);
 
         _ = Task.Run(async () => await ExtractionPipeline.ExecutePullJob(
             jobTracker,
@@ -471,6 +478,7 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             connectionPoolManager,
             memoryManager,
             job,
+            requestTime,
             token
         ), token);
 
@@ -481,6 +489,20 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
     public async Task<IResult> FetchData(IQueryCollection? filters, CancellationToken token)
     {
+        var invalidFilters = filters?.Where(f =>
+            (f.Key == "limit") &&
+            !ulong.TryParse(f.Value, out _)).ToList();
+
+        if (invalidFilters?.Count > 0)
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid query parameters.", true)
+            );
+        }
+
+        string? limitString = filters?.Where(f => f.Key == "limit").FirstOrDefault().Value;
+        ulong limit = limitString == null ? ulong.Parse(limitString!) : Settings.FetcherLineMax;
+
         var stopwatch = Stopwatch.StartNew();
         var requestTime = DateTime.UtcNow;
 
@@ -557,9 +579,10 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                         : conStr;
 
                     connection = await connectionPoolManager.GetConnectionAsync(finalConnectionString, res.Origin.DbType!, token);
+                    
 
-                    var query = await engine.FetchDataTable(res, requestTime, false, currentRowCount, connection, token,
-                        limit: Settings.FetcherLineMax, shouldPaginate: true);
+
+                    var query = await engine.FetchDataTable(res, requestTime, false, currentRowCount, connection, token, limit: limit, shouldPaginate: true);
 
                     if (!query.IsSuccessful)
                     {

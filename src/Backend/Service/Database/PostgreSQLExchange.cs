@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Text;
 using Conductor.Model;
+using Conductor.Shared;
 using Conductor.Types;
 using Npgsql;
 using Serilog;
@@ -15,24 +16,21 @@ public class PostgreSQLExchange : DBExchange
 
     protected override string? QueryNonLocking() => "";
 
-    protected override string GeneratePartitionCondition(Extraction extraction, DateTime requestTime, string? virtualColumn = null)
+    protected override string GeneratePartitionCondition(Extraction extraction, DateTime requestTime, string? virtualColumn = null, int? effectiveFilterTime = null)
     {
         StringBuilder builder = new();
 
-        if (!extraction.FilterTime.HasValue)
+        var filterTime = effectiveFilterTime ?? extraction.FilterTime;
+        if (filterTime.HasValue && extraction.Origin?.TimeZoneOffSet.HasValue == true)
         {
-            throw new Exception("Filter time cannot be null in this context.");
-        }
-
-        if (extraction.FilterTime.HasValue)
-        {
-            var lookupTime = requestTime.AddSeconds((double)-extraction.FilterTime!).AddHours(extraction.Origin!.TimeZoneOffSet!.Value);
+            // FIXED: Now uses consistent RequestTimeWithOffSet method
+            var lookupTime = RequestTimeWithOffSet(requestTime, filterTime.Value, extraction.Origin.TimeZoneOffSet.Value);
             builder.Append($"AND \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss}'::TIMESTAMP ");
         }
 
         if (extraction.VirtualId is not null && virtualColumn is not null)
         {
-            builder.Append($"OR \"{virtualColumn}\" = '{extraction.VirtualId}' ");
+            builder.Append($"AND \"{virtualColumn}\" = '{extraction.VirtualId}' ");
         }
 
         return builder.ToString();
@@ -45,15 +43,15 @@ public class PostgreSQLExchange : DBExchange
             string? virtualIdGroup
         )
     {
-        string indexGroup = (virtualIdGroup is null || virtualIdGroup == "") ? $"{index}" : $"{index}, {tableName}_{virtualIdGroup}";
-        return stringBuilder.Append($" UNIQUE (\"{indexGroup}\")");
+        string indexGroup = (virtualIdGroup is null || virtualIdGroup == "") ? $"\"{index}\"" : $"\"{index}\", \"{tableName}_{virtualIdGroup}\"";
+        return stringBuilder.Append($" UNIQUE ({indexGroup})");
     }
 
     protected override StringBuilder AddChangeColumn(StringBuilder stringBuilder, string tableName) =>
         stringBuilder.AppendLine($" \"DT_UPDATE_{tableName}\" TIMESTAMPTZ NOT NULL DEFAULT NOW(),");
 
     protected override StringBuilder AddIdentityColumn(StringBuilder stringBuilder, string tableName) =>
-        stringBuilder.AppendLine($" ID_DW_{tableName} INT GENERATED ALWAYS AS IDENTITY,");
+        stringBuilder.AppendLine($" \"ID_DW_{tableName}\" SERIAL,");
 
     protected override async Task EnsureSchemaCreation(string system, DbConnection connection)
     {
@@ -107,13 +105,149 @@ public class PostgreSQLExchange : DBExchange
         };
     }
 
-    public override Task<Result> MergeLoad(DataTable data, Extraction extraction, DateTime requestTime, DbConnection connection)
+    public override async Task<Result> MergeLoad(DataTable data, Extraction extraction, DateTime requestTime, DbConnection connection)
     {
-        throw new NotImplementedException();
+        if (extraction.Origin?.Alias is null && extraction.Origin?.Name is null)
+        {
+            return new Error("Extraction origin alias or name is required");
+        }
+
+        if (extraction.FilterTime is null && extraction.Origin?.TimeZoneOffSet is null)
+        {
+            return new Error("FilterTime and TimeZoneOffset are required for merge operations");
+        }
+
+        string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
+        string tableName = extraction.Alias ?? extraction.Name;
+        string virtualColumn = extraction.IsVirtual ? VirtualColumn(tableName, extraction.VirtualIdGroup ?? "file") : "";
+
+        var tempTableName = $"temp_{tableName}_{Guid.NewGuid():N}".Replace("-", "_");
+
+        try
+        {
+            using var npgsqlConnection = (NpgsqlConnection)connection;
+            using var transaction = await npgsqlConnection.BeginTransactionAsync();
+
+            // Create temporary table
+            var createTempTableQuery = new StringBuilder();
+            createTempTableQuery.AppendLine($"CREATE TEMP TABLE \"{tempTableName}\" (");
+
+            foreach (DataColumn column in data.Columns)
+            {
+                int? maxStringLength = column.MaxLength;
+                string sqlType = GetSqlType(column.DataType, maxStringLength);
+                createTempTableQuery.AppendLine($"    \"{column.ColumnName}\" {sqlType},");
+            }
+
+            // Remove trailing comma and close table definition
+            if (createTempTableQuery.Length > 0)
+            {
+                createTempTableQuery.Length -= 3; // Remove ",\r\n"
+                createTempTableQuery.AppendLine();
+            }
+            createTempTableQuery.AppendLine(");");
+
+            using var createTempTableCommand = CreateDbCommand(createTempTableQuery.ToString(), connection);
+            await createTempTableCommand.ExecuteNonQueryAsync();
+
+            // Load data into temporary table using COPY
+            string columns = string.Join(", ", data.Columns.Cast<DataColumn>().Select(c => $"\"{c.ColumnName}\""));
+
+            using var writer = npgsqlConnection.BeginBinaryImport(
+                $"COPY \"{tempTableName}\" ({columns}) FROM STDIN (FORMAT BINARY)"
+            );
+
+            foreach (DataRow row in data.Rows)
+            {
+                writer.StartRow();
+                foreach (var item in row.ItemArray)
+                {
+                    writer.Write(item);
+                }
+            }
+
+            await writer.CompleteAsync();
+
+            // Perform UPSERT using INSERT ... ON CONFLICT
+            var upsertQuery = new StringBuilder();
+            upsertQuery.AppendLine($"INSERT INTO \"{schemaName}\".\"{tableName}\" (");
+            
+            var insertColumns = data.Columns.Cast<DataColumn>()
+                .Select(column => $"\"{column.ColumnName}\"");
+            upsertQuery.AppendLine(string.Join(",\n    ", insertColumns));
+            
+            upsertQuery.AppendLine(")");
+            upsertQuery.AppendLine($"SELECT ");
+            
+            var selectColumns = data.Columns.Cast<DataColumn>()
+                .Select(column => $"\"{column.ColumnName}\"");
+            upsertQuery.AppendLine(string.Join(",\n    ", selectColumns));
+            
+            upsertQuery.AppendLine($"FROM \"{tempTableName}\"");
+            
+            // Use the index column for conflict resolution
+            upsertQuery.AppendLine($"ON CONFLICT (\"{extraction.IndexName}\"{(extraction.IsVirtual && !string.IsNullOrEmpty(virtualColumn) ? $", \"{virtualColumn}\"" : "")})");
+            upsertQuery.AppendLine("DO UPDATE SET");
+            
+            var updateColumns = data.Columns.Cast<DataColumn>()
+                .Where(column => column.ColumnName != virtualColumn && column.ColumnName != extraction.IndexName)
+                .Select(column => $"\"{column.ColumnName}\" = EXCLUDED.\"{column.ColumnName}\"");
+            upsertQuery.AppendLine(string.Join(",\n    ", updateColumns));
+
+            Log.Information($"Upserting data for table {schemaName}.{tableName}...");
+            using var upsertCommand = CreateDbCommand(upsertQuery.ToString(), connection);
+            upsertCommand.CommandTimeout = Settings.QueryTimeout;
+
+            var affectedRows = await upsertCommand.ExecuteNonQueryAsync();
+            Log.Information($"Upsert operation affected {affectedRows} rows in {schemaName}.{tableName}");
+
+            // Delete unsynced data
+            if (extraction.FilterTime.HasValue && extraction.Origin?.TimeZoneOffSet.HasValue == true && !string.IsNullOrEmpty(extraction.FilterColumn))
+            {
+                var lookupTime = RequestTimeWithOffSet(requestTime, extraction.FilterTime.Value, extraction.Origin.TimeZoneOffSet.Value);
+
+                StringBuilder deleteQuery = new($"DELETE FROM \"{schemaName}\".\"{tableName}\"");
+                deleteQuery.AppendLine("WHERE NOT EXISTS (");
+                deleteQuery.AppendLine($"    SELECT 1 FROM \"{tempTableName}\"");
+                deleteQuery.AppendLine($"    WHERE \"{tempTableName}\".\"{extraction.IndexName}\" = \"{schemaName}\".\"{tableName}\".\"{extraction.IndexName}\"");
+
+                if (extraction.IsVirtual && !string.IsNullOrEmpty(virtualColumn))
+                {
+                    deleteQuery.AppendLine($"    AND \"{tempTableName}\".\"{virtualColumn}\" = \"{schemaName}\".\"{tableName}\".\"{virtualColumn}\"");
+                }
+
+                deleteQuery.AppendLine(")");
+                deleteQuery.AppendLine($"AND \"{extraction.FilterColumn}\" >= '{lookupTime:yyyy-MM-dd HH:mm:ss}'::TIMESTAMP;");
+
+                using var deleteCommand = CreateDbCommand(deleteQuery.ToString(), connection);
+                deleteCommand.CommandTimeout = Settings.QueryTimeout;
+
+                var deletedRows = await deleteCommand.ExecuteNonQueryAsync();
+                Log.Information($"Deleted {deletedRows} unsynced rows from {schemaName}.{tableName}");
+            }
+
+            await transaction.CommitAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Merge operation failed for table {SchemaName}.{TableName}", schemaName, tableName);
+            return new Error(ex.Message, ex.StackTrace);
+        }
     }
 
     public override async Task<Result> BulkLoad(DataTable data, Extraction extraction)
     {
+        if (extraction.Origin?.Alias is null && extraction.Origin?.Name is null)
+        {
+            return new Error("Extraction origin alias or name is required");
+        }
+
+        if (extraction.Destination?.ConnectionString is null)
+        {
+            return new Error("Destination connection string is required");
+        }
+
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
 
@@ -140,16 +274,23 @@ public class PostgreSQLExchange : DBExchange
             await writer.CompleteAsync();
             await connection.CloseAsync();
 
+            Log.Information($"Bulk loaded {data.Rows.Count} rows into {schemaName}.{tableName}");
             return Result.Ok();
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Bulk load failed for table {SchemaName}.{TableName}", schemaName, tableName);
             return new Error(ex.Message, ex.StackTrace);
         }
     }
 
     public override async Task<Result> BulkLoad(DataTable data, Extraction extraction, DbConnection connection)
     {
+        if (extraction.Origin?.Alias is null && extraction.Origin?.Name is null)
+        {
+            return new Error("Extraction origin alias or name is required");
+        }
+
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
         string tableName = extraction.Alias ?? extraction.Name;
 
@@ -173,10 +314,12 @@ public class PostgreSQLExchange : DBExchange
             }
 
             await writer.CompleteAsync();
+            Log.Information($"Bulk loaded {data.Rows.Count} rows into {schemaName}.{tableName}");
             return Result.Ok();
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Bulk load failed for table {SchemaName}.{TableName}", schemaName, tableName);
             return new Error(ex.Message, ex.StackTrace);
         }
     }

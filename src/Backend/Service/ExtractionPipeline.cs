@@ -75,10 +75,11 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
         IConnectionPoolManager connectionPoolManager,
         IDataTableMemoryManager memoryManager,
         Job job,
+        DateTime requestTime,
         CancellationToken token)
     {
         await using var pipeline = new ExtractionPipeline(
-                DateTime.UtcNow,
+                requestTime,
                 httpFactory,
                 jobTracker,
                 overrideFilter,
@@ -132,10 +133,11 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
     IConnectionPoolManager connectionPoolManager,
     IDataTableMemoryManager memoryManager,
     Job job,
+    DateTime requestTime,
     CancellationToken token)
     {
         await using var pipeline = new ExtractionPipeline(
-            DateTime.UtcNow,
+            requestTime,
             httpFactory,
             jobTracker,
             overrideFilter,
@@ -717,10 +719,8 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                 string dbType = extraction.Origin.DbType;
                 string connectionString = extraction.Origin.ConnectionString;
 
-                extractionLogger.Debug(
-                    "Starting database data fetch for extraction {ExtractionId} using {DbType} (MARS: {MARSSupported})",
-                    extraction.Id, dbType, DBExchange.SupportsMARS(dbType)
-                );
+                extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId} using {DbType}", 
+                    extraction.Id, dbType);
 
                 bool shouldPartition = false;
 
@@ -744,6 +744,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                 var fetcher = DBExchangeFactory.Create(extraction.Origin.DbType);
                 var extractionRowCount = 0;
+                
                 ulong currentOffset = 0;
 
                 while (!cancellationToken.IsCancellationRequested)
@@ -754,15 +755,17 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                     try
                     {
                         connection = await GetConnectionAsync(connectionString, dbType, cancellationToken);
+                        
                         attempt = await fetcher.FetchDataTable(
                             extraction,
                             requestTime,
                             shouldPartition,
-                            currentOffset,
+                            currentOffset, 
                             connection,
                             cancellationToken,
                             overrideFilter,
-                            Settings.ProducerLineMax
+                            Settings.ProducerLineMax, 
+                            true
                         ).ConfigureAwait(false);
                     }
                     catch (ObjectDisposedException)
@@ -802,23 +805,59 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                     if (attempt.Value.Rows.Count == 0)
                     {
-                        extractionLogger?.Debug("No more data to fetch for extraction {ExtractionId}", extraction.Id);
+                        extractionLogger?.Debug("No more data to fetch for extraction {ExtractionId} at offset {Offset}", extraction.Id, currentOffset);
                         attempt.Value.Dispose();
                         break;
                     }
 
-                    extractionRowCount += attempt.Value.Rows.Count;
-                    currentOffset += (ulong)attempt.Value.Rows.Count;
-                    Interlocked.Add(ref totalRowsProduced, attempt.Value.Rows.Count);
+                    var batchSize = attempt.Value.Rows.Count;
+                    extractionRowCount += batchSize;
+                    
+                    currentOffset += (ulong)batchSize;
+                    Interlocked.Add(ref totalRowsProduced, batchSize);
 
-                    extractionLogger?.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched})",
-                        attempt.Value.Rows.Count, extraction.Id, currentOffset);
+                    extractionLogger?.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched}, next offset: {NextOffset})",
+                        batchSize, extraction.Id, extractionRowCount, currentOffset);
 
-                    var managedTable = CreateManagedDataTable($"db_extraction_{extraction.Id}_batch_{currentOffset}");
+                    var managedTable = CreateManagedDataTable($"db_extraction_{extraction.Id}_offset_{currentOffset}");
+
+                    if (attempt.Value.Rows.Count != batchSize)
+                    {
+                        extractionLogger?.Error("DataTable row count mismatch for extraction {ExtractionId}: expected {Expected}, got {Actual}",
+                            extraction.Id, batchSize, attempt.Value.Rows.Count);
+                        pipelineErrors.Add(new Error($"DataTable integrity check failed for extraction {extraction.Id}"));
+                        attempt.Value.Dispose();
+                        managedTable.Dispose();
+                        break;
+                    }
 
                     Helper.GetAndSetByteUsageForExtraction(attempt.Value, extraction.Id, jobTracker);
 
-                    managedTable.Table.Merge(attempt.Value);
+                    var originalRowCount = managedTable.Table.Rows.Count;
+                    try
+                    {
+                        managedTable.Table.Merge(attempt.Value);
+                        var mergedRowCount = managedTable.Table.Rows.Count;
+                        
+                        if (mergedRowCount - originalRowCount != batchSize)
+                        {
+                            extractionLogger?.Error("DataTable merge lost rows for extraction {ExtractionId}: expected {Expected}, got {Actual}",
+                                extraction.Id, batchSize, mergedRowCount - originalRowCount);
+                            pipelineErrors.Add(new Error($"DataTable merge failed for extraction {extraction.Id}"));
+                            attempt.Value.Dispose();
+                            managedTable.Dispose();
+                            break;
+                        }
+                    }
+                    catch (Exception mergeEx)
+                    {
+                        extractionLogger?.Error(mergeEx, "DataTable merge failed for extraction {ExtractionId}", extraction.Id);
+                        pipelineErrors.Add(new Error($"DataTable merge exception for extraction {extraction.Id}: {mergeEx.Message}", mergeEx.StackTrace));
+                        attempt.Value.Dispose();
+                        managedTable.Dispose();
+                        break;
+                    }
+
                     attempt.Value.Dispose();
 
                     await channel.Writer.WriteAsync((managedTable, extraction), cancellationToken).ConfigureAwait(false);
@@ -988,7 +1027,6 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
             MaxDegreeOfParallelism = Settings.ParallelRule.Value.MaxDegreeOfParallelism
         };
 
-        var tablesExecutionState = new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
         var totalRowsProcessed = 0L;
         var totalTablesProcessed = 0;
         var startTime = DateTime.UtcNow;
@@ -1036,6 +1074,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                             item.data.Table.Rows.Count, tableKey, item.metadata.Destination.DbType);
 
                         var operationSuccessful = false;
+                        var lastAttemptWasBulk = false;
 
                         for (byte attempt = 0; attempt < Settings.PipelineAttemptMax && !operationSuccessful; attempt++)
                         {
@@ -1076,28 +1115,26 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                                     continue;
                                 }
 
-                                var isBulkInsertContinuousExecution = tablesExecutionState.GetOrAdd(tableKey, _ => count.Value == 0);
-
-                                if (tablesExecutionState.TryGetValue(tableKey, out var currentStrategy) && currentStrategy != isBulkInsertContinuousExecution)
+                                var shouldUseBulkLoad = count.Value == 0;
+                                if (attempt > 0 && lastAttemptWasBulk)
                                 {
-                                    isBulkInsertContinuousExecution = currentStrategy;
-                                }
-                                else if (!tablesExecutionState.ContainsKey(tableKey))
-                                {
-                                    extractionLogger.Information("Table {TableKey} load strategy: {Strategy} (existing rows: {ExistingRows})",
-                                        tableKey, isBulkInsertContinuousExecution ? "BulkLoad" : "MergeLoad", count.Value);
+                                    shouldUseBulkLoad = false;
+                                    extractionLogger.Information("Switching from bulk to merge for table {TableKey} on retry attempt {Attempt}",
+                                        tableKey, attempt + 1);
                                 }
 
                                 Result loadResult;
-                                if (isBulkInsertContinuousExecution)
+                                if (shouldUseBulkLoad)
                                 {
                                     extractionLogger.Debug("Performing bulk load for table {TableKey}", tableKey);
                                     loadResult = await inserter.BulkLoad(item.data.Table, item.metadata, connection).ConfigureAwait(false);
+                                    lastAttemptWasBulk = true;
                                 }
                                 else
                                 {
                                     extractionLogger.Debug("Performing merge load for table {TableKey}", tableKey);
                                     loadResult = await inserter.MergeLoad(item.data.Table, item.metadata, requestTime, connection).ConfigureAwait(false);
+                                    lastAttemptWasBulk = false;
                                 }
 
                                 if (!loadResult.IsSuccessful)
@@ -1106,28 +1143,25 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                                     extractionLogger.Warning("Load operation failed for table {TableKey} on attempt {Attempt}: {Error}",
                                         tableKey, attempt + 1, loadResult.Error.ExceptionMessage);
 
-                                    if (isBulkInsertContinuousExecution && attempt < Settings.PipelineAttemptMax - 1)
+                                    if (attempt < Settings.PipelineAttemptMax - 1)
                                     {
-                                        extractionLogger.Information("Switching from bulk load to merge load for table {TableKey} due to failure", tableKey);
-                                        tablesExecutionState.TryUpdate(tableKey, false, true);
+                                        await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                                     }
-
-                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
                                     continue;
                                 }
 
                                 operationSuccessful = true;
                                 insertTaskResult = Result.Ok();
 
-                                extractionLogger.Information("Successfully processed {RowCount} rows for table {TableKey}",
-                                    item.data.Table.Rows.Count, tableKey);
+                                extractionLogger.Information("Successfully processed {RowCount} rows for table {TableKey} using {Strategy}",
+                                    item.data.Table.Rows.Count, tableKey, shouldUseBulkLoad ? "BulkLoad" : "MergeLoad");
 
                                 Interlocked.Add(ref totalRowsProcessed, item.data.Table.Rows.Count);
                                 Interlocked.Increment(ref totalTablesProcessed);
 
                                 batchActivity?.SetTag("rows.count", item.data.Table.Rows.Count);
                                 batchActivity?.SetTag("table.key", tableKey);
-                                batchActivity?.SetTag("load.strategy", isBulkInsertContinuousExecution ? "BulkLoad" : "MergeLoad");
+                                batchActivity?.SetTag("load.strategy", shouldUseBulkLoad ? "BulkLoad" : "MergeLoad");
                                 batchActivity?.SetTag("success", true);
                             }
                             catch (Exception retryEx)
