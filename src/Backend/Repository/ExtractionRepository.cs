@@ -95,7 +95,7 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
                     select.OrderByDescending(e => e.Id)
             };
 
-            if (filters != null)
+            if (filters is not null)
             {
                 if (uint.TryParse(filters["skip"], out uint skip))
                 {

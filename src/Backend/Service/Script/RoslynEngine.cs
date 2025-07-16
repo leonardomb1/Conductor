@@ -159,20 +159,20 @@ public class RoslynScriptEngine : IScriptEngine, IDisposable
         foreach (var type in coreTypes)
         {
             var reference = TryCreateAssemblyReference(type.Assembly);
-            if (reference != null)
+            if (reference is not null)
                 references.Add(reference);
         }
 
         // Add current assembly reference
         var currentAssemblyRef = TryCreateAssemblyReference(Assembly.GetExecutingAssembly());
-        if (currentAssemblyRef != null)
+        if (currentAssemblyRef is not null)
             references.Add(currentAssemblyRef);
 
         // Add references to other loaded assemblies
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             var reference = TryCreateAssemblyReference(assembly);
-            if (reference != null)
+            if (reference is not null)
                 references.Add(reference);
         }
 

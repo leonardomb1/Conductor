@@ -4,8 +4,6 @@ using System.Data.Common;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Text.Json;
 using System.Threading.Channels;
 using Conductor.Logging;
 using Conductor.Model;
@@ -21,39 +19,28 @@ using ILogger = Serilog.ILogger;
 
 namespace Conductor.Service;
 
-public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
+public sealed class ExtractionPipeline(
+    DateTime requestTime,
+    IHttpClientFactory factory,
+    IJobTracker jobTracker,
+    int? overrideFilter,
+    IConnectionPoolManager connectionPoolManager,
+    IDataTableMemoryManager memoryManager,
+    IScriptEngine? scriptEngine = null) : IAsyncDisposable, IDisposable
 {
     private readonly ConcurrentBag<Error> pipelineErrors = [];
-    private readonly IConnectionPoolManager connectionPoolManager;
-    private readonly IDataTableMemoryManager memoryManager;
+    private readonly IConnectionPoolManager connectionPoolManager = connectionPoolManager ?? throw new ArgumentNullException(nameof(connectionPoolManager));
+    private readonly IDataTableMemoryManager memoryManager = memoryManager ?? throw new ArgumentNullException(nameof(memoryManager));
     private readonly ILogger logger = Log.ForContext<ExtractionPipeline>()
         ?? throw new InvalidOperationException("Serilog logger not configured");
-    private readonly DateTime requestTime;
-    private readonly IHttpClientFactory factory;
-    private readonly IJobTracker jobTracker;
-    private readonly int? overrideFilter;
-    private readonly IScriptEngine? scriptEngine;
+    private readonly DateTime requestTime = requestTime;
+    private readonly IHttpClientFactory factory = factory ?? throw new ArgumentNullException(nameof(factory));
+    private readonly IJobTracker jobTracker = jobTracker ?? throw new ArgumentNullException(nameof(jobTracker));
+    private readonly int? overrideFilter = overrideFilter;
+    private readonly IScriptEngine? scriptEngine = scriptEngine;
     private readonly ActivitySource activitySource = new("Conductor.ExtractionPipeline");
     private volatile bool disposed;
     private readonly Lock disposeLock = new();
-
-    public ExtractionPipeline(
-        DateTime requestTime,
-        IHttpClientFactory factory,
-        IJobTracker jobTracker,
-        int? overrideFilter,
-        IConnectionPoolManager connectionPoolManager,
-        IDataTableMemoryManager memoryManager,
-        IScriptEngine? scriptEngine = null)
-    {
-        this.requestTime = requestTime;
-        this.factory = factory ?? throw new ArgumentNullException(nameof(factory));
-        this.jobTracker = jobTracker ?? throw new ArgumentNullException(nameof(jobTracker));
-        this.overrideFilter = overrideFilter;
-        this.connectionPoolManager = connectionPoolManager ?? throw new ArgumentNullException(nameof(connectionPoolManager));
-        this.memoryManager = memoryManager ?? throw new ArgumentNullException(nameof(memoryManager));
-        this.scriptEngine = scriptEngine;
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool ReturnOnCancellation(CancellationToken token, out Error? error)
@@ -220,38 +207,6 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
 
         error = null;
         return true;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private async Task<DbConnection> GetConnectionAsync(string connectionString, string dbType, CancellationToken cancellationToken = default)
-    {
-        if (disposed)
-            throw new ObjectDisposedException(nameof(ExtractionPipeline));
-
-        string finalConnectionString = DBExchange.SupportsMARS(dbType)
-            ? DBExchange.EnsureMARSEnabled(connectionString, dbType)
-            : connectionString;
-
-        return await connectionPoolManager.GetConnectionAsync(finalConnectionString, dbType, cancellationToken);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ReturnConnection(string connectionString, string dbType, DbConnection connection)
-    {
-        if (disposed || connection is null) return;
-
-        string finalConnectionString = DBExchange.SupportsMARS(dbType)
-            ? DBExchange.EnsureMARSEnabled(connectionString, dbType)
-            : connectionString;
-
-        string connectionKey = GenerateConnectionKey(finalConnectionString, dbType);
-        connectionPoolManager.ReturnConnection(connectionKey, connection);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static string GenerateConnectionKey(string connectionString, string dbType)
-    {
-        return string.Concat(dbType.AsSpan(), ":".AsSpan(), connectionString.GetHashCode().ToString().AsSpan());
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -437,7 +392,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
         DbConnection? connection = null;
         try
         {
-            connection = await GetConnectionAsync(extraction.Destination.ConnectionString, extraction.Destination.DbType, token);
+            connection = await DBExchange.GetConnectionAsync(extraction.Destination.ConnectionString, extraction.Destination.DbType, connectionPoolManager, token);
 
             var exists = await metadata.Exists(extraction, connection).ConfigureAwait(false);
             if (!TryProcessOperation(exists, connection, cancellationTokenSource, out error))
@@ -480,7 +435,7 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
         {
             if (connection is not null)
             {
-                ReturnConnection(extraction.Destination.ConnectionString, extraction.Destination.DbType, connection);
+                DBExchange.ReturnConnection(extraction.Destination.ConnectionString, extraction.Destination.DbType, connectionPoolManager, connection);
             }
         }
     }
@@ -750,18 +705,15 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     Result<DataTable> attempt;
-                    DbConnection? connection = null;
 
                     try
                     {
-                        connection = await GetConnectionAsync(connectionString, dbType, cancellationToken);
-                        
                         attempt = await fetcher.FetchDataTable(
                             extraction,
                             requestTime,
                             shouldPartition,
                             currentOffset, 
-                            connection,
+                            connectionPoolManager,
                             cancellationToken,
                             overrideFilter,
                             Settings.ProducerLineMax, 
@@ -772,13 +724,6 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
                     {
                         extractionLogger?.Warning("Connection disposed during fetch for extraction {ExtractionId}", extraction.Id);
                         break;
-                    }
-                    finally
-                    {
-                        if (connection is not null)
-                        {
-                            ReturnConnection(extraction.Origin.ConnectionString, extraction.Origin.DbType, connection);
-                        }
                     }
 
                     if (!attempt.IsSuccessful)
@@ -1027,6 +972,8 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
             MaxDegreeOfParallelism = Settings.ParallelRule.Value.MaxDegreeOfParallelism
         };
 
+        var tableFirstExecutionState = new ConcurrentDictionary<string, bool>();
+        
         var totalRowsProcessed = 0L;
         var totalTablesProcessed = 0;
         var startTime = DateTime.UtcNow;
@@ -1046,162 +993,162 @@ public sealed class ExtractionPipeline : IAsyncDisposable, IDisposable
 
                 logger.Debug("Processing batch of {BatchSize} extractions for database output", fetchedData.Count);
 
-                await Parallel.ForEachAsync(fetchedData, options, async (item, cancellationToken) =>
+                var batchSuccessful = false;
+                
+                for (byte attempt = 0; attempt < Settings.PipelineAttemptMax && !batchSuccessful; attempt++)
                 {
-                    using var batchActivity = activitySource.StartActivity("DatabaseBatchWrite");
-                    batchActivity?.SetTag("extraction.id", item.metadata.Id);
-
-                    var extractionLogger = logger.ForContext("ExtractionId", item.metadata.Id)
-                                            .ForContext("ExtractionName", item.metadata.Name);
-
-                    if (cancellationToken.IsCancellationRequested) return;
-                    if (item.metadata.Destination is null) return;
-
-                    var insertTaskResult = Result.Ok();
-                    var inserter = DBExchangeFactory.Create(item.metadata.Destination.DbType);
-                    DbConnection? connection = null;
-
-                    try
+                    var batchErrors = new ConcurrentBag<Error>();
+                    
+                    if (attempt > 0)
                     {
-                        connection = await GetConnectionAsync(
-                            item.metadata.Destination.ConnectionString,
-                            item.metadata.Destination.DbType,
-                            cancellationToken);
+                        logger.Warning("Retrying batch processing, attempt {Attempt}", attempt + 1);
+                    }
 
-                        var tableKey = item.metadata.Alias ?? item.metadata.Name;
+                    await Parallel.ForEachAsync(fetchedData, options, async (item, cancellationToken) =>
+                    {
+                        using var batchActivity = activitySource.StartActivity("DatabaseBatchWrite");
+                        batchActivity?.SetTag("extraction.id", item.metadata.Id);
 
-                        extractionLogger.Debug("Processing {RowCount} rows for table {TableKey} in {DbType}",
-                            item.data.Table.Rows.Count, tableKey, item.metadata.Destination.DbType);
+                        var extractionLogger = logger.ForContext("ExtractionId", item.metadata.Id)
+                                                    .ForContext("ExtractionName", item.metadata.Name);
 
-                        var operationSuccessful = false;
-                        var lastAttemptWasBulk = false;
+                        if (cancellationToken.IsCancellationRequested) return;
+                        if (item.metadata.Destination is null) return;
 
-                        for (byte attempt = 0; attempt < Settings.PipelineAttemptMax && !operationSuccessful; attempt++)
+                        var inserter = DBExchangeFactory.Create(item.metadata.Destination.DbType);
+                        DbConnection? connection = null;
+
+                        try
                         {
-                            if (attempt > 0)
+                            connection = await DBExchange.GetConnectionAsync(
+                                item.metadata.Destination.ConnectionString,
+                                item.metadata.Destination.DbType,
+                                connectionPoolManager,
+                                cancellationToken);
+
+                            var tableKey = item.metadata.Alias ?? item.metadata.Name;
+
+                            extractionLogger.Debug("Processing {RowCount} rows for table {TableKey} in {DbType}",
+                                item.data.Table.Rows.Count, tableKey, item.metadata.Destination.DbType);
+
+                            var exists = await inserter.Exists(item.metadata, connection).ConfigureAwait(false);
+                            if (!exists.IsSuccessful)
                             {
-                                extractionLogger.Warning("Retrying database operation for extraction {ExtractionId}, attempt {Attempt}",
-                                    item.metadata.Id, attempt + 1);
+                                batchErrors.Add(exists.Error);
+                                batchActivity?.SetTag("success", false);
+                                return;
                             }
 
-                            try
+                            if (!exists.Value)
                             {
-                                var exists = await inserter.Exists(item.metadata, connection).ConfigureAwait(false);
-                                if (!exists.IsSuccessful)
+                                extractionLogger.Information("Creating table {TableKey} for extraction {ExtractionId}",
+                                    tableKey, item.metadata.Id);
+                                var createResult = await inserter.CreateTable(item.data.Table, item.metadata, connection).ConfigureAwait(false);
+                                if (!createResult.IsSuccessful)
                                 {
-                                    insertTaskResult = Result.Err(exists.Error);
-                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
-                                    continue;
-                                }
-
-                                if (!exists.Value)
-                                {
-                                    extractionLogger.Information("Creating table {TableKey} for extraction {ExtractionId}",
-                                        tableKey, item.metadata.Id);
-                                    var createResult = await inserter.CreateTable(item.data.Table, item.metadata, connection).ConfigureAwait(false);
-                                    if (!createResult.IsSuccessful)
-                                    {
-                                        insertTaskResult = Result.Err(createResult.Error);
-                                        await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
-                                        continue;
-                                    }
-                                }
-
-                                var count = await inserter.CountTableRows(item.metadata, connection).ConfigureAwait(false);
-                                if (!count.IsSuccessful)
-                                {
-                                    insertTaskResult = Result.Err(count.Error);
-                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
-                                    continue;
-                                }
-
-                                var shouldUseBulkLoad = count.Value == 0;
-                                if (attempt > 0 && lastAttemptWasBulk)
-                                {
-                                    shouldUseBulkLoad = false;
-                                    extractionLogger.Information("Switching from bulk to merge for table {TableKey} on retry attempt {Attempt}",
-                                        tableKey, attempt + 1);
-                                }
-
-                                Result loadResult;
-                                if (shouldUseBulkLoad)
-                                {
-                                    extractionLogger.Debug("Performing bulk load for table {TableKey}", tableKey);
-                                    loadResult = await inserter.BulkLoad(item.data.Table, item.metadata, connection).ConfigureAwait(false);
-                                    lastAttemptWasBulk = true;
-                                }
-                                else
-                                {
-                                    extractionLogger.Debug("Performing merge load for table {TableKey}", tableKey);
-                                    loadResult = await inserter.MergeLoad(item.data.Table, item.metadata, requestTime, connection).ConfigureAwait(false);
-                                    lastAttemptWasBulk = false;
-                                }
-
-                                if (!loadResult.IsSuccessful)
-                                {
-                                    insertTaskResult = Result.Err(loadResult.Error);
-                                    extractionLogger.Warning("Load operation failed for table {TableKey} on attempt {Attempt}: {Error}",
-                                        tableKey, attempt + 1, loadResult.Error.ExceptionMessage);
-
-                                    if (attempt < Settings.PipelineAttemptMax - 1)
-                                    {
-                                        await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
-                                    }
-                                    continue;
-                                }
-
-                                operationSuccessful = true;
-                                insertTaskResult = Result.Ok();
-
-                                extractionLogger.Information("Successfully processed {RowCount} rows for table {TableKey} using {Strategy}",
-                                    item.data.Table.Rows.Count, tableKey, shouldUseBulkLoad ? "BulkLoad" : "MergeLoad");
-
-                                Interlocked.Add(ref totalRowsProcessed, item.data.Table.Rows.Count);
-                                Interlocked.Increment(ref totalTablesProcessed);
-
-                                batchActivity?.SetTag("rows.count", item.data.Table.Rows.Count);
-                                batchActivity?.SetTag("table.key", tableKey);
-                                batchActivity?.SetTag("load.strategy", shouldUseBulkLoad ? "BulkLoad" : "MergeLoad");
-                                batchActivity?.SetTag("success", true);
-                            }
-                            catch (Exception retryEx)
-                            {
-                                extractionLogger.Warning(retryEx, "Exception during database operation attempt {Attempt} for extraction {ExtractionId}",
-                                    attempt + 1, item.metadata.Id);
-                                insertTaskResult = Result.Err(new Error(retryEx.Message, retryEx.StackTrace));
-
-                                if (attempt < Settings.PipelineAttemptMax - 1)
-                                {
-                                    await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), cancellationToken).ConfigureAwait(false);
+                                    batchErrors.Add(createResult.Error);
+                                    batchActivity?.SetTag("success", false);
+                                    return;
                                 }
                             }
+
+                            var shouldUseBulkLoad = tableFirstExecutionState.GetOrAdd(tableKey, key =>
+                            {
+                                var countResult = inserter.CountTableRows(item.metadata, connection).GetAwaiter().GetResult();
+                                if (!countResult.IsSuccessful)
+                                {
+                                    extractionLogger.Warning("Could not determine row count for table {TableKey}, defaulting to merge load", tableKey);
+                                    return false;
+                                }
+                                
+                                var isEmpty = countResult.Value == 0;
+                                extractionLogger.Information("Table {TableKey} first execution state: {IsEmpty} (will use {Strategy})",
+                                    tableKey, isEmpty, isEmpty ? "BulkLoad" : "MergeLoad");
+                                return isEmpty;
+                            });
+
+                            Result loadResult;
+                            if (shouldUseBulkLoad)
+                            {
+                                extractionLogger.Debug("Performing bulk load for table {TableKey} (first execution)", tableKey);
+                                loadResult = await inserter.BulkLoad(item.data.Table, item.metadata, connection).ConfigureAwait(false);
+                            }
+                            else
+                            {
+                                extractionLogger.Debug("Performing merge load for table {TableKey} (subsequent execution)", tableKey);
+                                loadResult = await inserter.MergeLoad(item.data.Table, item.metadata, requestTime, connection).ConfigureAwait(false);
+                            }
+
+                            if (!loadResult.IsSuccessful)
+                            {
+                                batchErrors.Add(loadResult.Error);
+                                extractionLogger.Warning("Load operation failed for table {TableKey}: {Error}",
+                                    tableKey, loadResult.Error.ExceptionMessage);
+                                batchActivity?.SetTag("success", false);
+                                return;
+                            }
+
+                            extractionLogger.Information("Successfully processed {RowCount} rows for table {TableKey} using {Strategy}",
+                                item.data.Table.Rows.Count, tableKey, shouldUseBulkLoad ? "BulkLoad" : "MergeLoad");
+
+                            Interlocked.Add(ref totalRowsProcessed, item.data.Table.Rows.Count);
+                            Interlocked.Increment(ref totalTablesProcessed);
+
+                            batchActivity?.SetTag("rows.count", item.data.Table.Rows.Count);
+                            batchActivity?.SetTag("table.key", tableKey);
+                            batchActivity?.SetTag("load.strategy", shouldUseBulkLoad ? "BulkLoad" : "MergeLoad");
+                            batchActivity?.SetTag("success", true);
                         }
-
-                        if (!operationSuccessful)
+                        catch (Exception ex)
                         {
-                            extractionLogger.Error("Failed to process table {TableKey} for extraction {ExtractionId} after {MaxAttempts} attempts",
-                                tableKey, item.metadata.Id, Settings.PipelineAttemptMax);
-                            pipelineErrors.Add(insertTaskResult.Error);
+                            extractionLogger.Error(ex, "Unexpected error processing extraction {ExtractionId}", item.metadata.Id);
+                            batchErrors.Add(new Error(ex.Message, ex.StackTrace));
                             batchActivity?.SetTag("success", false);
+                            batchActivity?.SetTag("error", ex.Message);
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        extractionLogger.Error(ex, "Unexpected error processing extraction {ExtractionId}", item.metadata.Id);
-                        pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
-                        batchActivity?.SetTag("success", false);
-                        batchActivity?.SetTag("error", ex.Message);
-                    }
-                    finally
-                    {
-                        if (connection is not null)
+                        finally
                         {
-                            ReturnConnection(item.metadata.Destination.ConnectionString, item.metadata.Destination.DbType, connection);
+                            if (connection is not null)
+                            {
+                                DBExchange.ReturnConnection(item.metadata.Destination.ConnectionString, item.metadata.Destination.DbType, connectionPoolManager, connection);
+                            }
+                        }
+                    }).ConfigureAwait(false);
+
+                    if (batchErrors.IsEmpty)
+                    {
+                        batchSuccessful = true;
+                    }
+                    else
+                    {
+                        foreach (var error in batchErrors)
+                        {
+                            pipelineErrors.Add(error);
                         }
 
-                        item.data.Dispose();
+                        if (attempt < Settings.PipelineAttemptMax - 1)
+                        {
+                            logger.Warning("Batch processing failed on attempt {Attempt}, retrying in {DelayMs}ms", 
+                                attempt + 1, Settings.PipelineBackoff * Math.Pow(2, attempt));
+                            await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), token).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            logger.Error("Batch processing failed after {MaxAttempts} attempts", Settings.PipelineAttemptMax);
+                        }
                     }
-                }).ConfigureAwait(false);
+                }
+
+                foreach (var (data, metadata) in fetchedData)
+                {
+                    data.Dispose();
+                }
+
+                if (!batchSuccessful)
+                {
+                    logger.Error("Maximum attempt count reached for batch, stopping pipeline");
+                    break;
+                }
             }
         }
         finally

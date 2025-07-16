@@ -136,7 +136,7 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
             command.CommandTimeout = 5; 
             
             var result = await command.ExecuteScalarAsync();
-            return result != null;
+            return result is not null;
         }
         catch
         {
@@ -425,7 +425,7 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
             command.CommandTimeout = 2;
             
             var result = await command.ExecuteScalarAsync();
-            var isHealthy = result != null;
+            var isHealthy = result is not null;
             
             if (isHealthy)
             {

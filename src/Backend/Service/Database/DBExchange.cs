@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Conductor.Model;
@@ -118,6 +120,35 @@ public abstract partial class DBExchange
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static async Task<DbConnection> GetConnectionAsync(string connectionString, string dbType, IConnectionPoolManager connectionPoolManager, CancellationToken cancellationToken = default)
+    {
+        string finalConnectionString = SupportsMARS(dbType)
+            ? EnsureMARSEnabled(connectionString, dbType)
+            : connectionString;
+
+        return await connectionPoolManager.GetConnectionAsync(finalConnectionString, dbType, cancellationToken);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ReturnConnection(string connectionString, string dbType, IConnectionPoolManager connectionPoolManager, DbConnection connection)
+    {
+        if (connection is null) return;
+
+        string finalConnectionString = SupportsMARS(dbType)
+            ? EnsureMARSEnabled(connectionString, dbType)
+            : connectionString;
+
+        string connectionKey = GenerateConnectionKey(finalConnectionString, dbType);
+        connectionPoolManager.ReturnConnection(connectionKey, connection);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static string GenerateConnectionKey(string connectionString, string dbType)
+    {
+        return string.Concat(dbType.AsSpan(), ":".AsSpan(), connectionString.GetHashCode().ToString().AsSpan());
+    }
+
     public virtual async Task<Result> TruncateTable(Extraction extraction, DbConnection connection)
     {
         string schemaName = extraction.Origin!.Alias ?? extraction.Origin!.Name;
@@ -225,15 +256,21 @@ public abstract partial class DBExchange
         try
         {
             using var fetched = new DataTable();
-            var select = await command.ExecuteReaderAsync(token);
+            using var select = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, token);
+
+            fetched.BeginLoadData();
             fetched.Load(select);
+            fetched.EndLoadData();
 
             fetched.TableName = extraction.Alias ?? extraction.Name;
 
+            Log.Debug("Query returned {RowCount} rows for extraction {ExtractionId} in {QueryLength} chars", 
+                fetched.Rows.Count, extraction.Id, query.Length);
             return fetched;
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Optimized query execution failed for extraction {ExtractionId}: {Query}", extraction.Id, query);
             return new Error(ex.Message, ex.StackTrace);
         }
     }
@@ -243,7 +280,7 @@ public abstract partial class DBExchange
         DateTime requestTime,
         bool shouldPartition,
         ulong currentRowCount,
-        DbConnection connection,
+        IConnectionPoolManager connectionPoolManager,
         CancellationToken token,
         int? overrideFilter = null,
         ulong limit = 0,
@@ -254,14 +291,15 @@ public abstract partial class DBExchange
 
         if (extraction.IsVirtual)
         {
-            if (extraction.VirtualIdGroup is null) return new Error($"No Virtual Id Group was given for {extraction.Name}, id: {extraction.Id}");
+            if (extraction.VirtualIdGroup is null) 
+                return new Error($"No Virtual Id Group was given for {extraction.Name}, id: {extraction.Id}");
 
             Result<List<Extraction>> deps = await ExtractionRepository.GetDependencies(extraction);
             if (!deps.IsSuccessful) return deps.Error;
 
             return await ParallelSelect(
                     deps.Value,
-                    connection,
+                    connectionPoolManager,
                     currentRowCount,
                     requestTime,
                     shouldPartition,
@@ -275,25 +313,50 @@ public abstract partial class DBExchange
         }
         else
         {
-            return await SelectData(
-                extraction,
-                currentRowCount,
-                requestTime,
-                shouldPartition,
-                connection,
-                overrideFilter, 
-                extraction.Name,
-                extraction.VirtualIdGroup,
-                shouldPaginate,
-                limit,
-                token
-            );
+            DbConnection? pooledConnection = null;
+            try
+            {
+                pooledConnection = await GetConnectionAsync(
+                    extraction.Origin!.ConnectionString!,
+                    extraction.Origin!.DbType!,
+                    connectionPoolManager,
+                    token
+                );
+
+                var result = await SelectData(
+                    extraction,
+                    currentRowCount,
+                    requestTime,
+                    shouldPartition,
+                    pooledConnection,
+                    overrideFilter, 
+                    extraction.Name,
+                    extraction.VirtualIdGroup,
+                    shouldPaginate,
+                    limit,
+                    token
+                );
+
+                return result;
+            }
+            finally
+            {
+                if (pooledConnection is not null)
+                {
+                    ReturnConnection(
+                        extraction.Origin!.ConnectionString!,
+                        extraction.Origin!.DbType!,
+                        connectionPoolManager,
+                        pooledConnection
+                    );
+                }
+            }
         }
     }
-
+    
     public virtual async Task<Result<DataTable>> ParallelSelect(
         List<Extraction> extractions,
-        DbConnection connection,
+        IConnectionPoolManager connectionPoolManager,
         ulong currentRowCount,
         DateTime requestTime,
         bool shouldPartition,
@@ -307,139 +370,176 @@ public abstract partial class DBExchange
     {
         if (token.IsCancellationRequested) return new Error("Operation Cancelled.");
 
-        var dataTables = new List<DataTable>();
-        var errors = new List<Error>();
-        DataTable finalData = new();
-        DataTable? templateTable = null;
-        bool hasTemplate = false;
+        var dataTables = new ConcurrentBag<DataTable>();
+        DataTable? finalData = new();
+        bool gotTemplate = false;
+        int errCount = 0;
+        Lock templateLock = new();
 
         try
         {
-            foreach (var extraction in extractions)
+            await Parallel.ForEachAsync(extractions, token, async (extraction, cancellationToken) =>
             {
-                if (token.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested) return;
+
+                DbConnection? pooledConnection = null;
+                try
                 {
-                    break;
+                    pooledConnection = await connectionPoolManager.GetConnectionAsync(
+                        extraction.Origin!.ConnectionString!,
+                        extraction.Origin!.DbType!,
+                        cancellationToken
+                    );
+
+                    Log.Debug("Retrieved connection from pool for extraction {ExtractionId} ({ExtractionName})",
+                        extraction.Id, extraction.Name);
+
+                    var result = await SelectData(
+                        extraction,
+                        currentRowCount,
+                        requestTime,
+                        shouldPartition,
+                        pooledConnection,
+                        overrideTime,
+                        virtualizedTable,
+                        virtualIdGroup,
+                        shouldPaginate,
+                        limit,
+                        cancellationToken
+                    );
+
+                    if (!result.IsSuccessful)
+                    {
+                        Interlocked.Increment(ref errCount);
+                        Log.Error("Failed to fetch data for extraction {ExtractionId} ({ExtractionName}): {Error}",
+                            extraction.Id, extraction.Name, result.Error.ExceptionMessage);
+                        return;
+                    }
+
+                    var fetchResult = result.Value;
+                    bool isTemplate = extraction.IsVirtualTemplate ?? false;
+
+                    for (int i = 0; i < fetchResult.Columns.Count; i++)
+                    {
+                        fetchResult.Columns[i].AllowDBNull = true;
+                    }
+
+                    if (isTemplate && !gotTemplate)
+                    {
+                        lock (templateLock)
+                        {
+                            if (!gotTemplate)
+                            {
+                                finalData = fetchResult.Clone();
+                                gotTemplate = true;
+                                Log.Information("Set template table structure from extraction {ExtractionId} with {RowCount} rows",
+                                    extraction.Id, fetchResult.Rows.Count);
+                            }
+                        }
+                    }
+
+                    dataTables.Add(fetchResult);
+                    Log.Information("Successfully fetched {RowCount} rows from extraction {ExtractionId} using pooled connection",
+                        fetchResult.Rows.Count, extraction.Id);
                 }
-
-                bool isTemplate = extraction.IsVirtualTemplate ?? false;
-
-                var fetchResult = await SelectData(
-                    extraction,
-                    currentRowCount,
-                    requestTime,
-                    shouldPartition,
-                    connection,
-                    overrideTime,
-                    virtualizedTable,
-                    virtualIdGroup,
-                    shouldPaginate,
-                    limit,
-                    token
-                );
-
-                if (!fetchResult.IsSuccessful)
+                catch (Exception ex)
                 {
-                    errors.Add(fetchResult.Error);
-                    Log.Error("Failed to fetch data for extraction {ExtractionId} ({ExtractionName}): {Error}", 
-                        extraction.Id, extraction.Name, fetchResult.Error.ExceptionMessage);
-                    continue; 
+                    Interlocked.Increment(ref errCount);
+                    Log.Error(ex, "Error fetching data for extraction {ExtractionId}: {Message}",
+                        extraction.Id, ex.Message);
                 }
-
-                foreach (DataColumn column in fetchResult.Value.Columns)
+                finally
                 {
-                    column.AllowDBNull = true;
+                    if (pooledConnection is not null)
+                    {
+                        try
+                        {
+                            var connectionKey = $"{extraction.Origin!.DbType}:{extraction.Origin!.ConnectionString!.GetHashCode()}";
+                            connectionPoolManager.ReturnConnection(connectionKey, pooledConnection);
+                            Log.Debug("Returned connection to pool for extraction {ExtractionId}", extraction.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "Failed to return connection to pool for extraction {ExtractionId}", extraction.Id);
+                            try { pooledConnection.Dispose(); } catch { }
+                        }
+                    }
                 }
-
-                if (isTemplate && !hasTemplate)
-                {
-                    templateTable = fetchResult.Value.Clone();
-                    finalData = templateTable;
-                    hasTemplate = true;
-                    Log.Debug("Set template table from extraction {ExtractionId}", extraction.Id);
-                }
-
-                dataTables.Add(fetchResult.Value);
-                Log.Debug("Successfully fetched {RowCount} rows from extraction {ExtractionId}", 
-                    fetchResult.Value.Rows.Count, extraction.Id);
+            });
+            
+            if (errCount == extractions.Count)
+            {
+                return new Error("Failed to fetch data from all extractions in virtual table");
             }
 
-            if (dataTables.Count == 0)
+            if (!gotTemplate && !dataTables.IsEmpty)
             {
-                return new Error("No data was fetched from any extractions");
+                finalData = dataTables.First().Clone();
+                Log.Warning("No template found for virtual table {VirtualizedTable}, using first extraction as template", virtualizedTable);
             }
 
-            if (!hasTemplate)
+            if (finalData == null)
             {
-                return new Error($"No template was found for virtual table {virtualizedTable}. Available extractions: {string.Join(", ", extractions.Select(e => $"{e.Name} (Template: {e.IsVirtualTemplate})"))}");
+                return new Error($"No template could be established for virtual table {virtualizedTable}");
             }
 
-            var totalRowsBeforeMerge = finalData.Rows.Count;
-            foreach (var table in dataTables)
+            var totalExpectedRows = dataTables.Sum(t => t.Rows.Count);
+            Log.Information("Starting merge for virtual table {VirtualizedTable}: {ExtractionCount} extractions, {ExpectedRows} total rows",
+                virtualizedTable, extractions.Count, totalExpectedRows);
+
+            var mergeNumber = 0;
+            foreach (DataTable table in dataTables)
             {
+                mergeNumber++;
                 try
                 {
                     var rowsBeforeMerge = finalData.Rows.Count;
                     finalData.Merge(table, false, MissingSchemaAction.Ignore);
                     var rowsAfterMerge = finalData.Rows.Count;
-                    
-                    Log.Debug("Merged {TableRows} rows from table {TableName}, total rows now: {TotalRows}", 
-                        table.Rows.Count, table.TableName, rowsAfterMerge);
-                    
-                    if (rowsAfterMerge - rowsBeforeMerge != table.Rows.Count)
+                    var actualRowsAdded = rowsAfterMerge - rowsBeforeMerge;
+
+                    Log.Information("Merge {MergeNumber}: Added {ActualRows} of {ExpectedRows} rows from table {TableName}, total now: {TotalRows}",
+                        mergeNumber, actualRowsAdded, table.Rows.Count, table.TableName, rowsAfterMerge);
+
+                    if (actualRowsAdded != table.Rows.Count)
                     {
-                        Log.Warning("Row count mismatch during merge: expected {Expected}, actual {Actual}", 
-                            table.Rows.Count, rowsAfterMerge - rowsBeforeMerge);
+                        var lostRows = table.Rows.Count - actualRowsAdded;
+                        Log.Warning("Merge {MergeNumber}: Lost {LostRows} rows during merge (possible key conflicts)",
+                            mergeNumber, lostRows);
                     }
+
+                    table.Dispose();
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, "Error merging table {TableName} with {RowCount} rows", 
-                        table.TableName, table.Rows.Count);
-                    errors.Add(new Error($"Merge failed for table {table.TableName}: {ex.Message}", ex.StackTrace));
+                    Log.Error(ex, "Error merging table {TableName} with {RowCount} rows in merge {MergeNumber}",
+                        table.TableName, table.Rows.Count, mergeNumber);
                 }
             }
 
             finalData.TableName = virtualizedTable;
-            
-            var totalRowsAfterMerge = finalData.Rows.Count;
-            Log.Information("ParallelSelect completed for {VirtualizedTable}: {ExtractionCount} extractions, {TotalRows} final rows", 
-                virtualizedTable, extractions.Count, totalRowsAfterMerge);
+            var finalRowCount = finalData.Rows.Count;
 
-            if (errors.Count > 0)
+            Log.Information("ParallelSelect completed for {VirtualizedTable}: {FinalRows} final rows (expected {ExpectedRows})",
+                virtualizedTable, finalRowCount, totalExpectedRows);
+
+            if (finalRowCount != totalExpectedRows)
             {
-                Log.Warning("ParallelSelect completed with {ErrorCount} errors but has {RowCount} rows", 
-                    errors.Count, finalData.Rows.Count);
-                
-                if (finalData.Rows.Count == 0)
-                {
-                    return Result<DataTable>.Err(errors);
-                }
+                var dataLoss = totalExpectedRows - finalRowCount;
+                Log.Warning("Data loss detected in virtual table {VirtualizedTable}: {DataLoss} rows lost during merge",
+                    virtualizedTable, dataLoss);
             }
 
             return finalData;
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Unexpected error in ParallelSelect for {VirtualizedTable}", virtualizedTable);
+            Log.Error(ex, "Unexpected error in ParallelSelect for virtual table {VirtualizedTable}", virtualizedTable);
             return new Error(ex.Message, ex.StackTrace);
         }
         finally
         {
-            foreach (var table in dataTables)
-            {
-                if (table != finalData && table != templateTable)
-                {
-                    try
-                    {
-                        table.Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Warning(ex, "Error disposing temporary table {TableName}", table.TableName);
-                    }
-                }
-            }
+            dataTables.Clear();
         }
     }
 

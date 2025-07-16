@@ -147,11 +147,9 @@ public class MSSQLExchange : DBExchange
 
         try
         {
-            // Drop temp table if exists
             using var dropTempTableCommand = CreateDbCommand($"DROP TABLE IF EXISTS \"{tempTableName}\"", connection);
             await dropTempTableCommand.ExecuteNonQueryAsync();
 
-            // Create temp table
             var createTempTableQuery = new StringBuilder();
             createTempTableQuery.AppendLine($"CREATE TABLE \"{tempTableName}\" (");
 
@@ -169,16 +167,15 @@ public class MSSQLExchange : DBExchange
             using var createTempTableCommand = CreateDbCommand(createTempTableQuery.ToString(), connection);
             await createTempTableCommand.ExecuteNonQueryAsync();
 
-            // Bulk copy data to temp table
             using var bulkCopy = new SqlBulkCopy((SqlConnection)connection)
             {
                 DestinationTableName = tempTableName,
-                BulkCopyTimeout = Settings.QueryTimeout
+                BulkCopyTimeout = Settings.QueryTimeout,
+                EnableStreaming = true
             };
 
             await bulkCopy.WriteToServerAsync(data);
 
-            // Perform merge operation
             var mergeQuery = new StringBuilder();
             mergeQuery.AppendLine($"MERGE INTO \"{schemaName}\".\"{tableName}\" AS Target");
             mergeQuery.AppendLine($"USING \"{tempTableName}\" AS Source");
@@ -253,7 +250,6 @@ public class MSSQLExchange : DBExchange
         }
         finally
         {
-            // Clean up temp table
             try
             {
                 using var dropTempTableCommand = CreateDbCommand($"DROP TABLE IF EXISTS \"{tempTableName}\"", connection);
@@ -320,8 +316,14 @@ public class MSSQLExchange : DBExchange
             using var bulk = new SqlBulkCopy((SqlConnection)connection)
             {
                 BulkCopyTimeout = Settings.QueryTimeout,
-                DestinationTableName = $"{schemaName}.{tableName}"
+                DestinationTableName = $"{schemaName}.{tableName}",
+                EnableStreaming = true
             };
+
+            foreach (DataColumn column in data.Columns)
+            {
+                bulk.ColumnMappings.Add(column.ColumnName, column.ColumnName);
+            }
 
             await bulk.WriteToServerAsync(data);
             Log.Information($"Bulk loaded {data.Rows.Count} rows into {schemaName}.{tableName}");

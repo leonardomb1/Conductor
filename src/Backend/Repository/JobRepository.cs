@@ -72,8 +72,7 @@ public class JobRepository(EfContext context) : IRepository<Job>
                     jobExtractionsQuery.OrderByDescending(x => x.j.StartTime)
             };
 
-            // Apply pagination
-            if (filters != null)
+            if (filters is not null)
             {
                 if (uint.TryParse(filters["skip"], out uint skip))
                 {
@@ -227,7 +226,7 @@ public class JobRepository(EfContext context) : IRepository<Job>
                     aggregatedExtractions.OrderByDescending(x => x.LastEndTime)
             };
 
-            if (filters != null)
+            if (filters is not null)
             {
                 if (uint.TryParse(filters["skip"], out uint skip))
                 {

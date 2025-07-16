@@ -48,9 +48,8 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             );
         }
 
-        // Validate sortDirection
         var sortDirection = filters?["sortDirection"].FirstOrDefault();
-        if (sortDirection != null && sortDirection != "asc" && sortDirection != "desc")
+        if (sortDirection is not null && sortDirection != "asc" && sortDirection != "desc")
         {
             return Results.BadRequest(
                 new Message(Status400BadRequest, "sortDirection must be 'asc' or 'desc'.", true)
@@ -496,12 +495,24 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         if (invalidFilters?.Count > 0)
         {
             return Results.BadRequest(
-                new Message(Status400BadRequest, "Invalid query parameters.", true)
+                new Message(Status400BadRequest, "Invalid query parameters. 'limit' must be a valid positive number.", true)
             );
         }
 
         string? limitString = filters?.Where(f => f.Key == "limit").FirstOrDefault().Value;
-        ulong limit = limitString == null ? ulong.Parse(limitString!) : Settings.FetcherLineMax;
+        ulong limit;
+        
+        if (string.IsNullOrEmpty(limitString))
+        {
+            limit = Settings.FetcherLineMax; 
+        }
+        else
+        {
+            if (!ulong.TryParse(limitString, out limit))
+            {
+                limit = Settings.FetcherLineMax;
+            }
+        }
 
         var stopwatch = Stopwatch.StartNew();
         var requestTime = DateTime.UtcNow;
@@ -564,42 +575,29 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             }
             else
             {
-                string conStr = Encryption.SymmetricDecryptAES256(
-                    res.Origin!.ConnectionString!,
-                    Settings.EncryptionKey
-                );
+                Helper.DecryptConnectionStrings(fetch.Value);
 
                 var engine = DBExchangeFactory.Create(res.Origin!.DbType!);
-                DbConnection? connection = null;
 
-                try
+                var query = await engine.FetchDataTable(
+                    extraction: res,
+                    requestTime: requestTime,
+                    shouldPartition: false,
+                    currentRowCount: currentRowCount,
+                    connectionPoolManager: connectionPoolManager,
+                    token: token,
+                    overrideFilter: null,
+                    limit: limit,
+                    shouldPaginate: true
+                );
+
+                if (!query.IsSuccessful)
                 {
-                    string finalConnectionString = DBExchange.SupportsMARS(res.Origin.DbType!)
-                        ? DBExchange.EnsureMARSEnabled(conStr, res.Origin.DbType!)
-                        : conStr;
-
-                    connection = await connectionPoolManager.GetConnectionAsync(finalConnectionString, res.Origin.DbType!, token);
-                    
-
-
-                    var query = await engine.FetchDataTable(res, requestTime, false, currentRowCount, connection, token, limit: limit, shouldPaginate: true);
-
-                    if (!query.IsSuccessful)
-                    {
-                        await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
-                        return Results.InternalServerError(ErrorMessage(query.Error));
-                    }
-
-                    dataTable = query.Value;
+                    await jobTracker.UpdateJob(job!.JobGuid, JobStatus.Failed);
+                    return Results.InternalServerError(ErrorMessage(query.Error));
                 }
-                finally
-                {
-                    if (connection is not null)
-                    {
-                        var connectionKey = $"{res.Origin.DbType}:{conStr.GetHashCode()}";
-                        connectionPoolManager.ReturnConnection(connectionKey, connection);
-                    }
-                }
+
+                dataTable = query.Value;
             }
 
             Helper.GetAndSetByteUsageForExtraction(dataTable, res.Id, jobTracker);
@@ -618,11 +616,10 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
                 }
 
                 result = nestedResult.Value;
-                nestedProperties = result
+                nestedProperties = [.. result
                     .SelectMany(row => row.Keys)
-                    .Where(key => nestingConfig.ShouldNestProperty(key))
-                    .Distinct()
-                    .ToList();
+                    .Where(nestingConfig.ShouldNestProperty)
+                    .Distinct()];
             }
             else
             {
