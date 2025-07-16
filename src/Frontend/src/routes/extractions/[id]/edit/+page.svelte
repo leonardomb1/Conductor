@@ -10,6 +10,7 @@
   import Select from "$lib/components/ui/Select.svelte"
   import Toast from "$lib/components/ui/Toast.svelte"
   import { ArrowLeft, Save } from "@lucide/svelte"
+  import { goto } from "$app/navigation"
 
   let extraction = $state<Extraction | null>(null)
   let origins = $state<Origin[]>([])
@@ -200,11 +201,17 @@
 
       const response = await api.updateExtraction(extractionId, extractionData)
 
-     if (!response.error && (response.statusCode === 200 || response.statusCode === 204)) {
+      if (
+        !response.error &&
+        (response.statusCode === 200 || response.statusCode === 204)
+      ) {
         showToastMessage("Extraction updated successfully", "success")
-     } else {
+      } else {
         const errorMessage = response.information || "Unknown error occurred"
-        showToastMessage(`Failed to update extraction: ${errorMessage}`, "error")
+        showToastMessage(
+          `Failed to update extraction: ${errorMessage}`,
+          "error",
+        )
       }
     } catch (error) {
       showToastMessage(`Failed to update extraction: ${error.message}`, "error")
@@ -250,7 +257,7 @@
       <div class="flex space-x-3">
         <Button
           variant="ghost"
-          onclick={() => history.back()}
+          onclick={() => goto(`/extractions/${extractionId}`)}
         >
           <ArrowLeft size={16} class="mr-2" />
           Cancel

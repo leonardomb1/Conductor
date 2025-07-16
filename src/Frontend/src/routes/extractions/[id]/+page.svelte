@@ -19,6 +19,7 @@
     ArrowLeft,
     FileDown,
   } from "@lucide/svelte"
+  import { goto } from "$app/navigation"
 
   let extraction = $state<Extraction | null>(null)
   let loading = $state(true)
@@ -359,7 +360,7 @@
   >
     {#snippet actions()}
       <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
-        <Button variant="ghost" onclick={() => history.back()}>
+        <Button variant="ghost" onclick={() => goto("/extractions")}>
           <ArrowLeft size={16} class="mr-2" />
           Back
         </Button>

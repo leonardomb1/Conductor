@@ -9,6 +9,7 @@
   import Select from "$lib/components/ui/Select.svelte"
   import Toast from "$lib/components/ui/Toast.svelte"
   import { ArrowLeft, Save } from "@lucide/svelte"
+  import { goto } from "$app/navigation"
 
   let origins = $state<Origin[]>([])
   let destinations = $state<Destination[]>([])
@@ -151,10 +152,7 @@
       await api.createExtraction(extractionData)
       window.location.href = "/extractions"
     } catch (error) {
-      showToastMessage(
-        "Failed to save extraction.",
-        "error",
-      )
+      showToastMessage("Failed to save extraction.", "error")
     } finally {
       saving = false
     }
@@ -193,10 +191,7 @@
   >
     {#snippet actions()}
       <div class="flex space-x-3">
-        <Button
-          variant="ghost"
-          onclick={() => history.back()}
-        >
+        <Button variant="ghost" onclick={() => goto("/extractions")}>
           <ArrowLeft size={16} class="mr-2" />
           Cancel
         </Button>
