@@ -4,7 +4,18 @@ export interface ApiResponse<T> {
   error: boolean;
   entityCount?: number;
   page?: number;
+  hasNestedData?: boolean;
+  metadata?: FetchMetadata;
   content?: T[];
+}
+
+export interface FetchMetadata {
+  extractionName?: string;
+  extractionId?: number;
+  requestTime?: string;
+  processingTime?: string;
+  dataSizeBytes?: number;
+  nestedProperties?: string[];
 }
 
 export interface Destination {
@@ -169,4 +180,16 @@ export interface JobFilters {
   // Sorting
   sortBy?: string;
   sortDirection?: 'asc' | 'desc';
+}
+
+export interface FetchFilters {
+  // Basic filters
+  name?: string;
+  page?: string;
+  
+  // Nesting configuration
+  disableNesting?: string;
+  nestProperties?: string;
+  nestPatterns?: string;
+  excludeProperties?: string;
 }

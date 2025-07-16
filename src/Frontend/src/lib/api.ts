@@ -1,4 +1,4 @@
-import type { ApiResponse, Destination, Origin, Schedule, User, Extraction, JobDto, ExtractionAggregatedDto } from './types.js';
+import type { ApiResponse, Destination, Origin, Schedule, User, Extraction, JobDto, ExtractionAggregatedDto, FetchFilters } from './types.js';
 import { auth } from './auth.svelte.js';
 
 // Add new types for backend-specific endpoints
@@ -276,8 +276,8 @@ class ApiClient {
     });
   }
 
-  async fetchData(filters?: Record<string, string>): Promise<ApiResponse<Record<string, any>>> {
-    const params = filters ? '?' + new URLSearchParams(filters).toString() : '';
+  async fetchData(filters?: FetchFilters): Promise<ApiResponse<Record<string, any>>> {
+    const params = filters ? '?' + new URLSearchParams(filters as Record<string, string>).toString() : '';
     return this.request<Record<string, any>>(`/extractions/fetch${params}`);
   }
 

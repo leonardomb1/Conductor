@@ -10,7 +10,7 @@
   import Select from "$lib/components/ui/Select.svelte"
   import Toast from "$lib/components/ui/Toast.svelte"
   import ConfirmationModal from "$lib/components/ui/ConfirmationModal.svelte"
-  import { Plus, Edit, Trash2, Calendar, Play, RefreshCw } from "@lucide/svelte"
+  import { Plus, Edit, Trash2, Calendar, Play } from "@lucide/svelte"
 
   let schedules = $state<Schedule[]>([])
   let loading = $state(true)
@@ -80,7 +80,8 @@
         const variant = value ? "success" : "error"
         const text = value ? "Active" : "Inactive"
         const colors = {
-          success: "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300",
+          success:
+            "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300",
           error: "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300",
         }
         return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colors[variant]}">${text}</span>`
@@ -110,41 +111,41 @@
     type: "success" | "error" | "info" = "info",
   ) {
     // Check if message contains a job GUID pattern
-    const jobGuidPattern = /Job ID: ([a-f0-9-]{36})/i;
-    const match = message.match(jobGuidPattern);
-    
+    const jobGuidPattern = /Job ID: ([a-f0-9-]{36})/i
+    const match = message.match(jobGuidPattern)
+
     if (match && type === "success") {
       // Format the message with highlighted job GUID
-      const jobGuid = match[1];
-      const baseMessage = message.replace(jobGuidPattern, "");
-      
-      toastMessage = `<div class="toast-content">${baseMessage}<br><span class="job-guid-highlight">Job ID: ${jobGuid}</span><br><small>Click to copy job ID</small></div>`;
-      
+      const jobGuid = match[1]
+      const baseMessage = message.replace(jobGuidPattern, "")
+
+      toastMessage = `<div class="toast-content">${baseMessage}<br><span class="job-guid-highlight">Job ID: ${jobGuid}</span><br><small>Click to copy job ID</small></div>`
+
       // Add click handler to copy job GUID
       setTimeout(() => {
-        const toastElement = document.querySelector('.job-guid-highlight');
+        const toastElement = document.querySelector(".job-guid-highlight")
         if (toastElement) {
           toastElement.onclick = () => {
             navigator.clipboard.writeText(jobGuid).then(() => {
-              const originalText = toastElement.textContent;
-              toastElement.textContent = 'Copied!';
+              const originalText = toastElement.textContent
+              toastElement.textContent = "Copied!"
               setTimeout(() => {
-                toastElement.textContent = originalText;
-              }, 1000);
-            });
-          };
+                toastElement.textContent = originalText
+              }, 1000)
+            })
+          }
         }
-      }, 100);
-      
+      }, 100)
+
       // Use HTML mode for toast
-      showToast = true;
-      return;
+      showToast = true
+      return
     }
-    
+
     // Regular message without HTML
-    toastMessage = message;
-    toastType = type;
-    showToast = true;
+    toastMessage = message
+    toastType = type
+    showToast = true
   }
 
   onMount(async () => {
@@ -177,11 +178,6 @@
     }
   }
 
-  async function refreshData() {
-    await loadSchedules()
-    showToastMessage("Data refreshed successfully", "success")
-  }
-
   function selectSchedule(id: number) {
     selectedScheduleId = selectedScheduleId === id ? null : id
   }
@@ -200,14 +196,17 @@
       return
     }
 
-    const schedule = schedules.find(s => s.id === selectedScheduleId)
+    const schedule = schedules.find((s) => s.id === selectedScheduleId)
     if (!schedule) {
       showToastMessage("Selected schedule not found", "error")
       return
     }
 
     if (!schedule.status) {
-      showToastMessage("Cannot run inactive schedule. Please activate it first.", "error")
+      showToastMessage(
+        "Cannot run inactive schedule. Please activate it first.",
+        "error",
+      )
       return
     }
 
@@ -347,34 +346,38 @@
       confirmLoading = true
       try {
         const response = await api.deleteSchedule(id)
-        
+
         // Handle 204 No Content response (successful deletion)
         if (response?.statusCode === 204 || !response?.error) {
           // Clear selection if deleted schedule was selected
           if (selectedScheduleId === id) {
             selectedScheduleId = null
           }
-          
+
           await loadSchedules()
           showToastMessage(
-            `Schedule "${schedule?.scheduleName || `ID: ${id}`}" deleted successfully`, 
-            "success"
+            `Schedule "${schedule?.scheduleName || `ID: ${id}`}" deleted successfully`,
+            "success",
           )
         } else {
-          throw new Error(response?.information || "Unexpected response from server")
+          throw new Error(
+            response?.information || "Unexpected response from server",
+          )
         }
       } catch (error) {
         let errorMessage = "Failed to delete schedule"
         if (error instanceof Error) {
-          if (error.message.includes('404')) {
-            errorMessage = "Schedule not found - it may have already been deleted"
-          } else if (error.message.includes('409')) {
-            errorMessage = "Cannot delete schedule - it is being used by one or more extractions"
+          if (error.message.includes("404")) {
+            errorMessage =
+              "Schedule not found - it may have already been deleted"
+          } else if (error.message.includes("409")) {
+            errorMessage =
+              "Cannot delete schedule - it is being used by one or more extractions"
           } else {
             errorMessage = `Failed to delete schedule: ${error.message}`
           }
         }
-        
+
         showToastMessage(errorMessage, "error")
         throw error
       } finally {
@@ -390,11 +393,9 @@
       const schedule = schedules.find((s) => s.id === id)
       if (schedule) openEditModal(schedule)
     }
-
     ;(window as any).deleteSchedule = (id: number) => {
       showDeleteConfirmation(id)
     }
-
     ;(window as any).selectSchedule = (id: number) => {
       selectSchedule(id)
     }
@@ -416,10 +417,6 @@
   >
     {#snippet actions()}
       <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
-        <Button variant="ghost" onclick={refreshData} {loading}>
-          <RefreshCw size={16} class="mr-2" />
-          Refresh
-        </Button>
         <Button
           variant="secondary"
           onclick={openRunModal}
@@ -428,7 +425,7 @@
           <Play size={16} class="mr-2" />
           Run Schedule
           {#if selectedScheduleId}
-            ({schedules.find(s => s.id === selectedScheduleId)?.scheduleName})
+            ({schedules.find((s) => s.id === selectedScheduleId)?.scheduleName})
           {/if}
         </Button>
         <Button variant="primary" onclick={openCreateModal}>
@@ -440,8 +437,12 @@
   </PageHeader>
 
   <!-- Filters - Fixed dark mode styling -->
-  <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-    <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+  <div
+    class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
+  >
+    <div
+      class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4"
+    >
       <div class="max-w-md flex-1">
         <Input placeholder="Search schedules..." bind:value={searchTerm} />
       </div>
@@ -455,7 +456,9 @@
   </div>
 
   <!-- Schedules Table - Fixed dark mode styling -->
-  <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg border border-gray-200 dark:border-gray-700">
+  <div
+    class="bg-white dark:bg-gray-800 shadow-sm rounded-lg border border-gray-200 dark:border-gray-700"
+  >
     <div class="p-6">
       <Table
         {columns}
@@ -479,13 +482,23 @@
 <Modal bind:open={showRunModal} title="Run Schedule" size="md">
   <div class="space-y-6">
     {#if selectedScheduleId}
-      {@const schedule = schedules.find(s => s.id === selectedScheduleId)}
-      
-      <div class="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-400 dark:border-blue-600 p-4">
+      {@const schedule = schedules.find((s) => s.id === selectedScheduleId)}
+
+      <div
+        class="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-400 dark:border-blue-600 p-4"
+      >
         <div class="flex">
           <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-blue-400 dark:text-blue-300" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            <svg
+              class="h-5 w-5 text-blue-400 dark:text-blue-300"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clip-rule="evenodd"
+              />
             </svg>
           </div>
           <div class="ml-3">
@@ -493,30 +506,41 @@
               Run Schedule: "{schedule?.scheduleName}"
             </h3>
             <div class="mt-2 text-sm text-blue-700 dark:text-blue-400">
-              <p>This will execute all extractions associated with this schedule. You can monitor the job progress in the Jobs section.</p>
+              <p>
+                This will execute all extractions associated with this schedule.
+                You can monitor the job progress in the Jobs section.
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="bg-gray-50 dark:bg-gray-800 p-4 rounded-md border border-gray-200 dark:border-gray-700">
+      <div
+        class="bg-gray-50 dark:bg-gray-800 p-4 rounded-md border border-gray-200 dark:border-gray-700"
+      >
         <h5 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
           Schedule Details:
         </h5>
         <div class="space-y-3 text-sm">
           <div class="flex justify-between">
             <span class="text-gray-600 dark:text-gray-400">Schedule Name:</span>
-            <span class="font-medium text-gray-900 dark:text-white">{schedule?.scheduleName}</span>
+            <span class="font-medium text-gray-900 dark:text-white"
+              >{schedule?.scheduleName}</span
+            >
           </div>
           <div class="flex justify-between">
             <span class="text-gray-600 dark:text-gray-400">Status:</span>
             <span class="text-gray-900 dark:text-white">
               {#if schedule?.status}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                <span
+                  class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300"
+                >
                   Active
                 </span>
               {:else}
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
+                <span
+                  class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300"
+                >
                   Inactive
                 </span>
               {/if}
@@ -524,7 +548,9 @@
           </div>
           <div class="flex justify-between">
             <span class="text-gray-600 dark:text-gray-400">Value:</span>
-            <span class="font-medium text-gray-900 dark:text-white">{schedule?.value}</span>
+            <span class="font-medium text-gray-900 dark:text-white"
+              >{schedule?.value}</span
+            >
           </div>
         </div>
       </div>
@@ -539,19 +565,31 @@
           ]}
         />
 
-        <div class="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-600 p-3">
+        <div
+          class="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-600 p-3"
+        >
           <div class="flex">
             <div class="flex-shrink-0">
-              <svg class="h-5 w-5 text-yellow-400 dark:text-yellow-300" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+              <svg
+                class="h-5 w-5 text-yellow-400 dark:text-yellow-300"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clip-rule="evenodd"
+                />
               </svg>
             </div>
             <div class="ml-3">
               <p class="text-sm text-yellow-700 dark:text-yellow-400">
                 {#if runType === "transfer"}
-                  <strong>Transfer mode:</strong> All extractions in this schedule will transfer data to their configured destinations.
+                  <strong>Transfer mode:</strong> All extractions in this schedule
+                  will transfer data to their configured destinations.
                 {:else}
-                  <strong>Pull mode:</strong> All extractions in this schedule will extract data and make it available as CSV files.
+                  <strong>Pull mode:</strong> All extractions in this schedule will
+                  extract data and make it available as CSV files.
                 {/if}
               </p>
             </div>
@@ -559,16 +597,27 @@
         </div>
 
         {#if !schedule?.status}
-          <div class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-400 dark:border-red-600 p-3">
+          <div
+            class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-400 dark:border-red-600 p-3"
+          >
             <div class="flex">
               <div class="flex-shrink-0">
-                <svg class="h-5 w-5 text-red-400 dark:text-red-300" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                <svg
+                  class="h-5 w-5 text-red-400 dark:text-red-300"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clip-rule="evenodd"
+                  />
                 </svg>
               </div>
               <div class="ml-3">
                 <p class="text-sm text-red-700 dark:text-red-400">
-                  <strong>Warning:</strong> This schedule is currently inactive. Please activate it before running.
+                  <strong>Warning:</strong> This schedule is currently inactive.
+                  Please activate it before running.
                 </p>
               </div>
             </div>
@@ -576,8 +625,14 @@
         {/if}
       </div>
 
-      <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <Button variant="secondary" onclick={() => (showRunModal = false)} disabled={runLoading}>
+      <div
+        class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700"
+      >
+        <Button
+          variant="secondary"
+          onclick={() => (showRunModal = false)}
+          disabled={runLoading}
+        >
           Cancel
         </Button>
         <Button
@@ -587,14 +642,39 @@
           disabled={runLoading || !schedule?.status}
         >
           {#if runLoading}
-            <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <svg
+              class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
             Starting {runType}...
           {:else}
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m-9-4V8a3 3 0 016 0v2M5 12h14l-1 7H6l-1-7z"></path>
+            <svg
+              class="w-4 h-4 mr-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h8m-9-4V8a3 3 0 016 0v2M5 12h14l-1 7H6l-1-7z"
+              ></path>
             </svg>
             Run {runType}
           {/if}
@@ -625,7 +705,9 @@
           bind:checked={formData.status}
           class="rounded border-gray-300 dark:border-gray-600 text-supabase-green focus:ring-supabase-green dark:bg-gray-800"
         />
-        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Active</span>
+        <span class="text-sm font-medium text-gray-700 dark:text-gray-300"
+          >Active</span
+        >
       </label>
     </div>
 
@@ -639,7 +721,9 @@
       help="Scheduling interval value (implementation dependent)"
     />
 
-    <div class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
+    <div
+      class="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 pt-4"
+    >
       <Button variant="secondary" onclick={() => (showModal = false)}>
         Cancel
       </Button>
@@ -663,7 +747,12 @@
 />
 
 <!-- Toast Notifications with HTML support -->
-<Toast bind:show={showToast} type={toastType} message={toastMessage} allowHtml={true} />
+<Toast
+  bind:show={showToast}
+  type={toastType}
+  message={toastMessage}
+  allowHtml={true}
+/>
 
 <style>
   /* Enhanced toast styling for job notifications */
@@ -677,7 +766,7 @@
     cursor: pointer;
     transition: all 0.2s ease-in-out;
   }
-  
+
   :global(.job-guid-highlight:hover) {
     background-color: #fed7aa;
     border-color: #f97316;
