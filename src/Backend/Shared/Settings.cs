@@ -60,6 +60,9 @@ public static class Settings
     [ConfigKey("DATATABLE_LIFETIME_MINUTES")]
     public static int DataTableLifetimeMinutes { get; set; }
 
+    [ConfigKey("CHANNEL_MAXIMUM_SIZE")]
+    public static int ChannelMaximumSize { get; set; }
+
     [ConfigKey("DATATABLE_CLEANUP_INTERVAL_MINUTES")]
     public static int DataTableCleanupIntervalMinutes { get; set; }
 

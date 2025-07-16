@@ -299,14 +299,15 @@ public sealed class ExtractionPipeline(
         logger.Information("Starting extraction pipeline with {ExtractionCount} extractions at {RequestTime}",
             extractions.Count, requestTime);
 
-        var channelOptions = new UnboundedChannelOptions
+        var channelOptions = new BoundedChannelOptions(Settings.ChannelMaximumSize)
         {
             SingleReader = false,
             SingleWriter = false,
-            AllowSynchronousContinuations = false
+            AllowSynchronousContinuations = false,
+            FullMode = BoundedChannelFullMode.Wait
         };
 
-        var channel = Channel.CreateUnbounded<(ManagedDataTable, Extraction)>(channelOptions);
+        var channel = Channel.CreateBounded<(ManagedDataTable, Extraction)>(channelOptions);
         using var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(token);
 
         var stopwatch = Stopwatch.StartNew();
@@ -509,7 +510,7 @@ public sealed class ExtractionPipeline(
                 extractionActivity?.SetTag("rows.count", managedTable.Table.Rows.Count);
                 extractionActivity?.SetTag("success", true);
 
-                await channel.Writer.WriteAsync((managedTable, extraction), cancellationToken).ConfigureAwait(false);
+                await channel.Writer.WriteAsync((managedTable, extraction), cancellationToken);
 
                 Interlocked.Increment(ref completedCount);
             }).ConfigureAwait(false);
@@ -674,7 +675,7 @@ public sealed class ExtractionPipeline(
                 string dbType = extraction.Origin.DbType;
                 string connectionString = extraction.Origin.ConnectionString;
 
-                extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId} using {DbType}", 
+                extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId} using {DbType}",
                     extraction.Id, dbType);
 
                 bool shouldPartition = false;
@@ -699,7 +700,7 @@ public sealed class ExtractionPipeline(
 
                 var fetcher = DBExchangeFactory.Create(extraction.Origin.DbType);
                 var extractionRowCount = 0;
-                
+
                 ulong currentOffset = 0;
 
                 while (!cancellationToken.IsCancellationRequested)
@@ -712,11 +713,11 @@ public sealed class ExtractionPipeline(
                             extraction,
                             requestTime,
                             shouldPartition,
-                            currentOffset, 
+                            currentOffset,
                             connectionPoolManager,
                             cancellationToken,
                             overrideFilter,
-                            Settings.ProducerLineMax, 
+                            Settings.ProducerLineMax,
                             true
                         ).ConfigureAwait(false);
                     }
@@ -757,7 +758,7 @@ public sealed class ExtractionPipeline(
 
                     var batchSize = attempt.Value.Rows.Count;
                     extractionRowCount += batchSize;
-                    
+
                     currentOffset += (ulong)batchSize;
                     Interlocked.Add(ref totalRowsProduced, batchSize);
 
@@ -783,7 +784,7 @@ public sealed class ExtractionPipeline(
                     {
                         managedTable.Table.Merge(attempt.Value);
                         var mergedRowCount = managedTable.Table.Rows.Count;
-                        
+
                         if (mergedRowCount - originalRowCount != batchSize)
                         {
                             extractionLogger?.Error("DataTable merge lost rows for extraction {ExtractionId}: expected {Expected}, got {Actual}",
@@ -805,7 +806,8 @@ public sealed class ExtractionPipeline(
 
                     attempt.Value.Dispose();
 
-                    await channel.Writer.WriteAsync((managedTable, extraction), cancellationToken).ConfigureAwait(false);
+                    await channel.Writer.WriteAsync((managedTable, extraction), cancellationToken);
+                    Log.Information("DataTable was added in the channel.");
                 }
 
                 if (extractionRowCount > 0)
@@ -973,7 +975,7 @@ public sealed class ExtractionPipeline(
         };
 
         var tableFirstExecutionState = new ConcurrentDictionary<string, bool>();
-        
+
         var totalRowsProcessed = 0L;
         var totalTablesProcessed = 0;
         var startTime = DateTime.UtcNow;
@@ -994,11 +996,11 @@ public sealed class ExtractionPipeline(
                 logger.Debug("Processing batch of {BatchSize} extractions for database output", fetchedData.Count);
 
                 var batchSuccessful = false;
-                
+
                 for (byte attempt = 0; attempt < Settings.PipelineAttemptMax && !batchSuccessful; attempt++)
                 {
                     var batchErrors = new ConcurrentBag<Error>();
-                    
+
                     if (attempt > 0)
                     {
                         logger.Warning("Retrying batch processing, attempt {Attempt}", attempt + 1);
@@ -1060,7 +1062,7 @@ public sealed class ExtractionPipeline(
                                     extractionLogger.Warning("Could not determine row count for table {TableKey}, defaulting to merge load", tableKey);
                                     return false;
                                 }
-                                
+
                                 var isEmpty = countResult.Value == 0;
                                 extractionLogger.Information("Table {TableKey} first execution state: {IsEmpty} (will use {Strategy})",
                                     tableKey, isEmpty, isEmpty ? "BulkLoad" : "MergeLoad");
@@ -1128,7 +1130,7 @@ public sealed class ExtractionPipeline(
 
                         if (attempt < Settings.PipelineAttemptMax - 1)
                         {
-                            logger.Warning("Batch processing failed on attempt {Attempt}, retrying in {DelayMs}ms", 
+                            logger.Warning("Batch processing failed on attempt {Attempt}, retrying in {DelayMs}ms",
                                 attempt + 1, Settings.PipelineBackoff * Math.Pow(2, attempt));
                             await Task.Delay(TimeSpan.FromMilliseconds(Settings.PipelineBackoff * Math.Pow(2, attempt)), token).ConfigureAwait(false);
                         }

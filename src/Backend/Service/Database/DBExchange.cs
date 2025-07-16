@@ -264,7 +264,7 @@ public abstract partial class DBExchange
 
             fetched.TableName = extraction.Alias ?? extraction.Name;
 
-            Log.Debug("Query returned {RowCount} rows for extraction {ExtractionId} in {QueryLength} chars", 
+            Log.Debug("Query returned {RowCount} rows for extraction {ExtractionId} in {QueryLength} chars",
                 fetched.Rows.Count, extraction.Id, query.Length);
             return fetched;
         }
@@ -291,7 +291,7 @@ public abstract partial class DBExchange
 
         if (extraction.IsVirtual)
         {
-            if (extraction.VirtualIdGroup is null) 
+            if (extraction.VirtualIdGroup is null)
                 return new Error($"No Virtual Id Group was given for {extraction.Name}, id: {extraction.Id}");
 
             Result<List<Extraction>> deps = await ExtractionRepository.GetDependencies(extraction);
@@ -303,7 +303,7 @@ public abstract partial class DBExchange
                     currentRowCount,
                     requestTime,
                     shouldPartition,
-                    overrideFilter, 
+                    overrideFilter,
                     extraction.Name,
                     extraction.VirtualIdGroup!,
                     token,
@@ -329,7 +329,7 @@ public abstract partial class DBExchange
                     requestTime,
                     shouldPartition,
                     pooledConnection,
-                    overrideFilter, 
+                    overrideFilter,
                     extraction.Name,
                     extraction.VirtualIdGroup,
                     shouldPaginate,
@@ -353,7 +353,7 @@ public abstract partial class DBExchange
             }
         }
     }
-    
+
     public virtual async Task<Result<DataTable>> ParallelSelect(
         List<Extraction> extractions,
         IConnectionPoolManager connectionPoolManager,
@@ -466,7 +466,7 @@ public abstract partial class DBExchange
                     }
                 }
             });
-            
+
             if (errCount == extractions.Count)
             {
                 return new Error("Failed to fetch data from all extractions in virtual table");
@@ -478,7 +478,7 @@ public abstract partial class DBExchange
                 Log.Warning("No template found for virtual table {VirtualizedTable}, using first extraction as template", virtualizedTable);
             }
 
-            if (finalData == null)
+            if (finalData is null)
             {
                 return new Error($"No template could be established for virtual table {virtualizedTable}");
             }

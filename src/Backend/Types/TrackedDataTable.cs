@@ -22,7 +22,7 @@ public class TrackedDataTable : IDisposable
 
     public long EstimateMemoryUsage()
     {
-        if (disposed || dataTable == null) return 0;
+        if (disposed || dataTable is null) return 0;
 
         try
         {

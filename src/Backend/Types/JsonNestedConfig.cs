@@ -56,7 +56,7 @@ public sealed class JsonNestingConfig
     {
         var config = new JsonNestingConfig();
 
-        if (query == null) return Default;
+        if (query is null) return Default;
 
         if (query.TryGetValue("nestProperties", out var nestProps))
         {

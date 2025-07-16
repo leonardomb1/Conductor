@@ -97,7 +97,7 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
         }
 
         var success = await jobTracker.CancelJob(jobGuid);
-        
+
         if (success)
         {
             return Results.Ok(
@@ -207,7 +207,7 @@ public sealed class JobController(JobRepository jobRepository, JobExtractionRepo
             .Produces<Message>(Status200OK, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
 
-        group.MapDelete("/jobs/{jobGuid}/cancel", async (JobController controller, string jobGuid) => await controller.CancelJob(jobGuid))
+        group.MapDelete("/{jobGuid}/cancel", async (JobController controller, string jobGuid) => await controller.CancelJob(jobGuid))
             .WithName("CancelJob")
             .WithSummary("Cancels a running extraction job.")
             .WithDescription("""

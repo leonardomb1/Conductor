@@ -65,21 +65,21 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
             try
             {
                 var connection = await pool.GetConnectionAsync(cancellationToken);
-                
+
                 if (await IsConnectionHealthy(connection))
                 {
                     if (attempt > 1)
                     {
-                        logging.Information("Successfully obtained connection on attempt {Attempt} for {DbType}", 
+                        logging.Information("Successfully obtained connection on attempt {Attempt} for {DbType}",
                             attempt, dbType);
                     }
                     return connection;
                 }
                 else
                 {
-                    logging.Warning("Connection health check failed on attempt {Attempt} for {DbType}", 
+                    logging.Warning("Connection health check failed on attempt {Attempt} for {DbType}",
                         attempt, dbType);
-                    
+
                     pool.ReturnConnection(connection, markAsUnhealthy: true);
                     lastException = new InvalidOperationException("Connection failed health check");
                 }
@@ -88,30 +88,30 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
             {
                 lastException = ex;
                 connectionRetriesCounter.Add(1, new KeyValuePair<string, object?>("dbType", dbType));
-                
-                logging.Warning(ex, "Connection attempt {Attempt}/{MaxRetries} failed for {DbType}: {Error}", 
+
+                logging.Warning(ex, "Connection attempt {Attempt}/{MaxRetries} failed for {DbType}: {Error}",
                     attempt, maxRetries, dbType, ex.Message);
 
                 if (attempt < maxRetries)
                 {
                     var delay = TimeSpan.FromMilliseconds(100 * Math.Pow(2, attempt - 1) + Random.Shared.Next(0, 100));
                     await Task.Delay(delay, cancellationToken);
-                    
+
                     await pool.CleanupUnhealthyConnectionsAsync();
                 }
             }
         }
 
         connectionFailuresCounter.Add(1, new KeyValuePair<string, object?>("dbType", dbType));
-        logging.Error(lastException, "Failed to obtain connection after {MaxRetries} attempts for {DbType}", 
+        logging.Error(lastException, "Failed to obtain connection after {MaxRetries} attempts for {DbType}",
             maxRetries, dbType);
-        
+
         throw new InvalidOperationException($"Failed to obtain database connection for {dbType} after {maxRetries} attempts", lastException);
     }
 
     public void ReturnConnection(string connectionKey, DbConnection connection)
     {
-        if (disposed || connection == null) return;
+        if (disposed || connection is null) return;
 
         if (pools.TryGetValue(connectionKey, out var pool))
         {
@@ -133,8 +133,8 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
 
             using var command = connection.CreateCommand();
             command.CommandText = "SELECT 1";
-            command.CommandTimeout = 5; 
-            
+            command.CommandTimeout = 5;
+
             var result = await command.ExecuteScalarAsync();
             return result is not null;
         }
@@ -307,7 +307,7 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
 
     public void ReturnConnection(DbConnection connection, bool markAsUnhealthy = false)
     {
-        if (connection == null || !activeConnections.TryRemove(connection, out var pooledConnection))
+        if (connection is null || !activeConnections.TryRemove(connection, out var pooledConnection))
         {
             semaphore.Release();
             return;
@@ -411,7 +411,7 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
         try
         {
             var connection = pooledConnection.Connection;
-            
+
             if (DateTime.UtcNow - pooledConnection.LastHealthCheck < HealthCheckInterval)
             {
                 return IsConnectionValidForReuse(connection);
@@ -423,15 +423,15 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
             using var command = connection.CreateCommand();
             command.CommandText = "SELECT 1";
             command.CommandTimeout = 2;
-            
+
             var result = await command.ExecuteScalarAsync();
             var isHealthy = result is not null;
-            
+
             if (isHealthy)
             {
                 pooledConnection.LastHealthCheck = DateTime.UtcNow;
             }
-            
+
             return isHealthy;
         }
         catch
@@ -520,7 +520,7 @@ public sealed class PooledConnectionWithHealth(DbConnection connection, DateTime
 {
     private readonly DbConnection connection = connection ?? throw new ArgumentNullException(nameof(connection));
     private volatile bool disposed;
-    
+
     public DateTimeOffset LastUsed { get; set; } = lastUse;
     public DateTimeOffset LastHealthCheck { get; set; } = lastUse;
     public DbConnection Connection => disposed ? throw new ObjectDisposedException(nameof(PooledConnectionWithHealth)) : connection;

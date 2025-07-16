@@ -467,6 +467,12 @@ class ApiClient {
     return this.request<ExtractionAggregatedDto>(`/jobs/total?${queryString}`);
   }
 
+  async cancelJob(jobGuid: string): Promise<ApiResponse<never>> {
+    return this.request<never>(`/jobs/${jobGuid}/cancel`, {
+      method: 'DELETE',
+    });
+  }
+
   async clearJobs(): Promise<ApiResponse<never>> {
     return this.request<never>('/jobs', {
       method: 'DELETE',

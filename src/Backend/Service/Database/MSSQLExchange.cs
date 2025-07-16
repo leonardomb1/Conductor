@@ -170,8 +170,7 @@ public class MSSQLExchange : DBExchange
             using var bulkCopy = new SqlBulkCopy((SqlConnection)connection)
             {
                 DestinationTableName = tempTableName,
-                BulkCopyTimeout = Settings.QueryTimeout,
-                EnableStreaming = true
+                BulkCopyTimeout = Settings.QueryTimeout
             };
 
             await bulkCopy.WriteToServerAsync(data);
@@ -229,7 +228,7 @@ public class MSSQLExchange : DBExchange
             }
 
             deleteQuery.AppendLine(")");
-            
+
             if (!string.IsNullOrEmpty(extraction.FilterColumn))
             {
                 deleteQuery.AppendLine($"AND \"{extraction.FilterColumn}\" >= CAST('{lookupTime:yyyy-MM-dd HH:mm:ss}' AS DATETIME2);");
@@ -316,8 +315,7 @@ public class MSSQLExchange : DBExchange
             using var bulk = new SqlBulkCopy((SqlConnection)connection)
             {
                 BulkCopyTimeout = Settings.QueryTimeout,
-                DestinationTableName = $"{schemaName}.{tableName}",
-                EnableStreaming = true
+                DestinationTableName = $"{schemaName}.{tableName}"
             };
 
             foreach (DataColumn column in data.Columns)
