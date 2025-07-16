@@ -86,7 +86,10 @@ public class MSSQLExchange : DBExchange
             _ when type == typeof(short) => "SMALLINT",
             _ when type == typeof(string) => length > 0 && length < 8000 ? $"VARCHAR({length})" : "VARCHAR(MAX)",
             _ when type == typeof(bool) => "BIT",
-            _ when type == typeof(DateTime) => "DATETIME",
+            _ when type == typeof(DateTime) => "DATETIME2",
+            _ when type == typeof(DateTimeOffset) => "DATETIMEOFFSET",
+            _ when type == typeof(DateOnly) => "DATE",
+            _ when type == typeof(TimeOnly) => "TIME",
             _ when type == typeof(double) => "FLOAT",
             _ when type == typeof(decimal) => "DECIMAL(18,2)",
             _ when type == typeof(byte) => "TINYINT",
@@ -100,6 +103,26 @@ public class MSSQLExchange : DBExchange
             _ when type == typeof(TimeSpan) => "TIME",
             _ when type == typeof(byte[]) => "VARBINARY(MAX)",
             _ when type == typeof(object) => "SQL_VARIANT",
+            // Handle nullable types
+            _ when type == typeof(DateTime?) => "DATETIME2",
+            _ when type == typeof(DateTimeOffset?) => "DATETIMEOFFSET",
+            _ when type == typeof(DateOnly?) => "DATE",
+            _ when type == typeof(TimeOnly?) => "TIME",
+            _ when type == typeof(int?) => "INT",
+            _ when type == typeof(long?) => "BIGINT",
+            _ when type == typeof(short?) => "SMALLINT",
+            _ when type == typeof(double?) => "FLOAT",
+            _ when type == typeof(decimal?) => "DECIMAL(18,2)",
+            _ when type == typeof(bool?) => "BIT",
+            _ when type == typeof(byte?) => "TINYINT",
+            _ when type == typeof(sbyte?) => "TINYINT",
+            _ when type == typeof(ushort?) => "SMALLINT",
+            _ when type == typeof(uint?) => "INT",
+            _ when type == typeof(ulong?) => "BIGINT",
+            _ when type == typeof(float?) => "REAL",
+            _ when type == typeof(char?) => "NCHAR(1)",
+            _ when type == typeof(Guid?) => "UNIQUEIDENTIFIER",
+            _ when type == typeof(TimeSpan?) => "TIME",
             _ => throw new NotSupportedException($"Type '{type.Name}' is not supported")
         };
     }
@@ -124,29 +147,29 @@ public class MSSQLExchange : DBExchange
 
         try
         {
+            // Drop temp table if exists
             using var dropTempTableCommand = CreateDbCommand($"DROP TABLE IF EXISTS \"{tempTableName}\"", connection);
             await dropTempTableCommand.ExecuteNonQueryAsync();
 
+            // Create temp table
             var createTempTableQuery = new StringBuilder();
             createTempTableQuery.AppendLine($"CREATE TABLE \"{tempTableName}\" (");
 
+            var columnDefinitions = new List<string>();
             foreach (DataColumn column in data.Columns)
             {
-                int? maxStringLength = column.MaxLength;
+                int? maxStringLength = column.MaxLength > 0 ? column.MaxLength : null;
                 string sqlType = GetSqlType(column.DataType, maxStringLength);
-                createTempTableQuery.AppendLine($"    \"{column.ColumnName}\" {sqlType},");
+                columnDefinitions.Add($"    \"{column.ColumnName}\" {sqlType}");
             }
 
-            if (createTempTableQuery.Length > 0)
-            {
-                createTempTableQuery.Length -= 3;
-                createTempTableQuery.AppendLine();
-            }
+            createTempTableQuery.AppendLine(string.Join(",\n", columnDefinitions));
             createTempTableQuery.AppendLine(");");
 
             using var createTempTableCommand = CreateDbCommand(createTempTableQuery.ToString(), connection);
             await createTempTableCommand.ExecuteNonQueryAsync();
 
+            // Bulk copy data to temp table
             using var bulkCopy = new SqlBulkCopy((SqlConnection)connection)
             {
                 DestinationTableName = tempTableName,
@@ -155,6 +178,7 @@ public class MSSQLExchange : DBExchange
 
             await bulkCopy.WriteToServerAsync(data);
 
+            // Perform merge operation
             var mergeQuery = new StringBuilder();
             mergeQuery.AppendLine($"MERGE INTO \"{schemaName}\".\"{tableName}\" AS Target");
             mergeQuery.AppendLine($"USING \"{tempTableName}\" AS Source");
@@ -194,6 +218,7 @@ public class MSSQLExchange : DBExchange
             var affectedRows = await mergeCommand.ExecuteNonQueryAsync();
             Log.Information($"Merge operation affected {affectedRows} rows in {schemaName}.{tableName}");
 
+            // Delete unsynced data
             var lookupTime = RequestTimeWithOffSet(requestTime, extraction.FilterTime!.Value, extraction.Origin!.TimeZoneOffSet!.Value);
 
             StringBuilder deleteQuery = new($"DELETE FROM \"{schemaName}\".\"{tableName}\"");
@@ -228,6 +253,7 @@ public class MSSQLExchange : DBExchange
         }
         finally
         {
+            // Clean up temp table
             try
             {
                 using var dropTempTableCommand = CreateDbCommand($"DROP TABLE IF EXISTS \"{tempTableName}\"", connection);
