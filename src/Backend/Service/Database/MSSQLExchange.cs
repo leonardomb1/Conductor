@@ -312,19 +312,19 @@ public class MSSQLExchange : DBExchange
 
         try
         {
-            using var bulk = new SqlBulkCopy((SqlConnection)connection)
+            var bulkCopyOptions = SqlBulkCopyOptions.TableLock |
+                                  SqlBulkCopyOptions.UseInternalTransaction |
+                                  SqlBulkCopyOptions.KeepNulls;
+
+
+            using var bulk = new SqlBulkCopy((SqlConnection)connection, bulkCopyOptions, null)
             {
                 BulkCopyTimeout = Settings.QueryTimeout,
                 DestinationTableName = $"{schemaName}.{tableName}"
             };
 
-            foreach (DataColumn column in data.Columns)
-            {
-                bulk.ColumnMappings.Add(column.ColumnName, column.ColumnName);
-            }
-
             await bulk.WriteToServerAsync(data);
-            Log.Information($"Bulk loaded {data.Rows.Count} rows into {schemaName}.{tableName}");
+
             return Result.Ok();
         }
         catch (Exception ex)
