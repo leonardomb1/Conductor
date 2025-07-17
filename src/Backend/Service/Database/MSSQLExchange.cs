@@ -312,23 +312,10 @@ public class MSSQLExchange : DBExchange
 
         try
         {
-            var bulkCopyOptions = SqlBulkCopyOptions.TableLock |
-                                  SqlBulkCopyOptions.UseInternalTransaction |
-                                  SqlBulkCopyOptions.KeepNulls;
-
-
-            using var bulk = new SqlBulkCopy((SqlConnection)connection, bulkCopyOptions, null)
+            using var bulk = new SqlBulkCopy((SqlConnection)connection)
             {
                 BulkCopyTimeout = Settings.QueryTimeout,
-                DestinationTableName = $"{schemaName}.{tableName}",
-
-                BatchSize = (int)Settings.ProducerLineMax / 10
-            };
-
-            bulk.SqlRowsCopied += (sender, e) =>
-            {
-                Log.Debug("Bulk copy progress for {TableName}: {RowsCopied:N0} rows copied",
-                    tableName, e.RowsCopied);
+                DestinationTableName = $"{schemaName}.{tableName}"
             };
 
             foreach (DataColumn column in data.Columns)
@@ -337,9 +324,7 @@ public class MSSQLExchange : DBExchange
             }
 
             await bulk.WriteToServerAsync(data);
-            Log.Information("Bulk loaded {RowCount:N0} rows into {SchemaName}.{TableName} with batch size {BatchSize}",
-                data.Rows.Count, schemaName, tableName, (int)Settings.ProducerLineMax / 10);
-
+            Log.Information($"Bulk loaded {data.Rows.Count} rows into {schemaName}.{tableName}");
             return Result.Ok();
         }
         catch (Exception ex)

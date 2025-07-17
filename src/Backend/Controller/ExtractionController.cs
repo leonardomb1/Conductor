@@ -394,20 +394,46 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
 
         var extractionIds = extractions.Select(x => x.Id);
+        Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
-        Job? job = jobTracker.StartBackgroundJob(extractionIds, JobType.Transfer, async (job, cancellationToken) =>
-        {
-            await ExtractionPipeline.ExecuteTransferJob(
-                jobTracker, extractions, httpFactory, overrideFilter,
-                connectionPoolManager, memoryManager, job, requestTime, cancellationToken);
-        });
+        using var jobCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-        if (job is null)
+        var backgroundTask = Task.Run(async () => 
         {
-            return Results.InternalServerError(
-                new Message(Status500InternalServerError, "Unexpected error has occured while attempting to start job.", true)
-            );
-        }
+            try
+            {
+                var extractionResult = await ExtractionPipeline.ExecuteTransferJob(
+                    jobTracker,
+                    extractions,
+                    httpFactory,
+                    overrideFilter,
+                    connectionPoolManager,
+                    memoryManager,
+                    job,
+                    requestTime, 
+                    jobCancellationSource.Token
+                );
+
+                if (!extractionResult.IsSuccessful)
+                {
+                    await jobTracker.UpdateJob(job.JobGuid, JobStatus.Failed);
+                }
+                else
+                {
+                    await jobTracker.UpdateJob(job.JobGuid, JobStatus.Completed);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                await jobTracker.UpdateJob(job.JobGuid, JobStatus.Cancelled);
+            }
+            catch (Exception)
+            {
+                await jobTracker.UpdateJob(job.JobGuid, JobStatus.Failed);
+            }
+        }, jobCancellationSource.Token);
+
+        jobTracker.AttachTask(job.JobGuid, backgroundTask, jobCancellationSource);
 
         return Results.Ok(
             new Message(Status200OK, $"{job.JobGuid}")
@@ -461,21 +487,47 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
         }
 
         var extractionIds = extractions.Select(x => x.Id);
+        Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
 
         int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
-        Job? job = jobTracker.StartBackgroundJob(extractionIds, JobType.Transfer, async (job, cancellationToken) =>
-        {
-            await ExtractionPipeline.ExecutePullJob(
-                jobTracker, extractions, httpFactory, overrideFilter,
-                connectionPoolManager, memoryManager, job, requestTime, cancellationToken);
-        });
+        using var jobCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(token);
 
-        if (job is null)
+        var backgroundTask = Task.Run(async () => 
         {
-            return Results.InternalServerError(
-                new Message(Status500InternalServerError, "Unexpected error has occured while attempting to start job.", true)
-            );
-        }
+            try
+            {
+                var extractionResult = await ExtractionPipeline.ExecutePullJob(
+                    jobTracker,
+                    extractions,
+                    httpFactory,
+                    overrideFilter,
+                    connectionPoolManager,
+                    memoryManager,
+                    job,
+                    requestTime,
+                    jobCancellationSource.Token
+                );
+
+                if (!extractionResult.IsSuccessful)
+                {
+                    await jobTracker.UpdateJob(job.JobGuid, JobStatus.Failed);
+                }
+                else
+                {
+                    await jobTracker.UpdateJob(job.JobGuid, JobStatus.Completed);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                await jobTracker.UpdateJob(job.JobGuid, JobStatus.Cancelled);
+            }
+            catch (Exception)
+            {
+                await jobTracker.UpdateJob(job.JobGuid, JobStatus.Failed);
+            }
+        }, jobCancellationSource.Token);
+
+        jobTracker.AttachTask(job.JobGuid, backgroundTask, jobCancellationSource);
 
         return Results.Ok(
             new Message(Status200OK, $"{job.JobGuid}")
@@ -497,10 +549,10 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
         string? limitString = filters?.Where(f => f.Key == "limit").FirstOrDefault().Value;
         ulong limit;
-
+        
         if (string.IsNullOrEmpty(limitString))
         {
-            limit = Settings.FetcherLineMax;
+            limit = Settings.FetcherLineMax; 
         }
         else
         {

@@ -21,9 +21,6 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
     private readonly Counter<int> connectionRetriesCounter;
     private readonly Counter<int> connectionFailuresCounter;
 
-    // FIXED: Add pre-warming coordination
-    private readonly SemaphoreSlim prewarmSemaphore = new(3, 3); // Limit concurrent pre-warming
-
     public ConnectionPoolManager()
     {
         meter = new Meter("Conductor.ConnectionPool", "1.0.0");
@@ -58,36 +55,7 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
         if (disposed) throw new ObjectDisposedException(nameof(ConnectionPoolManager));
 
         var key = GeneratePoolKey(connectionString, dbType);
-        var pool = pools.GetOrAdd(key, _ =>
-        {
-            var newPool = new ResilientConnectionPool(connectionString, dbType, logging);
-
-            Task.Run(async () =>
-            {
-                var acquired = await prewarmSemaphore.WaitAsync(30000, CancellationToken.None);
-                if (acquired)
-                {
-                    try
-                    {
-                        await newPool.PrewarmAsync(CancellationToken.None);
-                    }
-                    catch (Exception ex)
-                    {
-                        logging.Debug("Pre-warm task completed for pool {PoolKey}: {Result}", key, ex.Message);
-                    }
-                    finally
-                    {
-                        prewarmSemaphore.Release();
-                    }
-                }
-                else
-                {
-                    logging.Debug("Pre-warm semaphore timeout for pool {PoolKey}", key);
-                }
-            });
-
-            return newPool;
-        });
+        var pool = pools.GetOrAdd(key, _ => new ResilientConnectionPool(connectionString, dbType, logging));
 
         const int maxRetries = 3;
         Exception? lastException = null;
@@ -243,7 +211,6 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
         disposed = true;
 
         cleanupTimer?.Dispose();
-        prewarmSemaphore?.Dispose();
 
         var disposeTasks = pools.Values.Select(pool => pool.DisposeAsync().AsTask());
         await Task.WhenAll(disposeTasks);
@@ -270,205 +237,43 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
     private readonly string dbType;
     private readonly ILogger logging;
     private readonly Lock statsLock = new();
+    private static readonly int MaxPoolSize = Settings.ConnectionPoolMaxSize;
+    private static readonly int MinPoolSize = Settings.ConnectionPoolMinSize;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(Settings.ConnectionIdleTimeoutMinutes);
-    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(Math.Min(Settings.ConnectionTimeout, 30)); // Cap at 30s
+    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(Settings.ConnectionTimeout);
     private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromMinutes(5);
-    private static readonly SemaphoreSlim GlobalPrewarmSemaphore = new(Environment.ProcessorCount, Environment.ProcessorCount);
-    private static readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> PrewarmTasks = new();
-
     private int createdConnections;
     private DateTimeOffset lastActivity = DateTimeOffset.UtcNow;
-    private volatile bool disposed;
 
     public ResilientConnectionPool(string conStr, string type, ILogger logger)
     {
         connectionString = conStr;
         dbType = type;
         logging = logger.ForContext("PoolKey", $"{dbType}:{connectionString.GetHashCode()}");
-        semaphore = new SemaphoreSlim(Settings.ConnectionPoolMaxSize, Settings.ConnectionPoolMaxSize);
+        semaphore = new SemaphoreSlim(MaxPoolSize, MaxPoolSize);
 
-        // FIXED: Don't automatically start pre-warming in constructor
-        // Let the ConnectionPoolManager coordinate this
-    }
-
-    // FIXED: Add controlled pre-warming method
-    public async Task PrewarmAsync(CancellationToken cancellationToken = default)
-    {
-        var poolKey = $"{dbType}:{connectionString.GetHashCode()}";
-
-        // Check if this pool is already being pre-warmed
-        var tcs = PrewarmTasks.GetOrAdd(poolKey, _ => new TaskCompletionSource<bool>());
-
-        // If another thread is already pre-warming this pool, wait for it
-        if (tcs.Task.IsCompleted)
-        {
-            return; // Already pre-warmed
-        }
-
-        // Try to acquire global pre-warm semaphore to limit concurrent pre-warming
-        var acquired = await GlobalPrewarmSemaphore.WaitAsync(5000, cancellationToken);
-        if (!acquired)
-        {
-            logging.Information("Pre-warm semaphore timeout for pool {PoolKey}, skipping pre-warm", poolKey);
-            tcs.TrySetResult(false);
-            return;
-        }
-
-        try
-        {
-            await PrewarmPoolAsync(cancellationToken);
-            tcs.TrySetResult(true);
-        }
-        catch (Exception ex)
-        {
-            // FIXED: Handle all exceptions gracefully without warnings
-            logging.Information("Pre-warm skipped for pool {PoolKey}: {Reason}", poolKey, ex.Message);
-            tcs.TrySetResult(false); // Mark as completed but not successful
-        }
-        finally
-        {
-            GlobalPrewarmSemaphore.Release();
-        }
-    }
-
-    private async Task PrewarmPoolAsync(CancellationToken cancellationToken = default)
-    {
-        if (disposed) return;
-
-        var successfulConnections = 0;
-        var maxAttempts = Settings.ConnectionPoolMinSize * 2; // Allow some failures
-        var connectionTimeouts = 0;
-        var maxTimeouts = 3; // Stop after too many timeouts
-
-        logging.Debug("Starting pre-warm for connection pool (target: {Settings.ConnectionPoolMinSize} connections)", Settings.ConnectionPoolMinSize);
-
-        for (int attempt = 0; attempt < maxAttempts && successfulConnections < Settings.ConnectionPoolMinSize && connectionTimeouts < maxTimeouts && !cancellationToken.IsCancellationRequested; attempt++)
-        {
-            try
-            {
-                // FIXED: Add progressive delay and shorter timeouts for pre-warming
-                if (attempt > 0)
-                {
-                    var delay = Math.Min(200 * attempt, 2000); // Max 2 second delay
-                    await Task.Delay(delay, cancellationToken);
-                }
-
-                // FIXED: Use shorter timeout for pre-warming connections
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)); // Shorter timeout for pre-warm
-                using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                var connection = await CreateNewConnectionAsync(combinedCts.Token);
-                var pooledConnection = new PooledConnectionWithHealth(connection, DateTime.UtcNow);
-
-                availableConnections.Enqueue(pooledConnection);
-                successfulConnections++;
-
-                logging.Debug("Pre-warmed connection {SuccessfulConnections}/{Settings.ConnectionPoolMinSize}", successfulConnections, Settings.ConnectionPoolMinSize);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                logging.Debug("Pre-warm cancelled for connection pool");
-                break;
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Timeout expired") || ex.Message.Contains("pool"))
-            {
-                // FIXED: Handle connection pool timeout gracefully
-                connectionTimeouts++;
-                logging.Debug("Connection pool timeout during pre-warm attempt {Attempt} (timeout {TimeoutCount}/{MaxTimeouts}): {Message}",
-                    attempt + 1, connectionTimeouts, maxTimeouts, ex.Message);
-
-                if (connectionTimeouts >= maxTimeouts)
-                {
-                    logging.Information("Too many connection timeouts during pre-warm, stopping early. Successfully created {SuccessfulConnections} connections",
-                        successfulConnections);
-                    break;
-                }
-            }
-            catch (TimeoutException ex)
-            {
-                // FIXED: Handle timeout exceptions specifically
-                connectionTimeouts++;
-                logging.Debug("Timeout during pre-warm attempt {Attempt} (timeout {TimeoutCount}/{MaxTimeouts}): {Message}",
-                    attempt + 1, connectionTimeouts, maxTimeouts, ex.Message);
-
-                if (connectionTimeouts >= maxTimeouts)
-                {
-                    logging.Information("Too many timeouts during pre-warm, stopping early. Successfully created {SuccessfulConnections} connections",
-                        successfulConnections);
-                    break;
-                }
-            }
-            catch (Exception ex)
-            {
-                // FIXED: Handle any other exceptions gracefully
-                logging.Debug("Pre-warm connection attempt {Attempt}/{MaxAttempts} failed: {Error}",
-                    attempt + 1, maxAttempts, ex.GetType().Name);
-
-                // Don't log full exception details for common connection issues during pre-warm
-                if (attempt >= maxAttempts - 1)
-                {
-                    logging.Information("Pre-warm completed with some failures. Successfully created {SuccessfulConnections}/{TargetConnections} connections",
-                        successfulConnections, Settings.ConnectionPoolMinSize);
-                    break;
-                }
-            }
-        }
-
-        if (successfulConnections > 0)
-        {
-            logging.Information("Pre-warmed connection pool with {SuccessfulConnections}/{TargetConnections} connections",
-                successfulConnections, Settings.ConnectionPoolMinSize);
-        }
-        else
-        {
-            logging.Information("Pre-warm completed with no successful connections - pool will create connections on demand");
-        }
+        _ = Task.Run(PrewarmPoolAsync);
     }
 
     public async Task<DbConnection> GetConnectionAsync(CancellationToken cancellationToken = default)
     {
-        if (disposed) throw new ObjectDisposedException(nameof(ResilientConnectionPool));
+        using var timeoutCts = new CancellationTokenSource(ConnectionTimeout);
+        using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        // FIXED: Use shorter timeout with progressive retry
-        var baseTimeout = TimeSpan.FromSeconds(10);
-        var maxRetries = 3;
-
-        for (int retry = 0; retry < maxRetries; retry++)
+        try
         {
-            using var timeoutCts = new CancellationTokenSource(baseTimeout);
-            using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            try
-            {
-                await semaphore.WaitAsync(combinedCts.Token);
-                break; // Successfully acquired semaphore
-            }
-            catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            {
-                // Timeout occurred, not user cancellation
-                if (retry < maxRetries - 1)
-                {
-                    logging.Warning("Connection acquisition timeout on attempt {Retry}/{MaxRetries}, retrying...",
-                        retry + 1, maxRetries);
-
-                    // FIXED: Try to clean up unhealthy connections before retry
-                    _ = Task.Run(() => CleanupUnhealthyConnectionsAsync(), CancellationToken.None);
-
-                    // Progressive delay
-                    await Task.Delay(1000 * (retry + 1), cancellationToken);
-                    continue;
-                }
-
-                logging.Error("Failed to acquire connection after {MaxRetries} attempts for {DbType}", maxRetries, dbType);
-                throw new TimeoutException($"Failed to acquire connection within {baseTimeout.TotalSeconds * maxRetries}s total time");
-            }
+            await semaphore.WaitAsync(combinedCts.Token);
+        }
+        catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
+        {
+            logging.Warning("Connection acquisition timeout for {DbType}", dbType);
+            throw new TimeoutException($"Failed to acquire connection within {ConnectionTimeout}");
         }
 
         try
         {
             lastActivity = DateTime.UtcNow;
 
-            // Try to reuse existing connection
             while (availableConnections.TryDequeue(out var pooledConnection))
             {
                 if (await IsConnectionStillHealthy(pooledConnection))
@@ -484,14 +289,13 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
                 }
             }
 
-            // Create new connection if none available
-            var newConnection = await CreateNewConnectionAsync(cancellationToken);
+            var newConnection = await CreateNewConnectionAsync(combinedCts.Token);
             var newPooledConnection = new PooledConnectionWithHealth(newConnection, DateTime.UtcNow);
 
             activeConnections.TryAdd(newConnection, newPooledConnection);
             Interlocked.Increment(ref createdConnections);
 
-            logging.Debug("Created new database connection (total created: {CreatedConnections})", createdConnections);
+            logging.Debug("Created new database connection");
             return newConnection;
         }
         catch
@@ -511,7 +315,7 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
 
         try
         {
-            if (!markAsUnhealthy && IsConnectionValidForReuse(connection) && availableConnections.Count < Settings.ConnectionPoolMaxSize)
+            if (!markAsUnhealthy && IsConnectionValidForReuse(connection) && availableConnections.Count < MaxPoolSize)
             {
                 pooledConnection.LastUsed = DateTime.UtcNow;
                 pooledConnection.LastHealthCheck = DateTime.UtcNow;
@@ -663,66 +467,35 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
         }
     }
 
-    // FIXED: Enhanced connection creation with better error handling
+    private async Task PrewarmPoolAsync()
+    {
+        try
+        {
+            for (int i = 0; i < MinPoolSize; i++)
+            {
+                var connection = await CreateNewConnectionAsync(CancellationToken.None);
+                var pooledConnection = new PooledConnectionWithHealth(connection, DateTime.UtcNow);
+                availableConnections.Enqueue(pooledConnection);
+            }
+            logging.Information("Pre-warmed connection pool with {Count} connections", MinPoolSize);
+        }
+        catch (Exception ex)
+        {
+            logging.Warning(ex, "Failed to pre-warm connection pool");
+        }
+    }
+
     private async Task<DbConnection> CreateNewConnectionAsync(CancellationToken cancellationToken)
     {
-        const int maxRetries = 2; // Reduced retries for pre-warming
-        Exception? lastException = null;
+        var factory = DBExchangeFactory.Create(dbType);
+        var connection = factory.CreateConnection(connectionString);
 
-        for (int attempt = 0; attempt < maxRetries; attempt++)
-        {
-            try
-            {
-                var factory = DBExchangeFactory.Create(dbType);
-                var connection = factory.CreateConnection(connectionString);
-
-                // FIXED: Even shorter timeout for pre-warming to avoid blocking
-                var timeoutSeconds = attempt == 0 ? 5 : 10; // First attempt is fast, second is slightly longer
-                using var connectionCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-                using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connectionCts.Token);
-
-                await connection.OpenAsync(combinedCts.Token);
-
-                // Verify connection is actually usable
-                if (connection.State != ConnectionState.Open)
-                {
-                    connection.Dispose();
-                    throw new InvalidOperationException("Connection failed to open properly");
-                }
-
-                return connection;
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw; // Don't retry on user cancellation
-            }
-            catch (Exception ex)
-            {
-                lastException = ex;
-
-                // Don't log warnings for every failed pre-warm attempt - this is normal
-                if (attempt == maxRetries - 1)
-                {
-                    // Only log on final attempt
-                    logging.Debug("All pre-warm connection attempts failed: {Error}", ex.Message);
-                }
-
-                if (attempt < maxRetries - 1)
-                {
-                    // Very short delay between pre-warm retries
-                    await Task.Delay(100, cancellationToken);
-                }
-            }
-        }
-
-        throw new InvalidOperationException($"Failed to create pre-warm connection after {maxRetries} attempts", lastException);
+        await connection.OpenAsync(cancellationToken);
+        return connection;
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed) return;
-        disposed = true;
-
         var allConnections = new List<PooledConnectionWithHealth>();
 
         while (availableConnections.TryDequeue(out var conn))
