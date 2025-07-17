@@ -228,10 +228,53 @@ public sealed class Server : IAsyncDisposable
             .WithTracing(tracerProviderBuilder =>
             {
                 tracerProviderBuilder
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
+                    .AddAspNetCoreInstrumentation(options =>
+                    {
+                        options.RecordException = true;
+                        options.EnrichWithHttpRequest = (activity, request) =>
+                        {
+                            activity.SetTag("http.request.body.size", request.ContentLength);
+                            activity.SetTag("http.client.ip", request.HttpContext.Connection.RemoteIpAddress?.ToString());
+                        };
+                        options.EnrichWithHttpResponse = (activity, response) =>
+                        {
+                            activity.SetTag("http.response.body.size", response.ContentLength);
+                        };
+                    })
+                    .AddHttpClientInstrumentation(options =>
+                    {
+                        options.RecordException = true;
+                        options.EnrichWithHttpRequestMessage = (activity, request) =>
+                        {
+                            activity.SetTag("http.request.method", request.Method.Method);
+                            activity.SetTag("http.request.uri", request.RequestUri?.ToString());
+                        };
+                        options.EnrichWithHttpResponseMessage = (activity, response) =>
+                        {
+                            activity.SetTag("http.response.status_code", (int)response.StatusCode);
+                            activity.SetTag("http.response.body.size", response.Content.Headers.ContentLength);
+                        };
+                    })
                     .AddSource($"{ProgramInfo.ProgramName}")
-                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName));
+                    .AddSource("Conductor.ExtractionPipeline")
+                    .AddSource("Conductor.ConnectionPool")
+                    .AddSource("Conductor.DataTableMemory")
+                    .AddSource("Conductor.JobTracker")
+                    .AddSource("Conductor.HTTPExchange")
+                    .AddSource("Conductor.ScriptEngine")
+                    .SetResourceBuilder(ResourceBuilder.CreateDefault()
+                        .AddService(ProgramInfo.ProgramName, ProgramInfo.ProgramVersion)
+                        .AddAttributes(
+                        [
+                            new KeyValuePair<string, object>("service.instance.id", Environment.MachineName),
+                            new KeyValuePair<string, object>("service.version", ProgramInfo.ProgramVersion),
+                            new KeyValuePair<string, object>("deployment.environment", Settings.DevelopmentMode ? "development" : "production")
+                        ]));
+
+                if (Settings.DevelopmentMode)
+                {
+                    tracerProviderBuilder.AddConsoleExporter();
+                }
             })
             .WithMetrics(metricsBuilder =>
             {
@@ -243,8 +286,27 @@ public sealed class Server : IAsyncDisposable
                     .AddMeter("Conductor.Server")
                     .AddMeter("Conductor.DataTableMemory")
                     .AddMeter("Conductor.ConnectionPool")
+                    .AddMeter("Conductor.ExtractionPipeline")
+                    .AddMeter("Conductor.JobTracker")
+                    .AddMeter("Conductor.HTTPExchange")
+                    .AddMeter("Conductor.ScriptEngine")
+                    .AddMeter("System.Net.Http")
+                    .AddMeter("Microsoft.AspNetCore.Hosting")
+                    .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
                     .AddPrometheusExporter()
-                    .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(ProgramInfo.ProgramName));
+                    .SetResourceBuilder(ResourceBuilder.CreateDefault()
+                        .AddService(ProgramInfo.ProgramName, ProgramInfo.ProgramVersion)
+                        .AddAttributes(
+                        [
+                            new KeyValuePair<string, object>("service.instance.id", Environment.MachineName),
+                            new KeyValuePair<string, object>("service.version", ProgramInfo.ProgramVersion),
+                            new KeyValuePair<string, object>("deployment.environment", Settings.DevelopmentMode ? "development" : "production")
+                        ]));
+
+                if (Settings.DevelopmentMode)
+                {
+                    metricsBuilder.AddConsoleExporter();
+                }
             });
 
         app = builder.Build();

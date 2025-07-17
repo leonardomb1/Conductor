@@ -396,15 +396,15 @@ public abstract partial class DBExchange
 
                     var result = await SelectData(
                         extraction,
-                        currentRowCount,
+                        0,
                         requestTime,
                         shouldPartition,
                         pooledConnection,
                         overrideTime,
                         virtualizedTable,
                         virtualIdGroup,
-                        shouldPaginate,
-                        limit,
+                        false,
+                        0,
                         cancellationToken
                     );
 
@@ -419,9 +419,15 @@ public abstract partial class DBExchange
                     DataTable? fetchResult = result.Value;
                     bool isTemplate = extraction.IsVirtualTemplate ?? false;
 
+                    fetchResult.BeginLoadData();
+                    fetchResult.CaseSensitive = false;
+                    fetchResult.Constraints.Clear();
+                    fetchResult.PrimaryKey = Array.Empty<DataColumn>();
+
                     for (int i = 0; i < fetchResult.Columns.Count; i++)
                     {
                         fetchResult.Columns[i].AllowDBNull = true;
+                        fetchResult.Columns[i].ReadOnly = false;
                     }
 
                     if (isTemplate && !gotTemplate)
@@ -431,6 +437,13 @@ public abstract partial class DBExchange
                             if (!gotTemplate)
                             {
                                 finalData = fetchResult.Clone();
+                                finalData.TableName = virtualizedTable;
+
+                                finalData.BeginLoadData();
+                                finalData.CaseSensitive = false;
+                                finalData.Constraints.Clear();
+                                finalData.PrimaryKey = Array.Empty<DataColumn>();
+
                                 gotTemplate = true;
                                 Log.Information("Set template table structure from extraction {ExtractionId} with {RowCount} rows",
                                     extraction.Id, fetchResult.Rows.Count);
@@ -475,6 +488,13 @@ public abstract partial class DBExchange
             if (!gotTemplate && !dataTables.IsEmpty)
             {
                 finalData = dataTables.First().Clone();
+                finalData.TableName = virtualizedTable;
+
+                finalData.BeginLoadData();
+                finalData.CaseSensitive = false;
+                finalData.Constraints.Clear();
+                finalData.PrimaryKey = Array.Empty<DataColumn>();
+
                 Log.Warning("No template found for virtual table {VirtualizedTable}, using first extraction as template", virtualizedTable);
             }
 
@@ -517,6 +537,7 @@ public abstract partial class DBExchange
                 }
             }
 
+            finalData.EndLoadData();
             finalData.TableName = virtualizedTable;
             var finalRowCount = finalData.Rows.Count;
 

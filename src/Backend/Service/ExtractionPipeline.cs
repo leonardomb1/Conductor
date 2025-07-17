@@ -658,169 +658,212 @@ public sealed class ExtractionPipeline(
         var totalRowsProduced = 0L;
         var startTime = DateTime.UtcNow;
 
+        var virtualExtractions = extractions.Where(e => e.IsVirtual).ToList();
+        var regularExtractions = extractions.Where(e => !e.IsVirtual).ToList();
+
         try
         {
-            await Parallel.ForEachAsync(extractions, options, async (extraction, cancellationToken) =>
+            var regularTask = Task.Run(async () =>
             {
-                using var extractionActivity = activitySource.StartActivity("DBExtraction");
-                extractionActivity?.SetTag("extraction.id", extraction.Id);
-
-                var extractionLogger = logger.ForContext("ExtractionId", extraction.Id)
-                                            .ForContext("ExtractionName", extraction.Name);
-
-                if (cancellationToken.IsCancellationRequested) return;
-                if (extraction.Origin is null) return;
-                if (extraction.Origin.DbType is null || extraction.Origin.ConnectionString is null) return;
-
-                string dbType = extraction.Origin.DbType;
-                string connectionString = extraction.Origin.ConnectionString;
-
-                extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId} using {DbType}",
-                    extraction.Id, dbType);
-
-                bool shouldPartition = false;
-
-                if (hasCheckUp is not null && hasCheckUp.Value)
+                await Parallel.ForEachAsync(regularExtractions, options, async (extraction, cancellationToken) =>
                 {
-                    var result = await ProduceDataCheck(extraction, cancellationToken).ConfigureAwait(false);
-                    if (!result.IsSuccessful)
+                    using var extractionActivity = activitySource.StartActivity("DBExtraction");
+                    extractionActivity?.SetTag("extraction.id", extraction.Id);
+
+                    var extractionLogger = logger.ForContext("ExtractionId", extraction.Id)
+                                                .ForContext("ExtractionName", extraction.Name);
+
+                    if (cancellationToken.IsCancellationRequested) return;
+                    if (extraction.Origin is null) return;
+                    if (extraction.Origin.DbType is null || extraction.Origin.ConnectionString is null) return;
+
+                    extractionLogger.Debug("Starting database data fetch for extraction {ExtractionId} using {DbType}",
+                        extraction.Id, extraction.Origin.DbType);
+
+                    bool shouldPartition = false;
+
+                    if (hasCheckUp is not null && hasCheckUp.Value)
                     {
-                        extractionLogger?.Error("Data check failed for extraction {ExtractionId}", extraction.Id);
-                        extractionActivity?.SetTag("success", false);
-                        return;
-                    }
-                    shouldPartition = result.Value > 0;
-
-                    if (shouldPartition)
-                    {
-                        extractionLogger?.Information("Using partitioned fetch for extraction {ExtractionId} (existing rows: {ExistingRows})",
-                            extraction.Id, result.Value);
-                    }
-                }
-
-                var fetcher = DBExchangeFactory.Create(extraction.Origin.DbType);
-                var extractionRowCount = 0;
-
-                ulong currentOffset = 0;
-
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    Result<DataTable> attempt;
-
-                    try
-                    {
-                        attempt = await fetcher.FetchDataTable(
-                            extraction,
-                            requestTime,
-                            shouldPartition,
-                            currentOffset,
-                            connectionPoolManager,
-                            cancellationToken,
-                            overrideFilter,
-                            Settings.ProducerLineMax,
-                            true
-                        ).ConfigureAwait(false);
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        extractionLogger?.Warning("Connection disposed during fetch for extraction {ExtractionId}", extraction.Id);
-                        break;
-                    }
-
-                    if (!attempt.IsSuccessful)
-                    {
-                        if (attempt.HasMultipleErrors)
+                        var result = await ProduceDataCheck(extraction, cancellationToken).ConfigureAwait(false);
+                        if (!result.IsSuccessful)
                         {
-                            foreach (var err in attempt.Errors)
+                            extractionLogger?.Error("Data check failed for extraction {ExtractionId}", extraction.Id);
+                            extractionActivity?.SetTag("success", false);
+                            return;
+                        }
+                        shouldPartition = result.Value > 0;
+                    }
+
+                    var fetcher = DBExchangeFactory.Create(extraction.Origin.DbType);
+                    var extractionRowCount = 0;
+                    ulong currentOffset = 0;
+
+                    while (!cancellationToken.IsCancellationRequested)
+                    {
+                        Result<DataTable> attempt;
+
+                        try
+                        {
+                            attempt = await fetcher.FetchDataTable(
+                                extraction,
+                                requestTime,
+                                shouldPartition,
+                                currentOffset,
+                                connectionPoolManager,
+                                cancellationToken,
+                                overrideFilter,
+                                Settings.ProducerLineMax,
+                                true
+                            ).ConfigureAwait(false);
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            extractionLogger?.Warning("Connection disposed during fetch for extraction {ExtractionId}", extraction.Id);
+                            break;
+                        }
+
+                        if (!attempt.IsSuccessful)
+                        {
+                            if (attempt.HasMultipleErrors)
                             {
-                                var error = err ?? new Error("Unknown database fetch error occurred");
+                                foreach (var err in attempt.Errors)
+                                {
+                                    var error = err ?? new Error("Unknown database fetch error occurred");
+                                    extractionLogger?.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, error.ExceptionMessage);
+                                    pipelineErrors.Add(error);
+                                }
+                            }
+                            else
+                            {
+                                var error = attempt.Error ?? new Error("Unknown database fetch error occurred");
                                 extractionLogger?.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, error.ExceptionMessage);
                                 pipelineErrors.Add(error);
                             }
-                        }
-                        else
-                        {
-                            var error = attempt.Error ?? new Error("Unknown database fetch error occurred");
-                            extractionLogger?.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, error.ExceptionMessage);
-                            pipelineErrors.Add(error);
+
+                            extractionActivity?.SetTag("success", false);
+                            break;
                         }
 
-                        extractionActivity?.SetTag("success", false);
-                        break;
-                    }
-
-                    if (attempt.Value.Rows.Count == 0)
-                    {
-                        extractionLogger?.Debug("No more data to fetch for extraction {ExtractionId} at offset {Offset}", extraction.Id, currentOffset);
-                        attempt.Value.Dispose();
-                        break;
-                    }
-
-                    var batchSize = attempt.Value.Rows.Count;
-                    extractionRowCount += batchSize;
-
-                    currentOffset += (ulong)batchSize;
-                    Interlocked.Add(ref totalRowsProduced, batchSize);
-
-                    extractionLogger?.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched}, next offset: {NextOffset})",
-                        batchSize, extraction.Id, extractionRowCount, currentOffset);
-
-                    var managedTable = CreateManagedDataTable($"db_extraction_{extraction.Id}_offset_{currentOffset}");
-
-                    if (attempt.Value.Rows.Count != batchSize)
-                    {
-                        extractionLogger?.Error("DataTable row count mismatch for extraction {ExtractionId}: expected {Expected}, got {Actual}",
-                            extraction.Id, batchSize, attempt.Value.Rows.Count);
-                        pipelineErrors.Add(new Error($"DataTable integrity check failed for extraction {extraction.Id}"));
-                        attempt.Value.Dispose();
-                        managedTable.Dispose();
-                        break;
-                    }
-
-                    Helper.GetAndSetByteUsageForExtraction(attempt.Value, extraction.Id, jobTracker);
-
-                    var originalRowCount = managedTable.Table.Rows.Count;
-                    try
-                    {
-                        managedTable.Table.Merge(attempt.Value);
-                        var mergedRowCount = managedTable.Table.Rows.Count;
-
-                        if (mergedRowCount - originalRowCount != batchSize)
+                        if (attempt.Value.Rows.Count == 0)
                         {
-                            extractionLogger?.Error("DataTable merge lost rows for extraction {ExtractionId}: expected {Expected}, got {Actual}",
-                                extraction.Id, batchSize, mergedRowCount - originalRowCount);
-                            pipelineErrors.Add(new Error($"DataTable merge failed for extraction {extraction.Id}"));
+                            extractionLogger?.Debug("No more data to fetch for extraction {ExtractionId} at offset {Offset}", extraction.Id, currentOffset);
+                            attempt.Value.Dispose();
+                            break;
+                        }
+
+                        var batchSize = attempt.Value.Rows.Count;
+                        extractionRowCount += batchSize;
+                        currentOffset += (ulong)batchSize;
+                        Interlocked.Add(ref totalRowsProduced, batchSize);
+
+                        var managedTable = CreateManagedDataTable($"db_extraction_{extraction.Id}_offset_{currentOffset}");
+                        Helper.GetAndSetByteUsageForExtraction(attempt.Value, extraction.Id, jobTracker);
+
+                        try
+                        {
+                            managedTable.Table.Merge(attempt.Value);
+                        }
+                        catch (Exception mergeEx)
+                        {
+                            extractionLogger?.Error(mergeEx, "DataTable merge failed for extraction {ExtractionId}", extraction.Id);
+                            pipelineErrors.Add(new Error($"DataTable merge exception for extraction {extraction.Id}: {mergeEx.Message}", mergeEx.StackTrace));
                             attempt.Value.Dispose();
                             managedTable.Dispose();
                             break;
                         }
-                    }
-                    catch (Exception mergeEx)
-                    {
-                        extractionLogger?.Error(mergeEx, "DataTable merge failed for extraction {ExtractionId}", extraction.Id);
-                        pipelineErrors.Add(new Error($"DataTable merge exception for extraction {extraction.Id}: {mergeEx.Message}", mergeEx.StackTrace));
+
                         attempt.Value.Dispose();
-                        managedTable.Dispose();
-                        break;
+                        await channel.Writer.WriteAsync((managedTable, extraction), cancellationToken);
                     }
 
-                    attempt.Value.Dispose();
+                    if (extractionRowCount > 0)
+                    {
+                        extractionLogger?.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows",
+                            extraction.Id, extractionRowCount);
+                    }
 
-                    await channel.Writer.WriteAsync((managedTable, extraction), cancellationToken);
-                    Log.Information("DataTable was added in the channel.");
-                }
+                    extractionActivity?.SetTag("rows.count", extractionRowCount);
+                    extractionActivity?.SetTag("success", true);
+                    Interlocked.Increment(ref completedCount);
+                });
+            }, token);
 
-                if (extractionRowCount > 0)
+            var virtualTask = Task.Run(async () =>
+            {
+                var virtualGroups = virtualExtractions
+                    .GroupBy(e => new { e.Name, e.VirtualIdGroup })
+                    .ToList();
+
+                foreach (var virtualGroup in virtualGroups)
                 {
-                    extractionLogger?.Information("Database data fetch completed for extraction {ExtractionId}: {TotalRows} rows",
-                        extraction.Id, extractionRowCount);
+                    if (token.IsCancellationRequested) break;
+
+                    var virtualTableName = virtualGroup.Key.Name;
+                    var virtualIdGroup = virtualGroup.Key.VirtualIdGroup;
+                    var groupExtractions = virtualGroup.ToList();
+
+                    var extractionLogger = logger.ForContext("VirtualTable", virtualTableName)
+                                            .ForContext("VirtualGroup", virtualIdGroup);
+
+                    try
+                    {
+                        var templateExtraction = groupExtractions.FirstOrDefault(e => e.IsVirtualTemplate == true)
+                                            ?? groupExtractions.First();
+
+                        extractionLogger.Information("Processing virtual table {VirtualTable} with {ExtractionCount} extractions",
+                            virtualTableName, groupExtractions.Count);
+
+                        var fetcher = DBExchangeFactory.Create(templateExtraction.Origin!.DbType!);
+
+                        var result = await fetcher.FetchDataTable(
+                            templateExtraction,
+                            requestTime,
+                            false,
+                            0,
+                            connectionPoolManager,
+                            token,
+                            overrideFilter,
+                            0,
+                            false
+                        ).ConfigureAwait(false);
+
+                        if (!result.IsSuccessful)
+                        {
+                            extractionLogger.Error("Virtual table fetch failed for {VirtualTable}: {Error}",
+                                virtualTableName, result.Error.ExceptionMessage);
+                            pipelineErrors.Add(result.Error!);
+                            continue;
+                        }
+
+                        var virtualRowCount = result.Value.Rows.Count;
+                        Interlocked.Add(ref totalRowsProduced, virtualRowCount);
+
+                        result.Value.BeginLoadData();
+                        result.Value.CaseSensitive = false;
+                        result.Value.Constraints.Clear();
+                        result.Value.PrimaryKey = Array.Empty<DataColumn>();
+
+                        var managedTable = CreateManagedDataTable($"virtual_extraction_{virtualTableName}_{virtualIdGroup}");
+                        Helper.GetAndSetByteUsageForExtraction(result.Value, templateExtraction.Id, jobTracker);
+
+                        managedTable.Table.Merge(result.Value);
+                        result.Value.Dispose();
+
+                        extractionLogger.Information("Virtual table fetch completed for {VirtualTable}: {RowCount} rows",
+                            virtualTableName, virtualRowCount);
+
+                        await channel.Writer.WriteAsync((managedTable, templateExtraction), token);
+                        Interlocked.Increment(ref completedCount);
+                    }
+                    catch (Exception ex)
+                    {
+                        extractionLogger.Error(ex, "Error processing virtual table {VirtualTable}", virtualTableName);
+                        pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
+                    }
                 }
+            }, token);
 
-                extractionActivity?.SetTag("rows.count", extractionRowCount);
-                extractionActivity?.SetTag("success", true);
-
-                Interlocked.Increment(ref completedCount);
-            }).ConfigureAwait(false);
+            await Task.WhenAll(regularTask, virtualTask).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
