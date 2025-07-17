@@ -416,7 +416,7 @@ public abstract partial class DBExchange
                         return;
                     }
 
-                    var fetchResult = result.Value;
+                    DataTable? fetchResult = result.Value;
                     bool isTemplate = extraction.IsVirtualTemplate ?? false;
 
                     for (int i = 0; i < fetchResult.Columns.Count; i++)
