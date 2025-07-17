@@ -702,6 +702,7 @@ public sealed class ExtractionPipeline(
                 var extractionRowCount = 0;
 
                 ulong currentOffset = 0;
+                ulong batchSize = Settings.ProducerLineMax;
 
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -712,13 +713,13 @@ public sealed class ExtractionPipeline(
                         attempt = await fetcher.FetchDataTable(
                             extraction,
                             requestTime,
-                            shouldPartition,
+                            shouldPartition: false,
                             currentOffset,
                             connectionPoolManager,
                             cancellationToken,
                             overrideFilter,
-                            Settings.ProducerLineMax,
-                            true
+                            batchSize,
+                            shouldPaginate: true
                         ).ConfigureAwait(false);
                     }
                     catch (ObjectDisposedException)
@@ -729,22 +730,7 @@ public sealed class ExtractionPipeline(
 
                     if (!attempt.IsSuccessful)
                     {
-                        if (attempt.HasMultipleErrors)
-                        {
-                            foreach (var err in attempt.Errors)
-                            {
-                                var error = err ?? new Error("Unknown database fetch error occurred");
-                                extractionLogger?.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, error.ExceptionMessage);
-                                pipelineErrors.Add(error);
-                            }
-                        }
-                        else
-                        {
-                            var error = attempt.Error ?? new Error("Unknown database fetch error occurred");
-                            extractionLogger?.Error("Database fetch failed for extraction {ExtractionId}: {Error}", extraction.Id, error.ExceptionMessage);
-                            pipelineErrors.Add(error);
-                        }
-
+                        extractionLogger?.Error("Error while attempting extraction {ExtractionId}", extraction.Id);
                         extractionActivity?.SetTag("success", false);
                         break;
                     }
@@ -756,49 +742,22 @@ public sealed class ExtractionPipeline(
                         break;
                     }
 
-                    var batchSize = attempt.Value.Rows.Count;
-                    extractionRowCount += batchSize;
-
-                    currentOffset += (ulong)batchSize;
-                    Interlocked.Add(ref totalRowsProduced, batchSize);
-
-                    extractionLogger?.Debug("Fetched {RowCount} rows for extraction {ExtractionId} (total fetched: {TotalFetched}, next offset: {NextOffset})",
-                        batchSize, extraction.Id, extractionRowCount, currentOffset);
+                    var batchRowCount = attempt.Value.Rows.Count;
+                    Interlocked.Add(ref totalRowsProduced, batchRowCount);
+                    extractionRowCount += batchRowCount;
 
                     var managedTable = CreateManagedDataTable($"db_extraction_{extraction.Id}_offset_{currentOffset}");
 
-                    if (attempt.Value.Rows.Count != batchSize)
-                    {
-                        extractionLogger?.Error("DataTable row count mismatch for extraction {ExtractionId}: expected {Expected}, got {Actual}",
-                            extraction.Id, batchSize, attempt.Value.Rows.Count);
-                        pipelineErrors.Add(new Error($"DataTable integrity check failed for extraction {extraction.Id}"));
-                        attempt.Value.Dispose();
-                        managedTable.Dispose();
-                        break;
-                    }
-
                     Helper.GetAndSetByteUsageForExtraction(attempt.Value, extraction.Id, jobTracker);
 
-                    var originalRowCount = managedTable.Table.Rows.Count;
                     try
                     {
                         managedTable.Table.Merge(attempt.Value);
-                        var mergedRowCount = managedTable.Table.Rows.Count;
-
-                        if (mergedRowCount - originalRowCount != batchSize)
-                        {
-                            extractionLogger?.Error("DataTable merge lost rows for extraction {ExtractionId}: expected {Expected}, got {Actual}",
-                                extraction.Id, batchSize, mergedRowCount - originalRowCount);
-                            pipelineErrors.Add(new Error($"DataTable merge failed for extraction {extraction.Id}"));
-                            attempt.Value.Dispose();
-                            managedTable.Dispose();
-                            break;
-                        }
                     }
                     catch (Exception mergeEx)
                     {
                         extractionLogger?.Error(mergeEx, "DataTable merge failed for extraction {ExtractionId}", extraction.Id);
-                        pipelineErrors.Add(new Error($"DataTable merge exception for extraction {extraction.Id}: {mergeEx.Message}", mergeEx.StackTrace));
+                        pipelineErrors.Add(new Error($"Merge exception: {mergeEx.Message}", mergeEx.StackTrace));
                         attempt.Value.Dispose();
                         managedTable.Dispose();
                         break;
@@ -807,7 +766,7 @@ public sealed class ExtractionPipeline(
                     attempt.Value.Dispose();
 
                     await channel.Writer.WriteAsync((managedTable, extraction), cancellationToken);
-                    Log.Information("DataTable was added in the channel.");
+                    currentOffset += Settings.ProducerLineMax;
                 }
 
                 if (extractionRowCount > 0)
