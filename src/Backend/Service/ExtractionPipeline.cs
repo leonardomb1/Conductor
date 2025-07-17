@@ -939,37 +939,37 @@ public sealed class ExtractionPipeline(
 
         try
         {
-            await foreach (var item in channel.Reader.ReadAllAsync(token))
+            await foreach (var (data, metadata) in channel.Reader.ReadAllAsync(token))
             {
                 if (token.IsCancellationRequested) break;
 
-                var extractionLogger = logger.ForContext("ExtractionId", item.metadata.Id)
-                                            .ForContext("ExtractionName", item.metadata.Name);
+                var extractionLogger = logger.ForContext("ExtractionId", metadata.Id)
+                                            .ForContext("ExtractionName", metadata.Name);
 
-                if (item.metadata.Destination is null)
+                if (metadata.Destination is null)
                 {
-                    extractionLogger.Warning("Skipping extraction {ExtractionId} - no destination configured", item.metadata.Id);
-                    item.data.Dispose();
+                    extractionLogger.Warning("Skipping extraction {ExtractionId} - no destination configured", metadata.Id);
+                    data.Dispose();
                     continue;
                 }
 
-                var inserter = DBExchangeFactory.Create(item.metadata.Destination.DbType);
+                var inserter = DBExchangeFactory.Create(metadata.Destination.DbType);
                 DbConnection? connection = null;
 
                 try
                 {
                     connection = await DBExchange.GetConnectionAsync(
-                        item.metadata.Destination.ConnectionString,
-                        item.metadata.Destination.DbType,
+                        metadata.Destination.ConnectionString,
+                        metadata.Destination.DbType,
                         connectionPoolManager,
                         token);
 
-                    var tableKey = item.metadata.Alias ?? item.metadata.Name;
+                    var tableKey = metadata.Alias ?? metadata.Name;
 
                     extractionLogger.Debug("Processing {RowCount} rows for table {TableKey} in {DbType}",
-                        item.data.Table.Rows.Count, tableKey, item.metadata.Destination.DbType);
+                        data.Table.Rows.Count, tableKey, metadata.Destination.DbType);
 
-                    var exists = await inserter.Exists(item.metadata, connection).ConfigureAwait(false);
+                    var exists = await inserter.Exists(metadata, connection).ConfigureAwait(false);
                     if (!exists.IsSuccessful)
                     {
                         pipelineErrors.Add(exists.Error);
@@ -981,8 +981,8 @@ public sealed class ExtractionPipeline(
                     if (!exists.Value)
                     {
                         extractionLogger.Information("Creating table {TableKey} for extraction {ExtractionId}",
-                            tableKey, item.metadata.Id);
-                        var createResult = await inserter.CreateTable(item.data.Table, item.metadata, connection).ConfigureAwait(false);
+                            tableKey, metadata.Id);
+                        var createResult = await inserter.CreateTable(data.Table, metadata, connection).ConfigureAwait(false);
                         if (!createResult.IsSuccessful)
                         {
                             pipelineErrors.Add(createResult.Error);
@@ -994,7 +994,7 @@ public sealed class ExtractionPipeline(
 
                     var shouldUseBulkLoad = tableFirstExecutionState.GetOrAdd(tableKey, key =>
                     {
-                        var countResult = inserter.CountTableRows(item.metadata, connection).GetAwaiter().GetResult();
+                        var countResult = inserter.CountTableRows(metadata, connection).GetAwaiter().GetResult();
                         if (!countResult.IsSuccessful)
                         {
                             extractionLogger.Warning("Could not determine row count for table {TableKey}, defaulting to merge load", tableKey);
@@ -1024,26 +1024,21 @@ public sealed class ExtractionPipeline(
                             if (shouldUseBulkLoad)
                             {
                                 extractionLogger.Debug("Performing bulk load for table {TableKey} (first execution)", tableKey);
-                                loadResult = await inserter.BulkLoad(item.data.Table, item.metadata, connection).ConfigureAwait(false);
+                                loadResult = await inserter.BulkLoad(data.Table, metadata, connection).ConfigureAwait(false);
                             }
                             else
                             {
                                 extractionLogger.Debug("Performing merge load for table {TableKey} (subsequent execution)", tableKey);
-                                loadResult = await inserter.MergeLoad(item.data.Table, item.metadata, requestTime, connection).ConfigureAwait(false);
+                                loadResult = await inserter.MergeLoad(data.Table, metadata, requestTime, connection).ConfigureAwait(false);
                             }
 
                             if (loadResult.IsSuccessful)
                             {
                                 extractionLogger.Information("Successfully processed {RowCount} rows for table {TableKey} using {Strategy}",
-                                    item.data.Table.Rows.Count, tableKey, shouldUseBulkLoad ? "BulkLoad" : "MergeLoad");
+                                    data.Table.Rows.Count, tableKey, shouldUseBulkLoad ? "BulkLoad" : "MergeLoad");
 
-                                Interlocked.Add(ref totalRowsProcessed, item.data.Table.Rows.Count);
+                                Interlocked.Add(ref totalRowsProcessed, data.Table.Rows.Count);
                                 Interlocked.Increment(ref totalTablesProcessed);
-
-                                if (shouldUseBulkLoad)
-                                {
-                                    tableFirstExecutionState.TryUpdate(tableKey, false, true);
-                                }
 
                                 break;
                             }
@@ -1070,7 +1065,7 @@ public sealed class ExtractionPipeline(
                 }
                 catch (Exception ex)
                 {
-                    extractionLogger.Error(ex, "Unexpected error processing extraction {ExtractionId}", item.metadata.Id);
+                    extractionLogger.Error(ex, "Unexpected error processing extraction {ExtractionId}", metadata.Id);
                     pipelineErrors.Add(new Error(ex.Message, ex.StackTrace));
                 }
                 finally
@@ -1079,23 +1074,23 @@ public sealed class ExtractionPipeline(
                     {
                         try
                         {
-                            DBExchange.ReturnConnection(item.metadata.Destination.ConnectionString, item.metadata.Destination.DbType, connectionPoolManager, connection);
-                            extractionLogger.Debug("Returned connection to pool for extraction {ExtractionId}", item.metadata.Id);
+                            DBExchange.ReturnConnection(metadata.Destination.ConnectionString, metadata.Destination.DbType, connectionPoolManager, connection);
+                            extractionLogger.Debug("Returned connection to pool for extraction {ExtractionId}", metadata.Id);
                         }
                         catch (Exception ex)
                         {
-                            extractionLogger.Warning(ex, "Failed to return connection to pool for extraction {ExtractionId}", item.metadata.Id);
+                            extractionLogger.Warning(ex, "Failed to return connection to pool for extraction {ExtractionId}", metadata.Id);
                             try { connection.Dispose(); } catch { }
                         }
                     }
 
                     try
                     {
-                        item.data.Dispose();
+                        data.Dispose();
                     }
                     catch (Exception ex)
                     {
-                        extractionLogger.Warning(ex, "Failed to dispose managed data table for extraction {ExtractionId}", item.metadata.Id);
+                        extractionLogger.Warning(ex, "Failed to dispose managed data table for extraction {ExtractionId}", metadata.Id);
                     }
                 }
             }
