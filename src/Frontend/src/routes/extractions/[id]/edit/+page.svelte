@@ -11,6 +11,8 @@
   import Toast from "$lib/components/ui/Toast.svelte"
   import { ArrowLeft, Save } from "@lucide/svelte"
   import { goto } from "$app/navigation"
+  import { browser } from "$app/environment"
+  import { themeStore } from "$lib/stores/theme.svelte.js"
 
   let extraction = $state<Extraction | null>(null)
   let origins = $state<Origin[]>([])
@@ -160,6 +162,14 @@
     return Object.keys(errors).length === 0
   }
 
+  function handleBackNavigation() {
+    if (browser) {
+      themeStore.applyTheme()
+      
+      history.back()
+    }
+  }
+
   async function handleSubmit() {
     if (!validateForm()) return
 
@@ -257,7 +267,7 @@
       <div class="flex space-x-3">
         <Button
           variant="ghost"
-          onclick={() => goto(`/extractions/${extractionId}`)}
+          onclick={handleBackNavigation}
         >
           <ArrowLeft size={16} class="mr-2" />
           Cancel

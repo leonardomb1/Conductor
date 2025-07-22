@@ -10,6 +10,8 @@
   import Toast from "$lib/components/ui/Toast.svelte"
   import { ArrowLeft, Save } from "@lucide/svelte"
   import { goto } from "$app/navigation"
+  import { browser } from "$app/environment"
+  import { themeStore } from "$lib/stores/theme.svelte.js"
 
   let origins = $state<Origin[]>([])
   let destinations = $state<Destination[]>([])
@@ -158,6 +160,14 @@
     }
   }
 
+  function handleBackNavigation() {
+    if (browser) {
+      themeStore.applyTheme()
+      
+      history.back()
+    }
+  }
+
   const originOptions = $derived(
     origins.map((origin) => ({
       value: origin.id.toString(),
@@ -191,7 +201,7 @@
   >
     {#snippet actions()}
       <div class="flex space-x-3">
-        <Button variant="ghost" onclick={() => goto("/extractions")}>
+        <Button variant="ghost" onclick={handleBackNavigation}>
           <ArrowLeft size={16} class="mr-2" />
           Cancel
         </Button>

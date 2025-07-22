@@ -1,3 +1,4 @@
+// src/Frontend/src/lib/stores/theme.svelte.ts
 interface ThemeState {
   isDark: boolean;
   isMobileMenuOpen: boolean;
@@ -19,6 +20,28 @@ class ThemeStore {
         this.state.isDark = true;
         this.applyTheme();
       }
+
+      // Listen for storage changes (e.g., from other tabs)
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'conductor_theme') {
+          const newTheme = e.newValue;
+          if (newTheme === 'dark' || newTheme === 'light') {
+            this.state.isDark = newTheme === 'dark';
+            this.applyTheme();
+          }
+        }
+      });
+
+      // Listen for system theme changes
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      mediaQuery.addEventListener('change', (e) => {
+        // Only apply system theme if no user preference is saved
+        const savedTheme = localStorage.getItem('conductor_theme');
+        if (!savedTheme) {
+          this.state.isDark = e.matches;
+          this.applyTheme();
+        }
+      });
     }
   }
 
@@ -56,7 +79,8 @@ class ThemeStore {
     this.state.isMobileMenuOpen = false;
   }
 
-  private applyTheme() {
+  // Public method to ensure theme is applied - useful after navigation
+  applyTheme() {
     if (typeof window !== 'undefined') {
       const html = document.documentElement;
       if (this.state.isDark) {
@@ -64,6 +88,23 @@ class ThemeStore {
       } else {
         html.classList.remove('dark');
       }
+    }
+  }
+
+  // Force theme reapplication - useful for ensuring consistency after navigation
+  forceApplyTheme() {
+    // Re-read from localStorage to ensure consistency
+    if (typeof window !== 'undefined') {
+      const savedTheme = localStorage.getItem('conductor_theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      
+      const shouldBeDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+      
+      if (this.state.isDark !== shouldBeDark) {
+        this.state.isDark = shouldBeDark;
+      }
+      
+      this.applyTheme();
     }
   }
 }

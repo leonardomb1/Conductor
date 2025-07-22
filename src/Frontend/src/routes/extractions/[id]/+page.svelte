@@ -20,6 +20,8 @@
     FileDown,
   } from "@lucide/svelte"
   import { goto } from "$app/navigation"
+  import { browser } from "$app/environment"
+  import { themeStore } from "$lib/stores/theme.svelte.js"
 
   let extraction = $state<Extraction | null>(null)
   let loading = $state(true)
@@ -320,6 +322,14 @@
       showToastMessage("Failed to export CSV file", "error")
     }
   }
+  
+  function handleBackNavigation() {
+    if (browser) {
+      themeStore.applyTheme()
+      
+      history.back()
+    }
+  }
 
   function exportToJSON() {
     if (previewData.length === 0) {
@@ -367,7 +377,7 @@
   >
     {#snippet actions()}
       <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
-        <Button variant="ghost" onclick={() => goto("/extractions")}>
+        <Button variant="ghost" onclick={handleBackNavigation}>
           <ArrowLeft size={16} class="mr-2" />
           Back
         </Button>
