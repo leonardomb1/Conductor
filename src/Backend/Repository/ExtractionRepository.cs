@@ -55,9 +55,9 @@ public sealed class ExtractionRepository(EfContext context) : IRepository<Extrac
                         "isVirtual" when bool.TryParse(value, out bool isVirt) =>
                             select.Where(e => e.IsVirtual == isVirt),
                         "search" => select.Where(e =>
-                            e.Name.Contains(value) ||
-                            (e.Alias != null && e.Alias.Contains(value)) ||
-                            (e.IndexName != null && e.IndexName.Contains(value))),
+                            EF.Functions.Like(e.Name.ToLower(), $"%{value.ToLower()}%") ||
+                            (e.Alias != null && EF.Functions.Like(e.Alias.ToLower(), $"%{value.ToLower()}%")) ||
+                            (e.IndexName != null && EF.Functions.Like(e.IndexName.ToLower(), $"%{value.ToLower()}%"))),
                         "skip" => select,
                         "take" => select,
                         "sortBy" => select,
