@@ -139,7 +139,7 @@
           status: job.status,
           startTime: job.startTime,
           endTime: job.endTime,
-          totalTimeSpentMs: 0,
+          totalTimeSpentMs: job.timeSpentMs, 
           totalMegaBytes: 0,
           extractions: [],
           canCancel: job.status === "Running",
@@ -148,10 +148,11 @@
 
       const group = groups.get(job.jobGuid)!
       group.extractions.push(job)
-      group.totalTimeSpentMs += job.timeSpentMs
+      
+      group.totalTimeSpentMs = Math.max(group.totalTimeSpentMs, job.timeSpentMs)
+      
       group.totalMegaBytes += job.megaBytes
 
-      // Update end time to latest
       if (
         job.endTime &&
         (!group.endTime || new Date(job.endTime) > new Date(group.endTime))
@@ -166,7 +167,6 @@
     )
   }
 
-  // Mobile-optimized Job Group card component
   function renderMobileJobGroup(group: JobGroup): string {
     const statusColor =
       group.status === "Completed"
