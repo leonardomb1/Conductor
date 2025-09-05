@@ -20,9 +20,7 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
     private readonly Gauge<int> poolSizeGauge;
     private readonly Counter<int> connectionRetriesCounter;
     private readonly Counter<int> connectionFailuresCounter;
-
-    // FIXED: Add pre-warming coordination
-    private readonly SemaphoreSlim prewarmSemaphore = new(3, 3); // Limit concurrent pre-warming
+    private readonly SemaphoreSlim prewarmSemaphore = new(3, 3);
 
     public ConnectionPoolManager()
     {
@@ -50,7 +48,15 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
 
     public DbConnection GetConnection(string connectionString, string dbType)
     {
-        return GetConnectionAsync(connectionString, dbType, CancellationToken.None).GetAwaiter().GetResult();
+        try
+        {
+            return GetConnectionAsync(connectionString, dbType, CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            logging.Error(ex, "Synchronous connection acquisition failed for {DbType}", dbType);
+            throw;
+        }
     }
 
     public async Task<DbConnection> GetConnectionAsync(string connectionString, string dbType, CancellationToken cancellationToken = default)
@@ -62,6 +68,7 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
         {
             var newPool = new ResilientConnectionPool(connectionString, dbType, logging);
 
+            // Start pre-warming in background with coordination
             Task.Run(async () =>
             {
                 var acquired = await prewarmSemaphore.WaitAsync(30000, CancellationToken.None);
@@ -70,10 +77,11 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
                     try
                     {
                         await newPool.PrewarmAsync(CancellationToken.None);
+                        logging.Debug("Pre-warm completed successfully for pool {PoolKey}", key);
                     }
                     catch (Exception ex)
                     {
-                        logging.Debug("Pre-warm task completed for pool {PoolKey}: {Result}", key, ex.Message);
+                        logging.Debug("Pre-warm finished for pool {PoolKey}: {Result}", key, ex.Message);
                     }
                     finally
                     {
@@ -129,7 +137,8 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
                     var delay = TimeSpan.FromMilliseconds(100 * Math.Pow(2, attempt - 1) + Random.Shared.Next(0, 100));
                     await Task.Delay(delay, cancellationToken);
 
-                    await pool.CleanupUnhealthyConnectionsAsync();
+                    // Try to cleanup unhealthy connections before retry
+                    _ = Task.Run(() => pool.CleanupUnhealthyConnectionsAsync(), CancellationToken.None);
                 }
             }
         }
@@ -167,7 +176,8 @@ public sealed class ConnectionPoolManager : IConnectionPoolManager
             command.CommandText = "SELECT 1";
             command.CommandTimeout = 5;
 
-            var result = await command.ExecuteScalarAsync();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
+            var result = await command.ExecuteScalarAsync(cts.Token);
             return result is not null;
         }
         catch
@@ -265,13 +275,13 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
 {
     private readonly ConcurrentQueue<PooledConnectionWithHealth> availableConnections = new();
     private readonly ConcurrentDictionary<DbConnection, PooledConnectionWithHealth> activeConnections = new();
-    private readonly SemaphoreSlim semaphore;
+    private SemaphoreSlim semaphore;
     private readonly string connectionString;
     private readonly string dbType;
     private readonly ILogger logging;
     private readonly Lock statsLock = new();
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(Settings.ConnectionIdleTimeoutMinutes);
-    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(Math.Min(Settings.ConnectionTimeout, 30)); // Cap at 30s
+    private readonly TimeSpan connectionTimeout;
     private static readonly TimeSpan HealthCheckInterval = TimeSpan.FromMinutes(5);
     private static readonly SemaphoreSlim GlobalPrewarmSemaphore = new(Environment.ProcessorCount, Environment.ProcessorCount);
     private static readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> PrewarmTasks = new();
@@ -279,19 +289,21 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
     private int createdConnections;
     private DateTimeOffset lastActivity = DateTimeOffset.UtcNow;
     private volatile bool disposed;
+    private readonly bool isMySql;
 
     public ResilientConnectionPool(string conStr, string type, ILogger logger)
     {
         connectionString = conStr;
         dbType = type;
+        isMySql = dbType.ToLower().Contains("mysql");
         logging = logger.ForContext("PoolKey", $"{dbType}:{connectionString.GetHashCode()}");
+        
+        // MySQL-specific timeout handling
+        connectionTimeout = isMySql ? TimeSpan.FromSeconds(60) : TimeSpan.FromSeconds(30);
+        
         semaphore = new SemaphoreSlim(Settings.ConnectionPoolMaxSize, Settings.ConnectionPoolMaxSize);
-
-        // FIXED: Don't automatically start pre-warming in constructor
-        // Let the ConnectionPoolManager coordinate this
     }
 
-    // FIXED: Add controlled pre-warming method
     public async Task PrewarmAsync(CancellationToken cancellationToken = default)
     {
         var poolKey = $"{dbType}:{connectionString.GetHashCode()}";
@@ -321,9 +333,8 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            // FIXED: Handle all exceptions gracefully without warnings
             logging.Information("Pre-warm skipped for pool {PoolKey}: {Reason}", poolKey, ex.Message);
-            tcs.TrySetResult(false); // Mark as completed but not successful
+            tcs.TrySetResult(false);
         }
         finally
         {
@@ -336,45 +347,39 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
         if (disposed) return;
 
         var successfulConnections = 0;
-        var maxAttempts = Settings.ConnectionPoolMinSize * 2; // Allow some failures
+        var maxAttempts = Settings.ConnectionPoolMinSize * 2;
         var connectionTimeouts = 0;
-        var maxTimeouts = 3; // Stop after too many timeouts
+        var maxTimeouts = isMySql ? 2 : 3;
 
-        logging.Debug("Starting pre-warm for connection pool (target: {Settings.ConnectionPoolMinSize} connections)", Settings.ConnectionPoolMinSize);
+        logging.Debug("Starting pre-warm for connection pool (target: {MinSize} connections)", Settings.ConnectionPoolMinSize);
 
         for (int attempt = 0; attempt < maxAttempts && successfulConnections < Settings.ConnectionPoolMinSize && connectionTimeouts < maxTimeouts && !cancellationToken.IsCancellationRequested; attempt++)
         {
             try
             {
-                // FIXED: Add progressive delay and shorter timeouts for pre-warming
                 if (attempt > 0)
                 {
-                    var delay = Math.Min(200 * attempt, 2000); // Max 2 second delay
+                    var delay = isMySql ? Math.Min(500 * attempt, 3000) : Math.Min(200 * attempt, 2000);
                     await Task.Delay(delay, cancellationToken);
                 }
 
-                // FIXED: Use shorter timeout for pre-warming connections
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)); // Shorter timeout for pre-warm
-                using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                var connection = await CreateNewConnectionAsync(combinedCts.Token);
+                var connection = await CreateNewConnectionAsync(cancellationToken);
                 var pooledConnection = new PooledConnectionWithHealth(connection, DateTime.UtcNow);
 
                 availableConnections.Enqueue(pooledConnection);
                 successfulConnections++;
 
-                logging.Debug("Pre-warmed connection {SuccessfulConnections}/{Settings.ConnectionPoolMinSize}", successfulConnections, Settings.ConnectionPoolMinSize);
+                logging.Debug("Pre-warmed connection {SuccessfulConnections}/{MinSize}", successfulConnections, Settings.ConnectionPoolMinSize);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 logging.Debug("Pre-warm cancelled for connection pool");
                 break;
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Timeout expired") || ex.Message.Contains("pool"))
+            catch (Exception ex) when (IsTimeoutException(ex))
             {
-                // FIXED: Handle connection pool timeout gracefully
                 connectionTimeouts++;
-                logging.Debug("Connection pool timeout during pre-warm attempt {Attempt} (timeout {TimeoutCount}/{MaxTimeouts}): {Message}",
+                logging.Debug("Connection timeout during pre-warm attempt {Attempt} (timeout {TimeoutCount}/{MaxTimeouts}): {Message}",
                     attempt + 1, connectionTimeouts, maxTimeouts, ex.Message);
 
                 if (connectionTimeouts >= maxTimeouts)
@@ -384,27 +389,11 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
                     break;
                 }
             }
-            catch (TimeoutException ex)
-            {
-                // FIXED: Handle timeout exceptions specifically
-                connectionTimeouts++;
-                logging.Debug("Timeout during pre-warm attempt {Attempt} (timeout {TimeoutCount}/{MaxTimeouts}): {Message}",
-                    attempt + 1, connectionTimeouts, maxTimeouts, ex.Message);
-
-                if (connectionTimeouts >= maxTimeouts)
-                {
-                    logging.Information("Too many timeouts during pre-warm, stopping early. Successfully created {SuccessfulConnections} connections",
-                        successfulConnections);
-                    break;
-                }
-            }
             catch (Exception ex)
             {
-                // FIXED: Handle any other exceptions gracefully
                 logging.Debug("Pre-warm connection attempt {Attempt}/{MaxAttempts} failed: {Error}",
                     attempt + 1, maxAttempts, ex.GetType().Name);
 
-                // Don't log full exception details for common connection issues during pre-warm
                 if (attempt >= maxAttempts - 1)
                 {
                     logging.Information("Pre-warm completed with some failures. Successfully created {SuccessfulConnections}/{TargetConnections} connections",
@@ -429,29 +418,32 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
     {
         if (disposed) throw new ObjectDisposedException(nameof(ResilientConnectionPool));
 
-        // FIXED: Use shorter timeout with progressive retry
-        var baseTimeout = TimeSpan.FromSeconds(10);
+        var baseTimeout = isMySql ? TimeSpan.FromSeconds(20) : TimeSpan.FromSeconds(10);
         var maxRetries = 3;
+        bool semaphoreAcquired = false;
 
         for (int retry = 0; retry < maxRetries; retry++)
         {
-            using var timeoutCts = new CancellationTokenSource(baseTimeout);
-            using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
             try
             {
+                using var timeoutCts = new CancellationTokenSource(baseTimeout);
+                using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
                 await semaphore.WaitAsync(combinedCts.Token);
+                semaphoreAcquired = true;
                 break; // Successfully acquired semaphore
             }
-            catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                // Timeout occurred, not user cancellation
                 if (retry < maxRetries - 1)
                 {
                     logging.Warning("Connection acquisition timeout on attempt {Retry}/{MaxRetries}, retrying...",
                         retry + 1, maxRetries);
 
-                    // FIXED: Try to clean up unhealthy connections before retry
+                    // Log current pool status for debugging
+                    LogPoolStatus();
+
+                    // Try to clean up unhealthy connections before retry
                     _ = Task.Run(() => CleanupUnhealthyConnectionsAsync(), CancellationToken.None);
 
                     // Progressive delay
@@ -475,16 +467,17 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
                 {
                     activeConnections.TryAdd(pooledConnection.Connection, pooledConnection);
                     logging.Debug("Reused healthy pooled connection");
+                    semaphoreAcquired = false; // Connection successfully obtained
                     return pooledConnection.Connection;
                 }
                 else
                 {
                     logging.Debug("Disposing unhealthy pooled connection");
-                    await pooledConnection.DisposeAsync();
+                    await SafeDisposeConnectionAsync(pooledConnection);
                 }
             }
 
-            // Create new connection if none available
+            // Create new connection
             var newConnection = await CreateNewConnectionAsync(cancellationToken);
             var newPooledConnection = new PooledConnectionWithHealth(newConnection, DateTime.UtcNow);
 
@@ -492,26 +485,48 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
             Interlocked.Increment(ref createdConnections);
 
             logging.Debug("Created new database connection (total created: {CreatedConnections})", createdConnections);
+            semaphoreAcquired = false; // Connection successfully obtained
             return newConnection;
         }
-        catch
+        catch (Exception ex)
         {
-            semaphore.Release();
+            logging.Error(ex, "Failed to get connection for {DbType}", dbType);
             throw;
+        }
+        finally
+        {
+            // CRITICAL: Always release semaphore if still acquired
+            if (semaphoreAcquired)
+            {
+                semaphore.Release();
+                logging.Debug("Released semaphore due to exception");
+            }
         }
     }
 
     public void ReturnConnection(DbConnection connection, bool markAsUnhealthy = false)
     {
-        if (connection is null || !activeConnections.TryRemove(connection, out var pooledConnection))
+        if (connection is null) 
         {
             semaphore.Release();
             return;
         }
 
+        if (!activeConnections.TryRemove(connection, out var pooledConnection))
+        {
+            // Connection not tracked - dispose and release semaphore
+            try { connection.Dispose(); } catch { }
+            semaphore.Release();
+            logging.Debug("Returned untracked connection");
+            return;
+        }
+
         try
         {
-            if (!markAsUnhealthy && IsConnectionValidForReuse(connection) && availableConnections.Count < Settings.ConnectionPoolMaxSize)
+            if (!markAsUnhealthy && 
+                !disposed && 
+                IsConnectionValidForReuse(connection) && 
+                availableConnections.Count < Settings.ConnectionPoolMaxSize)
             {
                 pooledConnection.LastUsed = DateTime.UtcNow;
                 pooledConnection.LastHealthCheck = DateTime.UtcNow;
@@ -520,11 +535,11 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
             }
             else
             {
-                if (markAsUnhealthy)
-                {
-                    logging.Debug("Disposing connection marked as unhealthy");
-                }
-                pooledConnection.DisposeAsync().AsTask().Wait(1000);
+                logging.Debug("Disposing connection (unhealthy: {Unhealthy}, disposed: {Disposed})", 
+                    markAsUnhealthy, disposed);
+                
+                // Safe disposal with timeout
+                _ = Task.Run(async () => await SafeDisposeConnectionAsync(pooledConnection));
             }
         }
         catch (Exception ex)
@@ -559,7 +574,7 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
             availableConnections.Enqueue(healthyConnection);
         }
 
-        var disposeTasks = connectionsToRemove.Select(conn => conn.DisposeAsync().AsTask());
+        var disposeTasks = connectionsToRemove.Select(conn => SafeDisposeConnectionAsync(conn));
         await Task.WhenAll(disposeTasks);
 
         if (connectionsToRemove.Count > 0)
@@ -593,7 +608,7 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
             availableConnections.Enqueue(activeConnection);
         }
 
-        var disposeTasks = connectionsToRemove.Select(conn => conn.DisposeAsync().AsTask());
+        var disposeTasks = connectionsToRemove.Select(conn => SafeDisposeConnectionAsync(conn));
         await Task.WhenAll(disposeTasks);
 
         if (connectionsToRemove.Count > 0)
@@ -602,7 +617,45 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
         }
     }
 
-    private static async Task<bool> IsConnectionStillHealthy(PooledConnectionWithHealth pooledConnection)
+    public void LogPoolStatus()
+    {
+        var stats = GetStats();
+        logging.Information("Pool Status - Active: {Active}, Idle: {Idle}, Semaphore: {Available}/{Max}, DbType: {DbType}", 
+            stats.ActiveConnections, 
+            stats.IdleConnections, 
+            semaphore.CurrentCount, 
+            Settings.ConnectionPoolMaxSize,
+            dbType);
+    }
+
+    public async Task EmergencyResetAsync()
+    {
+        logging.Warning("Performing emergency pool reset for {DbType}", dbType);
+        
+        // Force dispose all connections
+        var allConnections = new List<PooledConnectionWithHealth>();
+        
+        while (availableConnections.TryDequeue(out var conn))
+            allConnections.Add(conn);
+        
+        foreach (var activeConn in activeConnections.Values)
+            allConnections.Add(activeConn);
+        
+        activeConnections.Clear();
+        
+        // Dispose connections with timeout
+        var disposeTasks = allConnections.Select(conn => SafeDisposeConnectionAsync(conn));
+        await Task.WhenAll(disposeTasks);
+        
+        // Reset semaphore
+        var oldSemaphore = semaphore;
+        semaphore = new SemaphoreSlim(Settings.ConnectionPoolMaxSize, Settings.ConnectionPoolMaxSize);
+        oldSemaphore?.Dispose();
+        
+        logging.Information("Emergency pool reset completed for {DbType}", dbType);
+    }
+
+    private async Task<bool> IsConnectionStillHealthy(PooledConnectionWithHealth pooledConnection)
     {
         try
         {
@@ -618,9 +671,10 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
 
             using var command = connection.CreateCommand();
             command.CommandText = "SELECT 1";
-            command.CommandTimeout = 2;
+            command.CommandTimeout = isMySql ? 5 : 2;
 
-            var result = await command.ExecuteScalarAsync();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
+            var result = await command.ExecuteScalarAsync(cts.Token);
             var isHealthy = result is not null;
 
             if (isHealthy)
@@ -630,8 +684,12 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
 
             return isHealthy;
         }
-        catch
+        catch (Exception ex)
         {
+            if (isMySql && (ex.Message.Contains("MySQL") || ex.Message.Contains("timeout")))
+            {
+                logging.Debug("MySQL connection health check failed: {Error}", ex.Message);
+            }
             return false;
         }
     }
@@ -645,6 +703,27 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
         catch
         {
             return false;
+        }
+    }
+
+    private static bool IsTimeoutException(Exception ex)
+    {
+        return ex is TimeoutException ||
+               ex is OperationCanceledException ||
+               (ex is InvalidOperationException && (ex.Message.Contains("Timeout expired") || ex.Message.Contains("timeout"))) ||
+               ex.Message.Contains("pool");
+    }
+
+    private async Task SafeDisposeConnectionAsync(PooledConnectionWithHealth pooledConnection)
+    {
+        try
+        {
+            var disposeTask = pooledConnection.DisposeAsync().AsTask();
+            await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception ex)
+        {
+            logging.Debug("Connection disposal failed: {Error}", ex.Message);
         }
     }
 
@@ -663,59 +742,182 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
         }
     }
 
-    // FIXED: Enhanced connection creation with better error handling
     private async Task<DbConnection> CreateNewConnectionAsync(CancellationToken cancellationToken)
     {
-        const int maxRetries = 2; // Reduced retries for pre-warming
+        const int maxRetries = 3; // Increased for MySqlConnector
         Exception? lastException = null;
+        var connectionStringVariants = GetMySQLConnectionStringVariants(connectionString);
 
         for (int attempt = 0; attempt < maxRetries; attempt++)
         {
+            DbConnection? connection = null;
             try
             {
                 var factory = DBExchangeFactory.Create(dbType);
-                var connection = factory.CreateConnection(connectionString);
+                
+                // Try different connection string variants for MySQL SSL issues
+                var effectiveConnectionString = isMySql && attempt < connectionStringVariants.Count 
+                    ? connectionStringVariants[attempt] 
+                    : connectionString;
+                
+                if (attempt > 0 && isMySql)
+                {
+                    logging.Information("MySQL connection attempt {Attempt} using variant: {Variant}", 
+                        attempt + 1, SanitizeConnectionString(effectiveConnectionString));
+                }
+                
+                connection = factory.CreateConnection(effectiveConnectionString);
 
-                // FIXED: Even shorter timeout for pre-warming to avoid blocking
-                var timeoutSeconds = attempt == 0 ? 5 : 10; // First attempt is fast, second is slightly longer
-                using var connectionCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-                using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connectionCts.Token);
+                // MySQL-specific timeout handling with MySqlConnector
+                var openTimeout = isMySql ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(15);
+                
+                using var connectionCts = new CancellationTokenSource(openTimeout);
+                using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken, connectionCts.Token);
 
                 await connection.OpenAsync(combinedCts.Token);
 
                 // Verify connection is actually usable
                 if (connection.State != ConnectionState.Open)
                 {
-                    connection.Dispose();
                     throw new InvalidOperationException("Connection failed to open properly");
+                }
+
+                // MySQL-specific connection test
+                if (isMySql)
+                {
+                    using var testCmd = connection.CreateCommand();
+                    testCmd.CommandText = "SELECT 1";
+                    testCmd.CommandTimeout = 10;
+                    
+                    using var testCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    using var testCombinedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken, testCts.Token);
+                    
+                    await testCmd.ExecuteScalarAsync(testCombinedCts.Token);
+                }
+
+                if (attempt > 0)
+                {
+                    logging.Information("MySQL connection succeeded on attempt {Attempt} using: {Variant}", 
+                        attempt + 1, SanitizeConnectionString(effectiveConnectionString));
                 }
 
                 return connection;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                throw; // Don't retry on user cancellation
+                connection?.Dispose();
+                throw;
             }
             catch (Exception ex)
             {
+                connection?.Dispose();
                 lastException = ex;
-
-                // Don't log warnings for every failed pre-warm attempt - this is normal
+                
                 if (attempt == maxRetries - 1)
                 {
-                    // Only log on final attempt
-                    logging.Debug("All pre-warm connection attempts failed: {Error}", ex.Message);
+                    logging.Error("Connection creation failed for {DbType} after all attempts: {Error}", dbType, ex.Message);
+                    
+                    // Provide specific guidance for persistent SSL issues
+                    if (isMySql && IsSSLAuthenticationError(ex))
+                    {
+                        logging.Error("Persistent MySQL SSL issues detected. MySqlConnector should handle this better than MySql.Data. " +
+                                    "This may indicate server-side SSL configuration problems. " +
+                                    "Contact database administrator or check network connectivity.");
+                    }
+                }
+                else if (isMySql)
+                {
+                    logging.Warning("MySQL connection attempt {Attempt}/{MaxRetries} failed: {Error}. Trying next variant...", 
+                        attempt + 1, maxRetries, ex.Message);
                 }
 
                 if (attempt < maxRetries - 1)
                 {
-                    // Very short delay between pre-warm retries
-                    await Task.Delay(100, cancellationToken);
+                    var delay = isMySql ? 1500 : 500;
+                    await Task.Delay(delay, cancellationToken);
                 }
             }
         }
 
-        throw new InvalidOperationException($"Failed to create pre-warm connection after {maxRetries} attempts", lastException);
+        throw new InvalidOperationException($"Failed to create connection for {dbType} after {maxRetries} attempts. " +
+            $"Last error: {lastException?.Message}", lastException);
+    }
+
+    private List<string> GetMySQLConnectionStringVariants(string originalConnectionString)
+    {
+        if (!isMySql) return new List<string> { originalConnectionString };
+
+        var variants = new List<string>();
+        
+        // Original connection string first
+        variants.Add(originalConnectionString);
+        
+        // Variant 1: MySqlConnector with SSL disabled
+        variants.Add(EnsureMySqlConnectorSSLSettings(originalConnectionString, "None"));
+        
+        // Variant 2: MySqlConnector with SSL required but certificate validation disabled
+        variants.Add(EnsureMySqlConnectorSSLSettings(originalConnectionString, "Required"));
+        
+        return variants;
+    }
+
+    private static string EnsureMySqlConnectorSSLSettings(string connectionString, string sslMode)
+    {
+        var builder = new System.Collections.Generic.Dictionary<string, string>();
+        
+        // Parse existing connection string
+        foreach (var pair in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 2)
+            {
+                builder[parts[0].Trim().ToLower()] = parts[1].Trim();
+            }
+        }
+        
+        // Set MySqlConnector-specific SSL settings
+        if (sslMode == "None")
+        {
+            builder["sslmode"] = "None";
+            builder["allowpublickeyretrieval"] = "true";
+        }
+        else if (sslMode == "Required")
+        {
+            builder["sslmode"] = "Required";
+            builder["allowpublickeyretrieval"] = "true";
+            builder["trustservercertificate"] = "true"; // MySqlConnector equivalent
+        }
+        
+        // Remove any conflicting SSL settings
+        builder.Remove("ssl");
+        builder.Remove("ssl mode");
+        
+        // Rebuild connection string
+        var result = string.Join(";", builder.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+        return result;
+    }
+
+    private static bool IsSSLAuthenticationError(Exception? ex)
+    {
+        if (ex == null) return false;
+        
+        return ex is System.Security.Authentication.AuthenticationException ||
+               ex.Message.Contains("SSL", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("TLS", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("frame size", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("corrupted frame", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("certificate", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("authentication", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string SanitizeConnectionString(string connectionString)
+    {
+        // Remove sensitive information for logging
+        return System.Text.RegularExpressions.Regex.Replace(connectionString, 
+            @"(Password|Pwd)\s*=\s*[^;]*", "Password=***", 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
     public async ValueTask DisposeAsync()
@@ -735,7 +937,7 @@ public sealed class ResilientConnectionPool : IAsyncDisposable
             allConnections.Add(activeConn);
         }
 
-        var disposeTasks = allConnections.Select(conn => conn.DisposeAsync().AsTask());
+        var disposeTasks = allConnections.Select(conn => SafeDisposeConnectionAsync(conn));
         await Task.WhenAll(disposeTasks);
 
         activeConnections.Clear();
