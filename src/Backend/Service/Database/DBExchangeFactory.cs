@@ -7,7 +7,7 @@ public static class DBExchangeFactory
         return type switch
         {
             "PostgreSQL" => new PostgreSQLExchange(),
-            "MySql" => new MySQLExchange(),
+            "MySQL" => new MySQLExchange(),
             "SqlServer" => new MSSQLExchange(),
             _ => throw new NotSupportedException($"Database type '{type}' is not supported")
         };
