@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
 using NetTools;
 using Serilog;
+using Conductor.Types;
 
 namespace Conductor.Shared;
 
@@ -44,6 +45,14 @@ public static class Settings
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = true
     });
+
+    public static bool IsMasterNode => NodeType == Node.Master || NodeType == Node.Single;
+
+    [ConfigKey("NODE_TYPE")]
+    public static Node NodeType { get; set; } = Node.Single;
+
+    [ConfigKey("MASTER_NODE_ENDPOINT")]
+    public static string MasterNodeEndpoint { get; set; } = "";
 
     [ConfigKey("FILE_STREAM_BUFFER_SIZE")]
     public static int FileStreamBufferSize { get; set; }
