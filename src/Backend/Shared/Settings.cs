@@ -46,7 +46,7 @@ public static class Settings
         WriteIndented = true
     });
 
-    public static bool IsMasterNode => NodeType == Node.Master || NodeType == Node.Single;
+    public static bool IsMasterNode => NodeType == Node.MasterCluster || NodeType == Node.MasterPrincipal;
 
     [ConfigKey("NODE_TYPE")]
     public static Node NodeType { get; set; } = Node.Single;
@@ -59,6 +59,9 @@ public static class Settings
 
     [ConfigKey("CONNECTION_POOL_MAX_SIZE")]
     public static int ConnectionPoolMaxSize { get; set; }
+
+    [ConfigKey("MASTER_NODE_CPU_REDIRECT_PERCENTAGE")]
+    public static double MasterNodeCpuRedirectPercentage { get; set; }
 
     [ConfigKey("CONNECTION_POOL_MIN_SIZE")]
     public static int ConnectionPoolMinSize { get; set; }

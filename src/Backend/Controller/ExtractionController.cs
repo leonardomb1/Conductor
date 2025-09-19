@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
+using System.Net;
 using System.Threading.Channels;
 using Conductor.Logging;
 using Conductor.Model;
@@ -10,17 +11,19 @@ using Conductor.Service.Database;
 using Conductor.Service.Http;
 using Conductor.Shared;
 using Conductor.Types;
+using Serilog;
 using static Microsoft.AspNetCore.Http.StatusCodes;
 
 namespace Conductor.Controller;
 
-public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker tracker, IConnectionPoolManager poolManager, IDataTableMemoryManager memManager, ExtractionRepository repository) : ControllerBase<Extraction>(repository)
+public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker tracker, IConnectionPoolManager poolManager, IDataTableMemoryManager memManager, ExtractionRepository repository, INodeRegistry nodeRegistry) : ControllerBase<Extraction>(repository)
 {
     private readonly IHttpClientFactory httpFactory = factory;
     private readonly IJobTracker jobTracker = tracker;
     private readonly IConnectionPoolManager connectionPoolManager = poolManager;
     private readonly IDataTableMemoryManager memoryManager = memManager;
     private readonly ExtractionRepository extractionRepository = repository;
+    private readonly INodeRegistry nodeRegistry = nodeRegistry;
 
     public override async Task<IResult> Get(IQueryCollection? filters)
     {
@@ -182,6 +185,264 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
 
         return Results.Ok(
             new Message<Extraction>(Status200OK, "OK", dependenciesResult.Value)
+        );
+    }
+
+    public async Task<IResult> DistributedTransfer(IQueryCollection? filters, CancellationToken token)
+    {
+        var invalidFilters = filters?.Where(f =>
+            (f.Key == "scheduleId" || f.Key == "take" || f.Key == "skip" || f.Key == "originId" || f.Key == "destinationId") &&
+            !uint.TryParse(f.Value, out _)).ToList();
+
+        if (invalidFilters?.Count > 0)
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Invalid query parameters.", true)
+            );
+        }
+
+        var fetch = await extractionRepository.Search(filters);
+
+        if (!fetch.IsSuccessful)
+        {
+            return Results.InternalServerError(ErrorMessage(fetch.Error));
+        }
+
+        if (fetch.Value.Any(e => e.DestinationId is null))
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "All extractions need to have a destination defined.", true)
+            );
+        }
+
+        if (fetch.Value.Any(e => e.Origin?.ConnectionString is null || e.Origin?.DbType is null))
+        {
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "All used origins need to have a Connection String and DbType.", true)
+            );
+        }
+
+        // Check if current node should handle distribution based on node type
+        if (Settings.NodeType == Node.MasterCluster)
+        {
+            // MasterCluster always distributes, never executes locally
+            return await DistributeToWorkerNode(fetch.Value, token);
+        }
+        else if (Settings.NodeType == Node.Master) // This is MasterPrincipal
+        {
+            var masterCpuUsage = CpuUsage.GetCpuUsagePercent();
+            
+            // If CPU usage is below redirect threshold, can execute locally
+            if (masterCpuUsage < Settings.MasterNodeCpuRedirectPercentage)
+            {
+                Log.Information($"MasterPrincipal node CPU usage ({masterCpuUsage:F2}%) is below redirect threshold, executing locally");
+                return await ExecuteTrasfer(filters, token);
+            }
+            else
+            {
+                // CPU usage is high, try to distribute
+                Log.Information($"MasterPrincipal node CPU usage ({masterCpuUsage:F2}%) exceeds redirect threshold, attempting distribution");
+                return await DistributeToWorkerNode(fetch.Value, token);
+            }
+        }
+        else
+        {
+            // Worker or Single node - should not be handling distribution requests
+            return Results.BadRequest(
+                new Message(Status400BadRequest, "Distribution endpoint is only available on Master nodes.", true)
+            );
+        }
+    }
+
+    private async Task<IResult> DistributeToWorkerNode(List<Extraction> extractions, CancellationToken token)
+    {
+        try
+        {
+            var availableNode = await nodeRegistry.GetNextAvailableNodeAsync();
+            
+            if (availableNode == null)
+            {
+                // No worker nodes available
+                if (Settings.NodeType == Node.MasterPrincipal) // MasterPrincipal can fallback to local execution
+                {
+                    var masterCpuUsage = CpuUsage.GetCpuUsagePercent();
+                    if (masterCpuUsage < Settings.MasterNodeCpuRedirectPercentage)
+                    {
+                        Log.Warning("No available worker nodes, executing on MasterPrincipal node as fallback");
+                        // Convert back to filters for local execution - this is a simplification
+                        // You might want to create a method that takes extractions directly
+                        return await ExecuteTransferWithExtractions(extractions, token);
+                    }
+                }
+                
+                return Results.ServiceUnavailable(
+                    new Message(503, "All worker nodes are busy and master node cannot handle the load.", true)
+                );
+            }
+
+            // Send extractions to the selected worker node
+            using var client = httpFactory.CreateClient($"{ProgramInfo.ProgramName}Client");
+            client.Timeout = TimeSpan.FromMinutes(Settings.ConnectionTimeout);
+            
+            var endpoint = $"{availableNode.Endpoint}/api/extractions/receive";
+            
+            Log.Information($"Distributing {extractions.Count} extractions to worker node {availableNode.NodeId}");
+            
+            var response = await client.PostAsJsonAsync(endpoint, extractions, Settings.JsonSOptions.Value, token);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync(token);
+                Log.Information($"Successfully distributed extractions to worker node {availableNode.NodeId}");
+                
+                return Results.Ok(
+                    new Message(Status200OK, $"Extractions distributed to worker node {availableNode.NodeId}")
+                );
+            }
+            else if (response.StatusCode == HttpStatusCode.Accepted)
+            {
+                return Results.Accepted("", 
+                    new Message(Status202Accepted, "One or more extractions are already running on the worker node.")
+                );
+            }
+            else
+            {
+                Log.Warning($"Worker node {availableNode.NodeId} rejected the request: {response.StatusCode} - {response.ReasonPhrase}");
+                
+                // Fallback to local execution if this is a MasterPrincipal
+                if (Settings.NodeType == Node.Master)
+                {
+                    var masterCpuUsage = CpuUsage.GetCpuUsagePercent();
+                    if (masterCpuUsage < Settings.MasterNodeCpuRedirectPercentage)
+                    {
+                        Log.Information("Worker node failed, falling back to local execution on MasterPrincipal");
+                        return await ExecuteTransferWithExtractions(extractions, token);
+                    }
+                }
+                
+                return Results.InternalServerError(
+                    new Message(Status500InternalServerError, 
+                        $"Worker node rejected the request and fallback is not available. Status: {response.StatusCode}", 
+                        true)
+                );
+            }
+        }
+        catch (HttpRequestException httpEx)
+        {
+            Log.Error($"Network error while distributing extractions: {httpEx.Message}");
+            
+            // Fallback to local execution if this is a MasterPrincipal
+            if (Settings.NodeType == Node.Master)
+            {
+                var masterCpuUsage = CpuUsage.GetCpuUsagePercent();
+                if (masterCpuUsage < Settings.MasterNodeCpuRedirectPercentage)
+                {
+                    Log.Information("Network error occurred, falling back to local execution on MasterPrincipal");
+                    return await ExecuteTransferWithExtractions(extractions, token);
+                }
+            }
+            
+            return Results.InternalServerError(
+                new Message(Status500InternalServerError, 
+                    "Failed to communicate with worker nodes and fallback is not available.", 
+                    true)
+            );
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Unexpected error during distribution: {ex.Message}");
+            return Results.InternalServerError(
+                new Message(Status500InternalServerError, "Unexpected error during distribution.", true)
+            );
+        }
+    }
+
+    private async Task<IResult> ExecuteTransferWithExtractions(List<Extraction> extractions, CancellationToken token)
+    {
+        var requestTime = DateTime.UtcNow;
+
+        // Filter out already running extractions
+        var executingId = jobTracker.GetActiveJobs()
+            .Where(j => j.Status == JobStatus.Running)
+            .SelectMany(l => l.JobExtractions.Select(je => je.ExtractionId));
+
+        var availableExtractions = extractions.Where(
+            e => !executingId.Any(l => l == e.Id)
+        ).ToList();
+
+        if (extractions.Count - availableExtractions.Count >= 1)
+        {
+            return Results.Accepted("", 
+                new Message(Status202Accepted, "One or more extractions are already running.")
+            );
+        }
+
+        var extractionIds = availableExtractions.Select(x => x.Id);
+        Job job = jobTracker.StartJob(extractionIds, JobType.Transfer)!;
+
+        var extractionResult = await ExtractionPipeline.ExecuteTransferJob(
+            jobTracker,
+            availableExtractions,
+            httpFactory,
+            null, // overrideFilter
+            connectionPoolManager,
+            memoryManager,
+            job,
+            requestTime,
+            token
+        );
+
+        if (!extractionResult.IsSuccessful)
+        {
+            return Results.InternalServerError(
+                ErrorMessage([.. extractionResult.Errors])
+            );
+        }
+
+        return Results.Ok(new Message(Status200OK, "OK"));
+    }
+
+    public IResult ExecuteReceiveTransfer(List<Extraction> received, IQueryCollection? filters)
+    {
+        var requestTime = DateTime.UtcNow;
+
+        var executingId = jobTracker.GetActiveJobs()
+            .Where(j => j.Status == JobStatus.Running)
+            .SelectMany(
+                l => l.JobExtractions.Select(
+                    je => je.ExtractionId
+                )
+            );
+
+        var extractions = received.Where(
+            e => !executingId.Any(l => l == e.Id)
+        ).ToList();
+
+        if (received.Count - extractions.Count >= 1)
+        {
+            return Results.Accepted("", new Message(Status202Accepted, "One or more extractions are already running."));
+        }
+
+        int? overrideFilter = filters is not null && filters.ContainsKey("overrideTime") ? int.Parse(filters["overrideTime"]!) : null;
+
+        var extractionIds = extractions.Select(x => x.Id);
+
+        Job? job = jobTracker.StartBackgroundJob(extractionIds, JobType.Transfer, async (job, cancellationToken) =>
+        {
+            await ExtractionPipeline.ExecuteTransferJob(
+                jobTracker, extractions, httpFactory, overrideFilter,
+                connectionPoolManager, memoryManager, job, requestTime, cancellationToken);
+        });
+
+        if (job is null)
+        {
+            return Results.InternalServerError(
+                new Message(Status500InternalServerError, "Unexpected error has occured while attempting to start job.", true)
+            );
+        }
+
+        return Results.Ok(
+            new Message(Status200OK, $"{job.JobGuid}")
         );
     }
 
@@ -814,6 +1075,13 @@ public sealed class ExtractionController(IHttpClientFactory factory, IJobTracker
             .Produces<Message>(Status202Accepted, "application/json")
             .Produces<Message>(Status400BadRequest, "application/json")
             .Produces<Message<Error>>(Status500InternalServerError, "application/json");
+
+
+        group.MapPost("/receive", (List<Extraction> extractions, IQueryCollection? query, ExtractionController controller, HttpRequest request, CancellationToken token) =>
+            controller.ExecuteReceiveTransfer(extractions, query));
+
+        group.MapPost("/distribute", (ExtractionController controller, HttpRequest request, CancellationToken token) =>
+            controller.DistributedTransfer(request.Query, token));
 
         group.MapPut("/programTransfer", async (ExtractionController controller, HttpRequest request, CancellationToken token) =>
             await controller.ExecuteTrasferNoWait(request.Query, token))

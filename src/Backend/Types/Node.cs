@@ -2,7 +2,8 @@ namespace Conductor.Types;
 
 public enum Node
 {
-    Master,
+    MasterPrincipal,
+    MasterCluster,
     Worker,
     Single
 }
@@ -21,10 +22,22 @@ public struct NodeInfo
     public string Endpoint { get; set; }
 };
 
-public record NodeHeartbeat(
-    string NodeId,
-    NodeStatus Status,
-    int ActiveJobs,
-    TimeSpan Uptime,
-    Dictionary<string, object> Metrics
-);
+public record NodeHealthResponse
+{
+    public string Status { get; init; } = "";
+    public DateTime Timestamp { get; init; }
+    public double CpuUsage { get; init; }
+    public int ActiveJobs { get; init; }
+    public NodeStatus NodeStatus { get; init; }
+}
+
+public record NodeStatusInfo
+{
+    public string NodeId { get; init; } = "";
+    public Node NodeType { get; init; }
+    public string Endpoint { get; init; } = "";
+    public NodeStatus Status { get; init; }
+    public double CpuUsage { get; init; }
+    public int ActiveJobs { get; init; }
+    public DateTime LastChecked { get; init; }
+}

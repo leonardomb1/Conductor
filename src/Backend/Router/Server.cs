@@ -11,6 +11,7 @@ using Conductor.Service;
 using Conductor.Service.Database;
 using Conductor.Service.Script;
 using Conductor.Shared;
+using Conductor.Types;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.ResponseCompression;
 using OpenTelemetry.Metrics;
@@ -201,6 +202,7 @@ public sealed class Server : IAsyncDisposable
         builder.Services.AddSingleton<IConnectionPoolManager, ConnectionPoolManager>();
         builder.Services.AddSingleton<IDataTableMemoryManager, DataTableMemoryManager>();
         builder.Services.AddSingleton<IScriptEngine, RoslynScriptEngine>();
+        builder.Services.AddSingleton<INodeRegistry, FileBasedNodeRegistry>();
 
         // Register server metrics as singleton for dependency injection
         builder.Services.AddSingleton(serverMeter);
@@ -216,6 +218,7 @@ public sealed class Server : IAsyncDisposable
         builder.Services.AddScoped<ExtractionController>();
         builder.Services.AddScoped<ScheduleController>();
         builder.Services.AddScoped<JobController>();
+        builder.Services.AddScoped<NodeController>();
 
         string runningEnvironment = Environment.GetEnvironmentVariable("DOCKER_ENVIRONMENT") is null ? "CLI" : "Docker";
         string runningArch = Environment.Is64BitOperatingSystem ? "64-bit" : "32-bit";
@@ -377,7 +380,20 @@ public sealed class Server : IAsyncDisposable
 
         var api = app.MapGroup("/api");
 
-        api.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.Now })).WithName("HealthCheck");
+        api.MapGet("/health", (IJobTracker jobTracker) => 
+        {
+            var cpuUsage = CpuUsage.GetCpuUsagePercent();
+            var activeJobs = jobTracker.GetActiveJobs().Count();
+            
+            return Results.Ok(new NodeHealthResponse
+            {
+                Status = "Healthy",
+                Timestamp = DateTime.UtcNow,
+                CpuUsage = cpuUsage,
+                ActiveJobs = activeJobs,
+                NodeStatus = cpuUsage >= Settings.MasterNodeCpuRedirectPercentage ? NodeStatus.Busy : NodeStatus.Ready
+            });
+        }).WithName("HealthCheck");
 
         api.MapPrometheusScrapingEndpoint("/metrics");
 
