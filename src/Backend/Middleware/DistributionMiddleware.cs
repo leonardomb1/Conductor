@@ -6,9 +6,6 @@ namespace Conductor.Middleware;
 public sealed class DistributionMiddleware(RequestDelegate request)
 {
     private readonly RequestDelegate next = request;
-    private static TimeSpan lastCpuTime = TimeSpan.Zero;
-    private static DateTime lastCheck = DateTime.UtcNow;
-
     public async Task InvokeAsync(HttpContext ctx)
     {
         if (!Settings.IsMasterNode)
@@ -25,7 +22,7 @@ public sealed class DistributionMiddleware(RequestDelegate request)
             return;
         }
 
-        double cpuUsage = GetCpuUsagePercent();
+        double cpuUsage = CpuUsage.GetCpuUsagePercent();
 
         if (path.Contains("transfer", StringComparison.OrdinalIgnoreCase)
             && cpuUsage > Settings.MasterNodeCpuRedirectPercentage)
@@ -35,23 +32,5 @@ public sealed class DistributionMiddleware(RequestDelegate request)
         }
 
         await next(ctx);
-    }
-
-    private static double GetCpuUsagePercent()
-    {
-        var process = Process.GetCurrentProcess();
-        var nowCpuTime = process.TotalProcessorTime;
-        var now = DateTime.UtcNow;
-
-        var cpuUsedMs = (nowCpuTime - lastCpuTime).TotalMilliseconds;
-        var totalMsPassed = (now - lastCheck).TotalMilliseconds * Environment.ProcessorCount;
-
-        lastCpuTime = nowCpuTime;
-        lastCheck = now;
-
-        if (totalMsPassed <= 0)
-            return 0;
-
-        return cpuUsedMs / totalMsPassed * 100.0;
     }
 }
