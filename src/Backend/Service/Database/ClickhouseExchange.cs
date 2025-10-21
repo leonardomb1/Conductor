@@ -169,10 +169,13 @@ public class ClickHouseExchange : DBExchange
         queryBuilder = AddChangeColumn(queryBuilder, tableName);
         queryBuilder = AddIdentityColumn(queryBuilder, tableName);
 
-        // Remove trailing comma
-        if (queryBuilder.Length > 0)
+        // Remove trailing comma and newline
+        string current = queryBuilder.ToString();
+        if (current.TrimEnd().EndsWith(','))
         {
-            queryBuilder.Length -= 3; // Remove ",\r\n"
+            // Find the last comma and remove it along with any trailing whitespace
+            int lastCommaIndex = current.LastIndexOf(',');
+            queryBuilder.Length = lastCommaIndex;
             queryBuilder.AppendLine();
         }
 
