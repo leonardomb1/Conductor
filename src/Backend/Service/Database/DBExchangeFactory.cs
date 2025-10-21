@@ -9,6 +9,7 @@ public static class DBExchangeFactory
             "PostgreSQL" => new PostgreSQLExchange(),
             "MySQL" => new MySQLExchange(),
             "SqlServer" => new MSSQLExchange(),
+            "ClickHouse" => new ClickHouseExchange(),
             _ => throw new NotSupportedException($"Database type '{type}' is not supported")
         };
     }
