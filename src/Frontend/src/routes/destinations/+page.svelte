@@ -440,6 +440,7 @@
       placeholder="Select database type"
       options={[
         { value: "PostgreSQL", label: "PostgreSQL" },
+        { value: "ClickHouse", label: "Clickhouse"},
         { value: "MySQL", label: "MySQL" },
         { value: "SqlServer", label: "SQL Server" },
       ]}
